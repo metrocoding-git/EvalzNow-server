@@ -7,10 +7,13 @@ db.sequelize = sequelize;
 
 // Import models
 // db.User = require('./user.model')(sequelize, Sequelize);
-// db.Post = require('./post.model')(sequelize, Sequelize);
+db.Client = require('./client.model')(sequelize, Sequelize);
+db.CompanySize = require('./companySize.model')(sequelize, Sequelize);
 
-// Relations
-// db.User.hasMany(db.Post, { foreignKey: 'userId' });
-// db.Post.belongsTo(db.User, { foreignKey: 'userId' });
+// Define associations
+if (db.Client && db.CompanySize) {
+  db.Client.belongsTo(db.CompanySize, { foreignKey: 'companySizeId', as: 'companySize' });
+}
 
+// Export the db object
 module.exports = db;
