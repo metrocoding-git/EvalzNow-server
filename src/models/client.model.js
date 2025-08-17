@@ -11,7 +11,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(10),
       allowNull: false,
       unique: true,
-      defaultValue: () => crypto.randomBytes(5).toString("hex").toUpperCase()
+      defaultValue: () => crypto.randomBytes(12).toString("hex").toUpperCase()
     },
     lastName: { type: DataTypes.STRING, allowNull: false },
     firstName: { type: DataTypes.STRING, allowNull: false },
