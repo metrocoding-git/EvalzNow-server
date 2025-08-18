@@ -13,7 +13,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(10),
         allowNull: false,
         unique: true,
-        defaultValue: () => crypto.randomBytes(5).toString("hex").toUpperCase(),
+        defaultValue: () =>
+          crypto.randomBytes(5).toString("hex").toUpperCase(),
       },
       lastName: { type: DataTypes.STRING, allowNull: false },
       firstName: { type: DataTypes.STRING, allowNull: false },
@@ -34,13 +35,17 @@ module.exports = (sequelize, DataTypes) => {
       hooks: {
         beforeCreate: (candidate) => {
           if (!candidate.candidateId) {
-            candidate.candidateId = crypto.randomBytes(5).toString("hex").toUpperCase();
+            candidate.candidateId = crypto
+              .randomBytes(5)
+              .toString("hex")
+              .toUpperCase();
           }
         },
       },
     }
   );
 
+  // ✅ Associations should all go here
   Candidate.associate = (models) => {
     Candidate.hasMany(models.Irregularity, {
       foreignKey: "candidateId",
@@ -48,6 +53,7 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
+
   };
 
   return Candidate;
