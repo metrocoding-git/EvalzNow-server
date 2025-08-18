@@ -8,10 +8,13 @@ module.exports = (sequelize, DataTypes) => {
       autoIncrement: true
     },
     executiveId: {
-      type: DataTypes.STRING(10),
+      type: DataTypes.STRING(15),  // VARCHAR(15)
       allowNull: false,
       unique: true,
-      defaultValue: () => crypto.randomBytes(12).toString("hex").toUpperCase()
+      defaultValue: () =>
+        Array.from({ length: 15 }, () =>
+          Math.floor(Math.random() * 36).toString(36).toUpperCase()
+        ).join("")
     },
     lastName: { type: DataTypes.STRING, allowNull: false },
     firstName: { type: DataTypes.STRING, allowNull: false },

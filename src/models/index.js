@@ -14,6 +14,8 @@ db.Candidate = require('./candidate.model')(sequelize, Sequelize);
 db.Irregularity = require('./irregularity.model')(sequelize, Sequelize);
 db.Unit = require('./unit.model')(sequelize, Sequelize);
 db.Benchmark = require('./benchmark.model')(sequelize, Sequelize);
+// db.UnitRoster = require('./unitRoster.model')(sequelize, Sequelize);
+db.UnitRoster = require("./unitRoster.model")(sequelize, Sequelize);
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -54,8 +56,32 @@ if (db.Unit && db.Benchmark) {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE'
   });
+
+  
 }
 
+db.Candidate.hasMany(db.UnitRoster, {
+  foreignKey: "candidateId",
+  as: "unitRosters",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+db.UnitRoster.belongsTo(db.Candidate, {
+  foreignKey: "candidateId",
+  as: "candidate",
+});
+
+// Unit ↔ UnitRoster
+db.Unit.hasMany(db.UnitRoster, {
+  foreignKey: "unitId",
+  as: "roster",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+db.UnitRoster.belongsTo(db.Unit, {
+  foreignKey: "unitId",
+  as: "unit",
+});
 
 
 
