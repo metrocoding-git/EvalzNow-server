@@ -9,5 +9,6 @@ router.use('/candidates', require('./candidate.routes'));
 router.use('/irregulaties', require('./irregularity.routes'));
 router.use('/units', require('./unit.routes'));
 router.use('/benchmark', require('./benchmark.routes'));
+router.use('/unit_roster', require('./unitRoster.routes'));
 
 module.exports = router;
