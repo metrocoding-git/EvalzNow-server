@@ -20,7 +20,7 @@ exports.getUnitRosters = async (req, res) => {
         {
           model: Unit,
           as: "unit",
-          attributes: ["id", "unitId", "unitName"],
+          attributes: ["id", "unitId", "unitName", "unitType", "signatureProfile"],
         },
       ],
       
@@ -81,7 +81,7 @@ exports.createUnitRoster = async (req, res) => {
     const createdRoster = await UnitRoster.findByPk(newRoster.id, {
       include: [
         { model: Candidate, as: "candidate", attributes: ["id", "candidateId", "firstName", "lastName"] },
-        { model: Unit, as: "unit", attributes: ["id", "unitId", "unitName"] },
+        { model: Unit, as: "unit", attributes: ["id", "unitId", "unitName", "unitType", "signatureProfile"] },
       ],
     });
 

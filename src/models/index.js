@@ -16,6 +16,7 @@ db.Unit = require('./unit.model')(sequelize, Sequelize);
 db.Benchmark = require('./benchmark.model')(sequelize, Sequelize);
 // db.UnitRoster = require('./unitRoster.model')(sequelize, Sequelize);
 db.UnitRoster = require("./unitRoster.model")(sequelize, Sequelize);
+db.AssessmentBlockManager = require("./assessmentBlockManager.model")(sequelize, Sequelize); 
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -83,6 +84,18 @@ db.UnitRoster.belongsTo(db.Unit, {
   as: "unit",
 });
 
+db.Unit.hasMany(db.AssessmentBlockManager, {
+  foreignKey: "unitId",
+  as: "assessmentBlocks",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+db.AssessmentBlockManager.belongsTo(db.Unit, {
+  foreignKey: "unitId",
+  as: "unit",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
 
 
 // Export the db object
