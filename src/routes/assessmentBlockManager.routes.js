@@ -1,0 +1,10 @@
+const express = require('express');
+const router = express.Router();
+const assessmentBlockController = require('../controllers/assessmentBlockManager.controller');
+
+router.get('/', assessmentBlockController.getAssessmentBlocks);
+router.post('/', assessmentBlockController.createAssessmentBlock);
+router.put('/:id', assessmentBlockController.updateAssessmentBlock);
+router.delete('/:id', assessmentBlockController.deleteAssessmentBlock);
+
+module.exports = router;
