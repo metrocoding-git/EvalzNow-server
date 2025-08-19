@@ -45,7 +45,12 @@ module.exports = (sequelize, DataTypes) => {
       environment: {
         type: DataTypes.STRING,
         allowNull: true
-      }
+      },
+      scoringSystem: {
+        type: DataTypes.ENUM("3-Point", "5-Point"),
+        allowNull: false,
+        defaultValue: "3-Point",
+      },
     },
     {
       tableName: "units",
@@ -66,7 +71,16 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
+
+    Unit.hasMany(models.AssessmentBlockManager, {
+      foreignKey: "unitId",
+      as: "assessmentBlocks",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
   };
+
+  
 
   return Unit;
 };
