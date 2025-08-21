@@ -67,6 +67,41 @@ exports.getUnitRosterById = async (req, res) => {
   }
 };
 
+// GET all unit rosters by unitId
+exports.getUnitRostersByUnitId = async (req, res) => {
+  try {
+    const { unitId } = req.params;
+
+    const rosters = await UnitRoster.findAll({
+      where: { unitId },
+      include: [
+        {
+          model: Candidate,
+          as: "candidate", 
+        },
+        {
+          model: Unit,
+          as: "unit",
+          attributes: ["id", "unitId", "unitName", "unitType", "signatureProfile"],
+        },
+      ],
+    });
+
+    if (!rosters || rosters.length === 0) {
+      return res.status(404).json({ message: "No UnitRosters found for this unitId" });
+    }
+
+    res.status(200).json(rosters);
+  } catch (error) {
+    console.error("Error fetching unit rosters by unitId:", error);
+    res.status(500).json({
+      message: "Error fetching unit rosters by unitId",
+      error: error.message,
+    });
+  }
+};
+
+
 // CREATE a new unit roster entry
 exports.createUnitRoster = async (req, res) => {
   const transaction = await db.sequelize.transaction();

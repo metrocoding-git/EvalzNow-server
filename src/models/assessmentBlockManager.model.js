@@ -17,6 +17,10 @@ module.exports = (sequelize, DataTypes) => {
           key: 'id'
         }
       },
+      manageType: {
+        type: DataTypes.ENUM("Indirect","Direct"),
+        allowNull: false,
+      },
       ppId: {
         type: DataTypes.INTEGER,
         allowNull: false,

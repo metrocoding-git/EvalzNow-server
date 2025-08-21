@@ -17,6 +17,7 @@ db.Benchmark = require('./benchmark.model')(sequelize, Sequelize);
 // db.UnitRoster = require('./unitRoster.model')(sequelize, Sequelize);
 db.UnitRoster = require("./unitRoster.model")(sequelize, Sequelize);
 db.AssessmentBlockManager = require("./assessmentBlockManager.model")(sequelize, Sequelize); 
+db.Ethinicity = require("./ethinicity.model")(sequelize, Sequelize);
 
 // Define associations
 if (db.Client && db.CompanySize) {
