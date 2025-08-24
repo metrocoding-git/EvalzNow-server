@@ -46,19 +46,19 @@ exports.createAssessmentBlock = async (req, res) => {
     let ppId;
 
     if (manageType === "Indirect") {
-      // Find the smallest (most negative) existing ppId for indirect
+      // Find the smallest (most negative) existing ppId **for this unit**
       const lastIndirect = await AssessmentBlockManager.findOne({
-        where: { manageType: "Indirect" },
+        where: { manageType: "Indirect", unitId },
         order: [["ppId", "ASC"]] // smallest first (most negative)
       });
-      ppId = lastIndirect ? lastIndirect.ppId - 1 : -1; // decrement
+      ppId = lastIndirect ? lastIndirect.ppId - 1 : -1; // decrement or start at -1
     } else if (manageType === "Direct") {
-      // Find the largest existing ppId for direct
+      // Find the largest existing ppId **for this unit**
       const lastDirect = await AssessmentBlockManager.findOne({
-        where: { manageType: "Direct" },
+        where: { manageType: "Direct", unitId },
         order: [["ppId", "DESC"]] // largest first
       });
-      ppId = lastDirect ? lastDirect.ppId + 1 : 1; // increment
+      ppId = lastDirect ? lastDirect.ppId + 1 : 1; // increment or start at 1
     } else {
       return res.status(400).json({ message: "Invalid manageType" });
     }
@@ -84,6 +84,7 @@ exports.createAssessmentBlock = async (req, res) => {
     res.status(500).json({ message: 'Error creating assessment block', error: error.message });
   }
 };
+
 
 
 // PUT update an Assessment Block
