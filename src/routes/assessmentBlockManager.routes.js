@@ -7,5 +7,6 @@ router.get('/unit/:unitId', assessmentBlockController.getAssessmentBlocksByUnitI
 router.post('/', assessmentBlockController.createAssessmentBlock);
 router.put('/:id', assessmentBlockController.updateAssessmentBlock);
 router.delete('/:id', assessmentBlockController.deleteAssessmentBlock);
+router.get('/unit/:unitId/candidate/:candidateId', assessmentBlockController.getAssessmentBlockByCandidateAndUnit);
 
 module.exports = router;
