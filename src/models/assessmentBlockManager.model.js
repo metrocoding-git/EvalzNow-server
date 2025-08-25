@@ -17,6 +17,14 @@ module.exports = (sequelize, DataTypes) => {
           key: 'id'
         }
       },
+      candidate_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'candidates', // Reference to your units table
+          key: 'id'
+        }
+      },
       manageType: {
         type: DataTypes.ENUM("Indirect","Direct"),
         allowNull: false,
@@ -60,6 +68,14 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'unitId',
       as: 'unit'
     });
+
+    AssessmentBlockManager.belongsTo(models.Candidate, {
+      foreignKey: "candidate_id", // FK column
+      as: "candidate",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
   };
 
   return AssessmentBlockManager;
