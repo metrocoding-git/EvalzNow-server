@@ -18,6 +18,7 @@ db.Benchmark = require('./benchmark.model')(sequelize, Sequelize);
 db.UnitRoster = require("./unitRoster.model")(sequelize, Sequelize);
 db.AssessmentBlockManager = require("./assessmentBlockManager.model")(sequelize, Sequelize); 
 db.Ethinicity = require("./ethinicity.model")(sequelize, Sequelize);
+db.Income = require("./income.model")(sequelize, Sequelize);
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -85,6 +86,21 @@ db.UnitRoster.belongsTo(db.Unit, {
   as: "unit",
 });
 
+// Candidate ↔ AssessmentBlockManager
+db.Candidate.hasMany(db.AssessmentBlockManager, {
+  foreignKey: "candidate_id",
+  as: "assessmentBlocks",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+db.AssessmentBlockManager.belongsTo(db.Candidate, {
+  foreignKey: "candidate_id",
+  as: "candidate",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+// Unit ↔ AssessmentBlockManager
 db.Unit.hasMany(db.AssessmentBlockManager, {
   foreignKey: "unitId",
   as: "assessmentBlocks",

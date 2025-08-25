@@ -24,7 +24,7 @@ module.exports = (sequelize, DataTypes) => {
       nationality: { type: DataTypes.STRING, allowNull: false },
       gender: { type: DataTypes.STRING, allowNull: false },
       ethnicity: { type: DataTypes.STRING, allowNull: true },
-      income: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+      income: { type: DataTypes.STRING, allowNull: true },
       religion: { type: DataTypes.STRING, allowNull: true },
       maritalStatus: { type: DataTypes.STRING, allowNull: false },
       jobType: { type: DataTypes.STRING, allowNull: true },
@@ -54,6 +54,12 @@ module.exports = (sequelize, DataTypes) => {
       onUpdate: "CASCADE",
     });
 
+    Candidate.hasMany(models.AssessmentBlockManager, {
+      foreignKey: "candidate_id",  // use Candidate.id
+      as: "assessmentBlocks",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Candidate;
