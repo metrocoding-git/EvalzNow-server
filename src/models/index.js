@@ -19,6 +19,7 @@ db.UnitRoster = require("./unitRoster.model")(sequelize, Sequelize);
 db.AssessmentBlockManager = require("./assessmentBlockManager.model")(sequelize, Sequelize); 
 db.Ethinicity = require("./ethinicity.model")(sequelize, Sequelize);
 db.Income = require("./income.model")(sequelize, Sequelize);
+db.InsertScore = require("./insertScore.model")(sequelize, Sequelize);
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -113,6 +114,52 @@ db.AssessmentBlockManager.belongsTo(db.Unit, {
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
 });
+
+
+// AssessmentBlockManager ↔ InsertScore
+db.AssessmentBlockManager.hasMany(db.InsertScore, {
+  foreignKey: "assessmentBlockId",
+  as: "insertScores",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+db.InsertScore.belongsTo(db.AssessmentBlockManager, {
+  foreignKey: "assessmentBlockId",
+  as: "assessmentBlock",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+
+// Unit ↔ InsertScore
+db.Unit.hasMany(db.InsertScore, {
+  foreignKey: "unitId",
+  as: "insertScores",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+db.InsertScore.belongsTo(db.Unit, {
+  foreignKey: "unitId",
+  as: "unit",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+
+
+db.Candidate.hasMany(db.InsertScore, {
+  foreignKey: "candidate_id",
+  as: "insertScores",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+db.InsertScore.belongsTo(db.Candidate, {
+  foreignKey: "candidate_id",
+  as: "candidate",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+})
 
 
 // Export the db object

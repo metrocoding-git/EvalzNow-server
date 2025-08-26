@@ -13,5 +13,7 @@ router.use('/unit_roster', require('./unitRoster.routes'));
 router.use('/assessment_block_manager', require('./assessmentBlockManager.routes'));
 router.use('/ethinicity', require('./ethinicity.routes'));
 router.use('/income', require('./income.routes'));
+router.use('/insert-score', require('./insertScore.routes'));
+
 
 module.exports = router;
