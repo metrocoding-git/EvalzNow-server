@@ -78,6 +78,13 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
+
+    Unit.hasMany(models.InsertScore, {
+      foreignKey: "unitId",
+      as: "insertScores",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
   };
 
   
