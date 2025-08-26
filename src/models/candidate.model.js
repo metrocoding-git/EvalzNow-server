@@ -55,8 +55,15 @@ module.exports = (sequelize, DataTypes) => {
     });
 
     Candidate.hasMany(models.AssessmentBlockManager, {
-      foreignKey: "candidate_id",  // use Candidate.id
+      foreignKey: "candidate_id",  
       as: "assessmentBlocks",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Candidate.hasMany(models.InsertScore, {
+      foreignKey: "candidate_id", 
+      as: "candidates",
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });

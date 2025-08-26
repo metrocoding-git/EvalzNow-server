@@ -76,6 +76,12 @@ module.exports = (sequelize, DataTypes) => {
       onUpdate: "CASCADE",
     });
 
+    AssessmentBlockManager.hasMany(models.InsertScore, {
+      foreignKey: "assessmentBlockId",
+      as: "insertScores",
+    });
+    
+
   };
 
   return AssessmentBlockManager;
