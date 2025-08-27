@@ -37,6 +37,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER, 
         allowNull: false,
       },
+      subPpId: {
+        type: DataTypes.INTEGER, 
+        allowNull: false,
+      },
       durationHrs: {
         type: DataTypes.INTEGER, // storing hours as integer
         allowNull: true,
@@ -49,8 +53,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(255),
         allowNull: true,
       },
-
-      
       workflowStage: {
         type: DataTypes.STRING(255),
         allowNull: true,
