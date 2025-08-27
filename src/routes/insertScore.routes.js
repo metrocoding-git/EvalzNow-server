@@ -10,5 +10,6 @@ router.delete('/:id', insertScoreController.deleteInsertScore);
 router.get('/unit/:unitId', insertScoreController.getInsertScoresByUnitId);
 router.get('/block/:blockId', insertScoreController.getInsertScoresByBlockId);
 router.get('/unit/:unitId/candidate/:candidate_id', insertScoreController.getInsertScoresByUnitAndCandidate)
+router.get('/summary', insertScoreController.getPpSummary);
 
 module.exports = router;
