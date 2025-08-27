@@ -20,6 +20,7 @@ db.AssessmentBlockManager = require("./assessmentBlockManager.model")(sequelize,
 db.Ethinicity = require("./ethinicity.model")(sequelize, Sequelize);
 db.Income = require("./income.model")(sequelize, Sequelize);
 db.InsertScore = require("./insertScore.model")(sequelize, Sequelize);
+db.ScoringCriteria = require("./scoringCriteria.model")(sequelize, Sequelize);
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -160,6 +161,20 @@ db.InsertScore.belongsTo(db.Candidate, {
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
 })
+
+
+db.Unit.hasMany(db.ScoringCriteria, {
+  foreignKey: "unitId",
+  as: "scoringCriteria",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+db.ScoringCriteria.belongsTo(db.Unit, {
+  foreignKey: "unitId",
+  as: "unit",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
 
 
 // Export the db object
