@@ -59,20 +59,20 @@ exports.createAssessmentBlock = async (req, res) => {
       return res.status(400).json({ message: 'Candidate not found' });
     }
 
-    // Determine ppId based on manageType
+    // Determine ppId based on manageType AND candidate
     let ppId;
     if (manageType === "Indirect") {
       const lastIndirect = await AssessmentBlockManager.findOne({
-        where: { manageType: "Indirect", unitId },
-        order: [["ppId", "ASC"]]
+        where: { manageType: "Indirect", unitId, candidate_id },
+        order: [["ppId", "ASC"]] // closest to zero (e.g. -1, -2, -3...)
       });
-      ppId = lastIndirect ? lastIndirect.ppId - 1 : -1;
+      ppId = lastIndirect ? lastIndirect.ppId - 1 : -1; // decrement
     } else if (manageType === "Direct") {
       const lastDirect = await AssessmentBlockManager.findOne({
-        where: { manageType: "Direct", unitId },
-        order: [["ppId", "DESC"]]
+        where: { manageType: "Direct", unitId, candidate_id },
+        order: [["ppId", "DESC"]] // largest positive (e.g. 1, 2, 3...)
       });
-      ppId = lastDirect ? lastDirect.ppId + 1 : 1;
+      ppId = lastDirect ? lastDirect.ppId + 1 : 1; // increment
     } else {
       return res.status(400).json({ message: "Invalid manageType" });
     }
@@ -103,6 +103,7 @@ exports.createAssessmentBlock = async (req, res) => {
     res.status(500).json({ message: 'Error creating assessment block', error: error.message });
   }
 };
+
 
 // PUT update an Assessment Block
 exports.updateAssessmentBlock = async (req, res) => {
@@ -139,20 +140,62 @@ exports.updateAssessmentBlock = async (req, res) => {
 
 // DELETE an Assessment Block
 exports.deleteAssessmentBlock = async (req, res) => {
+  const transaction = await db.sequelize.transaction();
   try {
     const { id } = req.params;
-    const deleted = await AssessmentBlockManager.destroy({ where: { id } });
 
-    if (deleted === 0) {
+    // Find the block to delete first
+    const blockToDelete = await AssessmentBlockManager.findByPk(id);
+
+    if (!blockToDelete) {
+      await transaction.rollback();
       return res.status(404).json({ message: 'Assessment block not found' });
     }
 
-    res.status(200).json({ message: 'Assessment block deleted successfully' });
+    const { unitId, manageType, ppId } = blockToDelete;
+
+    // Delete the block
+    await AssessmentBlockManager.destroy({ where: { id }, transaction });
+
+    // Adjust ppIds
+    if (manageType === "Direct") {
+      // Direct: shift ppIds greater than deleted one DOWN by 1
+      await AssessmentBlockManager.increment(
+        { ppId: -1 },
+        {
+          where: {
+            unitId,
+            manageType,
+            ppId: { [db.Sequelize.Op.gt]: ppId },
+          },
+          transaction,
+        }
+      );
+    } else if (manageType === "Indirect") {
+      // Indirect: shift ppIds smaller (more negative) UP by 1
+      await AssessmentBlockManager.increment(
+        { ppId: 1 },
+        {
+          where: {
+            unitId,
+            manageType,
+            ppId: { [db.Sequelize.Op.lt]: ppId }, // less than deleted one
+          },
+          transaction,
+        }
+      );
+    }
+
+    await transaction.commit();
+    res.status(200).json({ message: 'Assessment block deleted successfully and ppIds adjusted' });
+
   } catch (error) {
+    await transaction.rollback();
     console.error(error);
     res.status(500).json({ message: 'Error deleting assessment block', error: error.message });
   }
 };
+
 
 
 // GET Assessment Block by Candidate ID and Unit ID
