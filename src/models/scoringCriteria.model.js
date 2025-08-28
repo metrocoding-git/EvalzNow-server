@@ -9,6 +9,10 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         autoIncrement: true,
       },
+      criteriaId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
       unitId: {
         type: DataTypes.INTEGER,
         allowNull: false,

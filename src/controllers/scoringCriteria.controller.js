@@ -2,7 +2,7 @@ const db = require("../models");
 const ScoringCriteria = db.ScoringCriteria;
 const Unit = db.Unit;
 
-// ✅ Get all scoring criteria
+//  Get all scoring criteria
 exports.getAllScoringCriteria = async (req, res) => {
   try {
     const criteria = await ScoringCriteria.findAll({
@@ -18,7 +18,7 @@ exports.getAllScoringCriteria = async (req, res) => {
   }
 };
 
-// ✅ Get criteria by Unit ID
+//  Get criteria by Unit ID
 exports.getScoringCriteriaByUnit = async (req, res) => {
   try {
     const { unitId } = req.params;
@@ -28,11 +28,7 @@ exports.getScoringCriteriaByUnit = async (req, res) => {
       include: [{ model: Unit, as: "unit" }],
     });
 
-    if (!criteria || criteria.length === 0) {
-      return res
-        .status(404)
-        .json({ message: `No scoring criteria found for unitId ${unitId}` });
-    }
+    
 
     res.status(200).json(criteria);
   } catch (error) {
@@ -44,7 +40,8 @@ exports.getScoringCriteriaByUnit = async (req, res) => {
   }
 };
 
-// ✅ Create new scoring criteria
+
+//  Create new scoring criteria with per-unit auto-increment
 exports.createScoringCriteria = async (req, res) => {
   try {
     const { unitId, criteria } = req.body;
@@ -59,7 +56,20 @@ exports.createScoringCriteria = async (req, res) => {
       return res.status(400).json({ message: "Unit not found" });
     }
 
-    const newCriteria = await ScoringCriteria.create({ unitId, criteria });
+    //  Get the last criteriaId for this unit
+    const lastCriteria = await ScoringCriteria.findOne({
+      where: { unitId },
+      order: [["criteriaId", "DESC"]],
+    });
+
+    const nextCriteriaId = lastCriteria ? lastCriteria.criteriaId + 1 : 1;
+
+    // Create the new criteria
+    const newCriteria = await ScoringCriteria.create({
+      unitId,
+      criteria,
+      criteriaId: nextCriteriaId,
+    });
 
     const withUnit = await ScoringCriteria.findOne({
       where: { id: newCriteria.id },
@@ -76,7 +86,8 @@ exports.createScoringCriteria = async (req, res) => {
   }
 };
 
-// ✅ Update scoring criteria
+
+//  Update scoring criteria
 exports.updateScoringCriteria = async (req, res) => {
   try {
     const { id } = req.params;
@@ -111,7 +122,7 @@ exports.updateScoringCriteria = async (req, res) => {
   }
 };
 
-// ✅ Delete scoring criteria
+//  Delete scoring criteria
 exports.deleteScoringCriteria = async (req, res) => {
   try {
     const { id } = req.params;

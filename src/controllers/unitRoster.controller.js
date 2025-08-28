@@ -87,9 +87,7 @@ exports.getUnitRostersByUnitId = async (req, res) => {
       ],
     });
 
-    if (!rosters || rosters.length === 0) {
-      return res.status(404).json({ message: "No UnitRosters found for this unitId" });
-    }
+    
 
     res.status(200).json(rosters);
   } catch (error) {
