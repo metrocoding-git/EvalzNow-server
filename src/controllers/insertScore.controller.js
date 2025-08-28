@@ -33,9 +33,7 @@ exports.getInsertScoresByBlockId = async (req, res) => {
       ]
     });
 
-    if (!scores || scores.length === 0) {
-      return res.status(404).json({ message: `No insert scores found for assessmentBlockId ${blockId}` });
-    }
+
 
     res.status(200).json(scores);
   } catch (error) {
@@ -58,10 +56,7 @@ exports.getInsertScoresByUnitId = async (req, res) => {
       ]
     });
 
-    if (!scores || scores.length === 0) {
-      return res.status(404).json({ message: `No insert scores found for unitId ${unitId}` });
-    }
-
+    
     res.status(200).json(scores);
   } catch (error) {
     console.error(error);
@@ -226,11 +221,7 @@ exports.getInsertScoresByUnitAndCandidate = async (req, res) => {
       ]
     });
 
-    if (!scores || scores.length === 0) {
-      return res.status(404).json({
-        message: `No insert scores found for unitId ${unitId} and candidateId ${candidate_id}`
-      });
-    }
+    
 
     res.status(200).json(scores);
   } catch (error) {

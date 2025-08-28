@@ -32,9 +32,6 @@ exports.getAssessmentBlocksByUnitId = async (req, res) => {
       ]
     });
 
-    if (!blocks || blocks.length === 0) {
-      return res.status(404).json({ message: `No assessment blocks found for unitId ${unitId}` });
-    }
 
     res.status(200).json(blocks);
   } catch (error) {
@@ -215,9 +212,7 @@ exports.getAssessmentBlockByCandidateAndUnit = async (req, res) => {
       ]
     });
 
-    if (!block) {
-      return res.status(404).json({ message: `No assessment block found for unitId ${unitId} and candidateId ${candidateId}` });
-    }
+    
 
     res.status(200).json(block);
   } catch (error) {
