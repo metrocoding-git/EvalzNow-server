@@ -67,6 +67,42 @@ exports.getUnitRosterById = async (req, res) => {
   }
 };
 
+
+// GET all units by candidateId
+exports.getUnitsByCandidateId = async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+
+    const rosters = await UnitRoster.findAll({
+      where: { candidateId },
+      include: [
+        {
+          model: Unit,
+          as: "unit",
+          attributes: ["id", "unitId", "unitName"], // only these from Unit
+        },
+      ],
+      attributes: ["unitOutcome"], // only keep status from roster
+    });
+
+    // Format the response
+    const result = rosters.map((r) => ({
+      unitId: r.unit?.unitId,
+      unitName: r.unit?.unitName,
+      status: r.unitOutcome,
+    }));
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error fetching units by candidateId:", error);
+    res.status(500).json({
+      message: "Error fetching units by candidateId",
+      error: error.message,
+    });
+  }
+};
+
+
 // GET all unit rosters by unitId
 exports.getUnitRostersByUnitId = async (req, res) => {
   try {
