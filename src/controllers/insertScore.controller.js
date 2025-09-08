@@ -81,7 +81,8 @@ exports.createInsertScore = async (req, res) => {
       engageLevel,
       competency,
       attainedScore,
-      maxScore
+      maxScore,
+      ...rest
     } = req.body;
 
     if (!assessmentBlockId) {
@@ -136,7 +137,8 @@ exports.createInsertScore = async (req, res) => {
       engageLevel,
       competency,
       attainedScore,
-      maxScore
+      maxScore,
+      ...rest,
     });
 
     const scoreWithRelations = await InsertScore.findOne({
