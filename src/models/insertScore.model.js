@@ -74,11 +74,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       attainedScore: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
       },
       maxScore: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
       },
 

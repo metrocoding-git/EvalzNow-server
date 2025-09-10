@@ -295,3 +295,49 @@ exports.getPpSummary = async (req, res) => {
     });
   }
 };
+
+
+// GET Insert Scores by Unit ID, grouped by competency and ppId, with unit details
+exports.getScoresByUnitGrouped = async (req, res) => {
+  try {
+    const { unitId } = req.params;
+
+    if (!unitId) {
+      return res.status(400).json({ message: "unitId is required" });
+    }
+
+    const grouped = await InsertScore.findAll({
+      attributes: [
+        "competency",
+        "ppId",
+        [Sequelize.col("unit.unitName"), "unitName"],
+        [Sequelize.col("unit.unitId"), "unitId"],
+        [Sequelize.col("unit.unitType"), "unitType"],
+        [Sequelize.fn("COUNT", Sequelize.col("InsertScore.id")), "count"],
+        [Sequelize.fn("SUM", Sequelize.col("InsertScore.attainedScore")), "totalAttained"],
+        [Sequelize.fn("SUM", Sequelize.col("InsertScore.maxScore")), "totalMax"],
+        // [Sequelize.fn("AVG", Sequelize.col("InsertScore.attainedScore")), "avgAttained"],
+        // [Sequelize.fn("AVG", Sequelize.col("InsertScore.maxScore")), "avgMax"],
+      ],
+      where: { unitId },
+      include: [
+        {
+          model: Unit,
+          as: "unit",
+          attributes: [], // prevent duplicating in SELECT since we use col()
+        },
+      ],
+      group: ["competency", "ppId", "unitId", "unit.unitName", "unit.unitType"],
+      raw: true,
+    });
+
+    res.status(200).json(grouped);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Error fetching grouped insert scores",
+      error: error.message,
+    });
+  }
+};
+
