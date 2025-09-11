@@ -238,7 +238,14 @@ exports.getInsertScoresByUnitAndCandidate = async (req, res) => {
 
 exports.getPpSummary = async (req, res) => {
   try {
-    const { unitId, candidate_id } = req.query; // optional filters
+    const { unitId, candidate_id } = req.query;
+
+    // Define competencies for each unit type
+    const competenciesMap = {
+      "Communicative I/O": ["Listening", "Reading", "Speaking", "Writing"],
+      "Theory & Practice": ["Theory", "Practice"],
+      "Third Parameter": ["Receptive", "Productive", "Acuity"],
+    };
 
     // Step 1: Aggregate ppId, duration sum, latest criticalRefDate
     const aggregates = await InsertScore.findAll({
@@ -255,14 +262,13 @@ exports.getPpSummary = async (req, res) => {
       raw: true,
     });
 
-    // Step 2: For each ppId, fetch shortDescription + missingCompetency
+    // Step 2: For each ppId, determine missing competencies
     const results = await Promise.all(
       aggregates.map(async (agg) => {
-        // Get the InsertScore row that has the latest criticalRefDate
-        const latestScore = await InsertScore.findOne({
+        // Fetch all InsertScores for this ppId
+        const scores = await InsertScore.findAll({
           where: {
             ppId: agg.ppId,
-            criticalRefDate: agg.latestCriticalRefDate,
             ...(unitId ? { unitId } : {}),
             ...(candidate_id ? { candidate_id } : {}),
           },
@@ -272,16 +278,37 @@ exports.getPpSummary = async (req, res) => {
               as: "assessmentBlock",
               attributes: ["shortDescription"],
             },
+            {
+              model: Unit,
+              as: "unit",
+              attributes: ["unitType"],
+            },
           ],
-          order: [["criticalRefDate", "DESC"]],
+          raw: true,
+          nest: true,
         });
+
+        const unitType = scores[0]?.unit?.unitType;
+        const allCompetencies = competenciesMap[unitType] || [];
+
+        // Get list of competencies that exist in InsertScore
+        const presentCompetencies = scores.map(s => s.competency).filter(Boolean);
+
+        // Determine missing ones
+        const missingCompetency = allCompetencies.filter(c => !presentCompetencies.includes(c));
+
+        // Get shortDescription from the latest criticalRefDate
+        const latestScore = scores.reduce((prev, curr) => {
+          return new Date(curr.criticalRefDate) > new Date(prev.criticalRefDate) ? curr : prev;
+        }, scores[0]);
 
         return {
           ppId: agg.ppId,
           shortDescription: latestScore?.assessmentBlock?.shortDescription || null,
           totalDuration: agg.totalDuration,
           latestCriticalRefDate: agg.latestCriticalRefDate,
-          missingCompetency: latestScore?.competency || null,
+          missingCompetency: missingCompetency.join(", ") || null,
+          error: missingCompetency.length > 0 ? "Yes" : "No",
         };
       })
     );
@@ -297,7 +324,7 @@ exports.getPpSummary = async (req, res) => {
 };
 
 
-// GET Insert Scores by Unit ID, grouped by competency and ppId, with unit details
+
 exports.getScoresByUnitGrouped = async (req, res) => {
   try {
     const { unitId } = req.params;
@@ -306,7 +333,27 @@ exports.getScoresByUnitGrouped = async (req, res) => {
       return res.status(400).json({ message: "unitId is required" });
     }
 
-    const grouped = await InsertScore.findAll({
+    // Define competency types mapping
+    const competencyTypes = {
+      "Communicative I/O": [
+        { attained: "Attained Listening Score", max: "Maximum Listening Score", dataKey: "Listening" },
+        { attained: "Attained Reading Score", max: "Maximum Reading Score", dataKey: "Reading" },
+        { attained: "Attained Speaking Score", max: "Maximum Speaking Score", dataKey: "Speaking" },
+        { attained: "Attained Writing Score", max: "Maximum Writing Score", dataKey: "Writing" }
+      ],
+      "Theory & Practice": [
+        { attained: "Attained Theory Score", max: "Maximum Theory Score", dataKey: "Theory" },
+        { attained: "Attained Practice Score", max: "Maximum Practice Score", dataKey: "Practice" }
+      ],
+      "Third Parameter": [
+        { attained: "Attained Receptive Variable Score", max: "Maximum Receptive Variable Score", dataKey: "Receptive" },
+        { attained: "Attained Productive Variable Score", max: "Maximum Productive Variable Score", dataKey: "Productive" },
+        { attained: "Attained Acuity Variable Score", max: "Maximum Acuity Variable Score", dataKey: "Acuity" }
+      ]
+    };
+
+    // Step 1: Fetch grouped raw data
+    const rows = await InsertScore.findAll({
       attributes: [
         "competency",
         "ppId",
@@ -315,9 +362,7 @@ exports.getScoresByUnitGrouped = async (req, res) => {
         [Sequelize.col("unit.unitType"), "unitType"],
         [Sequelize.fn("COUNT", Sequelize.col("InsertScore.id")), "count"],
         [Sequelize.fn("SUM", Sequelize.col("InsertScore.attainedScore")), "totalAttained"],
-        [Sequelize.fn("SUM", Sequelize.col("InsertScore.maxScore")), "totalMax"],
-        // [Sequelize.fn("AVG", Sequelize.col("InsertScore.attainedScore")), "avgAttained"],
-        // [Sequelize.fn("AVG", Sequelize.col("InsertScore.maxScore")), "avgMax"],
+        [Sequelize.fn("SUM", Sequelize.col("InsertScore.maxScore")), "totalMax"]
       ],
       where: { unitId },
       include: [
@@ -331,7 +376,29 @@ exports.getScoresByUnitGrouped = async (req, res) => {
       raw: true,
     });
 
-    res.status(200).json(grouped);
+    // Step 2: Pivot rows by ppId and competency
+    const pivoted = {};
+    rows.forEach(row => {
+      const { ppId, competency, totalAttained, totalMax, unitName, unitId, unitType } = row;
+      if (!pivoted[ppId]) {
+        pivoted[ppId] = { ppId, unitName, unitId, unitType };
+      }
+
+      // Find matching column mapping
+      Object.values(competencyTypes).forEach(typeArr => {
+        typeArr.forEach(type => {
+          if (type.dataKey === competency) {
+            pivoted[ppId][type.attained] = Number(totalAttained) || 0;
+            pivoted[ppId][type.max] = Number(totalMax) || 0;
+          }
+        });
+      });
+    });
+
+    // Step 3: Convert object to array and sort by ppId
+    const result = Object.values(pivoted).sort((a, b) => a.ppId - b.ppId);
+
+    res.status(200).json(result);
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -340,4 +407,5 @@ exports.getScoresByUnitGrouped = async (req, res) => {
     });
   }
 };
+
 
