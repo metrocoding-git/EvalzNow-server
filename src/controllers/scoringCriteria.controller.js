@@ -41,7 +41,7 @@ exports.getScoringCriteriaByUnit = async (req, res) => {
 };
 
 
-//  Create new scoring criteria with per-unit auto-increment
+//  Create new scoring criteria with per-unit auto-increment and filling gaps
 exports.createScoringCriteria = async (req, res) => {
   try {
     const { unitId, criteria } = req.body;
@@ -56,13 +56,23 @@ exports.createScoringCriteria = async (req, res) => {
       return res.status(400).json({ message: "Unit not found" });
     }
 
-    //  Get the last criteriaId for this unit
-    const lastCriteria = await ScoringCriteria.findOne({
+    // Get all existing criteriaIds for this unit
+    const existingCriteria = await ScoringCriteria.findAll({
       where: { unitId },
-      order: [["criteriaId", "DESC"]],
+      attributes: ['criteriaId'],
+      order: [['criteriaId', 'ASC']]
     });
 
-    const nextCriteriaId = lastCriteria ? lastCriteria.criteriaId + 1 : 1;
+    const existingIds = existingCriteria.map(c => c.criteriaId);
+
+    // Find the first missing criteriaId starting from 1
+    let nextCriteriaId = 1;
+    for (let i = 1; i <= (existingIds.length + 1); i++) {
+      if (!existingIds.includes(i)) {
+        nextCriteriaId = i;
+        break;
+      }
+    }
 
     // Create the new criteria
     const newCriteria = await ScoringCriteria.create({
@@ -85,6 +95,7 @@ exports.createScoringCriteria = async (req, res) => {
     });
   }
 };
+
 
 
 //  Update scoring criteria
