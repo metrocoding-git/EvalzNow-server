@@ -65,9 +65,10 @@ exports.getInsertScoresByUnitId = async (req, res) => {
 };
 
 // POST create a new Insert Score
+// POST create a new Insert Score
 exports.createInsertScore = async (req, res) => {
   try {
-    const {
+    let {
       unitId,
       assessmentBlockId,
       candidate_id,
@@ -85,49 +86,56 @@ exports.createInsertScore = async (req, res) => {
       ...rest
     } = req.body;
 
-    if (!assessmentBlockId) {
-      return res.status(400).json({ message: 'assessmentBlockId is required' });
-    }
-    if (!unitId) {
-      return res.status(400).json({ message: 'unitId is required' });
-    }
-    if (!candidate_id) {
-      return res.status(400).json({ message: 'candidateId is required' });
-    }
+    if (!assessmentBlockId) return res.status(400).json({ message: 'assessmentBlockId is required' });
+    if (!unitId) return res.status(400).json({ message: 'unitId is required' });
+    if (!candidate_id) return res.status(400).json({ message: 'candidateId is required' });
 
-    // Ensure related assessment block manager exists
     const blockExists = await AssessmentBlockManager.findByPk(assessmentBlockId);
-    if (!blockExists) {
-      return res.status(400).json({ message: 'AssessmentBlockManager not found' });
+    if (!blockExists) return res.status(400).json({ message: 'AssessmentBlockManager not found' });
+
+    // Fetch Unit to get environment and scoringSystem
+    const unit = await Unit.findByPk(unitId);
+    if (!unit) return res.status(400).json({ message: 'Unit not found' });
+
+    // Calculate attainedScore and maxScore if Workforce
+    if (unit.environment === "Workforce") {
+      let total = 0;
+      let filledCount = 0;
+      const maxAllowed = unit.scoringSystem === "3-Point" ? 3 : 5;
+
+      for (let i = 1; i <= 20; i++) {
+        const mcVal = rest[`mc${i}`];
+        if (mcVal !== null && mcVal !== undefined && mcVal !== "") {
+          total += parseFloat(mcVal);
+          filledCount++;
+        }
+        const ccVal = rest[`cc${i}`];
+        if (ccVal !== null && ccVal !== undefined && ccVal !== "") {
+          total += parseFloat(ccVal);
+          filledCount++;
+        }
+      }
+
+      attainedScore = total;
+      maxScore = filledCount * maxAllowed;
     }
 
-    // 🔑 Auto-generate subPpId (scoped by unitId, candidate_id, ppId)
+    // Auto-generate subPpId
     let subPpId;
     const existingScores = await InsertScore.findAll({
       where: { unitId, candidate_id, ppId },
       attributes: ['subPpId']
     });
 
-    if (existingScores.length === 0) {
-      // no subPpId exists yet → start new sequence
-      subPpId = ppId > 0 ? 1 : -1;
-    } else {
-      if (ppId > 0) {
-        const maxSub = Math.max(...existingScores.map(s => s.subPpId));
-        subPpId = maxSub + 1;
-      } else {
-        const minSub = Math.min(...existingScores.map(s => s.subPpId));
-        subPpId = minSub - 1;
-      }
-    }
+    if (existingScores.length === 0) subPpId = ppId > 0 ? 1 : -1;
+    else subPpId = ppId > 0 ? Math.max(...existingScores.map(s => s.subPpId)) + 1 : Math.min(...existingScores.map(s => s.subPpId)) - 1;
 
-    // Create the new score
     const newScore = await InsertScore.create({
       unitId,
       assessmentBlockId,
       candidate_id,
       ppId,
-      subPpId,   // ✅ auto-generated
+      subPpId,
       durationHrs,
       criticalRefDate,
       remarks,
@@ -151,6 +159,7 @@ exports.createInsertScore = async (req, res) => {
     });
 
     res.status(201).json(scoreWithRelations);
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error creating insert score', error: error.message });
