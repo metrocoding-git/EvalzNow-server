@@ -221,3 +221,85 @@ exports.getAssessmentBlockByCandidateAndUnit = async (req, res) => {
   }
 };
 
+
+// POST duplicate assessment blocks for a unit
+exports.duplicateAssessmentBlocks = async (req, res) => {
+  const transaction = await db.sequelize.transaction();
+  try {
+    const { originalUnitId, newUnitId } = req.body;
+
+    // Get all blocks from original unit
+    const originalBlocks = await AssessmentBlockManager.findAll({
+      where: { unitId: originalUnitId },
+      order: [
+        ['candidate_id', 'ASC'],
+        ['manageType', 'ASC'],
+        ['ppId', 'ASC']
+      ]
+    });
+
+    // Group by candidate and type
+    const blocksByCandidateAndType = {};
+    originalBlocks.forEach(block => {
+      const key = `${block.candidate_id}-${block.manageType}`;
+      if (!blocksByCandidateAndType[key]) {
+        blocksByCandidateAndType[key] = [];
+      }
+      blocksByCandidateAndType[key].push(block);
+    });
+
+    // Create new blocks with proper ppId sequencing
+    const newBlocks = [];
+    
+    for (const [key, blocks] of Object.entries(blocksByCandidateAndType)) {
+      const [candidate_id, manageType] = key.split('-');
+      
+      // Get the next available ppId for this candidate and type in the new unit
+      let nextPpId;
+      if (manageType === "Indirect") {
+        const lastIndirect = await AssessmentBlockManager.findOne({
+          where: { manageType: "Indirect", unitId: newUnitId, candidate_id },
+          order: [["ppId", "ASC"]],
+          transaction
+        });
+        nextPpId = lastIndirect ? lastIndirect.ppId - 1 : -1;
+      } else {
+        const lastDirect = await AssessmentBlockManager.findOne({
+          where: { manageType: "Direct", unitId: newUnitId, candidate_id },
+          order: [["ppId", "DESC"]],
+          transaction
+        });
+        nextPpId = lastDirect ? lastDirect.ppId + 1 : 1;
+      }
+
+      // Create blocks in order
+      for (const block of blocks) {
+        const newBlock = await AssessmentBlockManager.create({
+          unitId: newUnitId,
+          candidate_id: block.candidate_id,
+          manageType: block.manageType,
+          ppId: nextPpId,
+          periodType: block.periodType,
+          shortDescription: block.shortDescription,
+          delivery: block.delivery
+        }, { transaction });
+
+        newBlocks.push(newBlock);
+        
+        // Update nextPpId
+        if (manageType === "Indirect") {
+          nextPpId--;
+        } else {
+          nextPpId++;
+        }
+      }
+    }
+
+    await transaction.commit();
+    res.status(201).json(newBlocks);
+  } catch (error) {
+    await transaction.rollback();
+    console.error(error);
+    res.status(500).json({ message: 'Error duplicating assessment blocks', error: error.message });
+  }
+};
