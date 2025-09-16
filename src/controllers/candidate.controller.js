@@ -1,6 +1,7 @@
 const db = require("../models");
 const Candidate = db.Candidate;
 const Irregularity = db.Irregularity;
+const { Sequelize } = db;
 
 // GET all candidates with their irregularities
 exports.getCandidates = async (req, res) => {
@@ -183,5 +184,57 @@ exports.deleteCandidate = async (req, res) => {
     await transaction.rollback();
     console.error("Error deleting candidate:", error);
     res.status(500).json({ message: "Error deleting candidate", error: error.message });
+  }
+};
+
+
+// ✅ Get distinct ethnicities
+exports.getEthnicities = async (req, res) => {
+  try {
+    const ethnicities = await Candidate.findAll({
+      attributes: [
+        [Sequelize.fn("DISTINCT", Sequelize.col("ethnicity")), "name"]
+      ],
+      where: {
+        ethnicity: { [Sequelize.Op.ne]: null } // skip null values
+      },
+      order: [[Sequelize.col("ethnicity"), "ASC"]],
+      raw: true
+    });
+
+    // filter out empty strings just in case
+    const filtered = ethnicities
+      .map(e => e.name)
+      .filter(e => e && e.trim() !== "");
+
+    res.status(200).json(filtered);
+  } catch (error) {
+    console.error("Error fetching ethnicities:", error);
+    res.status(500).json({ message: "Error fetching ethnicities", error: error.message });
+  }
+};
+
+// ✅ Get distinct incomes
+exports.getIncomes = async (req, res) => {
+  try {
+    const incomes = await Candidate.findAll({
+      attributes: [
+        [Sequelize.fn("DISTINCT", Sequelize.col("income")), "name"]
+      ],
+      where: {
+        income: { [Sequelize.Op.ne]: null }
+      },
+      order: [[Sequelize.col("income"), "ASC"]],
+      raw: true
+    });
+
+    const filtered = incomes
+      .map(i => i.name)
+      .filter(i => i && i.trim() !== "");
+
+    res.status(200).json(filtered);
+  } catch (error) {
+    console.error("Error fetching incomes:", error);
+    res.status(500).json({ message: "Error fetching incomes", error: error.message });
   }
 };
