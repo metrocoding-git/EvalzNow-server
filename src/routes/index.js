@@ -16,5 +16,6 @@ router.use('/income', require('./income.routes'));
 router.use('/insert-score', require('./insertScore.routes'));
 router.use('/scoring-criteria', require('./scoringCriteria.routes'));
 router.use('/scoring-trends', require('./scoringTrends.routes'));
+router.use('/tabulation', require('./tabulationTable.routes'));
 
 module.exports = router;

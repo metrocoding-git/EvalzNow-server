@@ -46,6 +46,24 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true
       },
+      XEP: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XRR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XLR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XSR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XWR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XCP: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XBP: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      MSIP: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      ΔRRN: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      ΔPRN: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      ΔARN: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      ΔGEQ: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      IC: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XTR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XPR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XRVSR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XPVSR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
+      XAVSR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
       scoringSystem: {
         type: DataTypes.ENUM("3-Point", "5-Point"),
         allowNull: false,
@@ -95,6 +113,5 @@ module.exports = (sequelize, DataTypes) => {
   };
 
   
-
   return Unit;
 };
