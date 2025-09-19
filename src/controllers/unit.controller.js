@@ -18,8 +18,7 @@ exports.getUnits = async (req, res) => {
         required: false // Use left join instead of inner join
       }],
       order: [
-        ['unitName', 'ASC'],
-        ['unitStartDate', 'ASC'],
+        ['id', 'ASC'],
         [{ model: db.Benchmark, as: 'benchmarks' }, 'benchmarkRef', 'ASC']
       ]
     });
