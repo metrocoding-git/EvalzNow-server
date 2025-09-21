@@ -21,7 +21,8 @@ exports.getUnitAndCandidateSummary = async (req, res) => {
     // Fetch all InsertScores with Unit included
     const scores = await InsertScore.findAll({
       where: { unitId, candidate_id: candidateId },
-      include: [{ model: Unit, as: 'unit' }]
+      include: [{ model: Unit, as: 'unit' }],
+      order: [['subPpId', 'ASC']],
     });
 
     if (!scores.length) {
