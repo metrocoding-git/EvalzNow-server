@@ -28,8 +28,16 @@ exports.getStaffById = async (req, res) => {
   // CREATE new staff
   exports.createStaff = async (req, res) => {
     try {
-      const newStaff = await Staff.create(req.body);
-      res.status(201).json(newStaff);
+      const { emailAddress } = req.body;
+
+    // ✅ Check if email already exists
+    const existingStaff = await Staff.findOne({ where: { emailAddress } });
+    if (existingStaff) {
+      return res.status(400).json({ message: 'Email address already exists' });
+    }
+
+    const newStaff = await Staff.create(req.body);
+    res.status(201).json(newStaff);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Error creating staff', error: error.message });
