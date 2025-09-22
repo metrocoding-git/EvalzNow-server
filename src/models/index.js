@@ -21,6 +21,7 @@ db.Ethinicity = require("./ethinicity.model")(sequelize, Sequelize);
 db.Income = require("./income.model")(sequelize, Sequelize);
 db.InsertScore = require("./insertScore.model")(sequelize, Sequelize);
 db.ScoringCriteria = require("./scoringCriteria.model")(sequelize, Sequelize);
+db.Account = require("./account.model")(sequelize, Sequelize);
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -175,6 +176,24 @@ db.ScoringCriteria.belongsTo(db.Unit, {
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
 });
+
+
+
+// Account ↔ Client
+db.Account.hasMany(db.Client, {
+  foreignKey: "accountId",
+  as: "clients",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+db.Client.belongsTo(db.Account, {
+  foreignKey: "accountId",
+  as: "account",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
 
 
 // Export the db object
