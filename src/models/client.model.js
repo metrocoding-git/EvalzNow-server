@@ -43,6 +43,16 @@ module.exports = (sequelize, DataTypes) => {
     status: {
       type: DataTypes.ENUM("Activate", "Deactivate"),
       defaultValue: "Activate"
+    },
+    accountId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'accounts',
+        key: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE'
     }
   }, {
     tableName: 'clients',
@@ -59,6 +69,18 @@ module.exports = (sequelize, DataTypes) => {
   Client.associate = (models) => {
     Client.belongsTo(models.CompanySize, { foreignKey: 'companySizeId', as: 'companySize' });
   };
+
+  Client.associate = (models) => {
+    Client.belongsTo(models.Account, {
+      foreignKey: "accountId",
+      as: "account",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+  };
+  
+  
+
 
   return Client;
 };

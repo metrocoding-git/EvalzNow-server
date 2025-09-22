@@ -32,6 +32,12 @@ exports.createClient = async (req, res) => {
       status
     } = req.body;
 
+    // ✅ Check if email already exists
+    const existingClient = await Client.findOne({ where: { emailAddress } });
+    if (existingClient) {
+      return res.status(400).json({ message: 'Email address already exists' });
+    }
+
     const newClient = await Client.create({
       lastName,
       firstName,
