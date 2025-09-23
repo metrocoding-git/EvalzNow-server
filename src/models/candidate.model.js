@@ -28,6 +28,16 @@ module.exports = (sequelize, DataTypes) => {
       religion: { type: DataTypes.STRING, allowNull: true },
       maritalStatus: { type: DataTypes.STRING, allowNull: false },
       jobType: { type: DataTypes.STRING, allowNull: true },
+      accountId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'accounts',
+          key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE'
+      }
     },
     {
       tableName: "candidates",
@@ -67,6 +77,15 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
+
+    
+    Candidate.belongsTo(models.Account, {
+      foreignKey: "accountId",
+      as: "account",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+   
   };
 
   return Candidate;

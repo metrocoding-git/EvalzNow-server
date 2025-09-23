@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const CandidateController = require('../controllers/candidate.controller');
+const auth = require('../middlewares/authentication.middleware');
 
-router.get('/', CandidateController.getCandidates);
+router.get('/', auth.authenticateToken,  CandidateController.getCandidates);
 router.get('/ethnicities', CandidateController.getEthnicities);
 router.get('/incomes', CandidateController.getIncomes);
 router.post('/', CandidateController.createCandidate);

@@ -2,6 +2,7 @@ const db = require("../models");
 const Candidate = db.Candidate;
 const Irregularity = db.Irregularity;
 const { Sequelize } = db;
+const Account = db.Account;
 
 // GET all candidates with their irregularities
 exports.getCandidates = async (req, res) => {
@@ -11,8 +12,17 @@ exports.getCandidates = async (req, res) => {
       throw new Error('Candidate-Irregularity association not found');
     }
 
+    const userAccId = req.user?.acc_id; // get accountId from logged-in user
+    if (!userAccId) {
+      return res.status(401).json({ message: 'Unauthorized: accountId missing' });
+    }
+
     const candidates = await Candidate.findAll({
-      include: [{
+      include: [
+        {
+          model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
+        },
+        {
         model: db.Irregularity, // Use db.Irregularity directly
         as: "irregularities",
         attributes: ['id', 'type', 'sequenceNumber', 'comments'],

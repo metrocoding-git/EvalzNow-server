@@ -1,17 +1,28 @@
 const db = require("../models");
 const Unit = db.Unit;
 const Benchmark = db.Benchmark;
+const Account = db.Account;
 
 // GET all units with their benchmarks
 exports.getUnits = async (req, res) => {
   try {
+
+    const userAccId = req.user?.acc_id; // get accountId from logged-in user
+    if (!userAccId) {
+      return res.status(401).json({ message: 'Unauthorized: accountId missing' });
+    }
+
     // Verify association exists
     if (!Unit.associations.benchmarks) {
       throw new Error('Unit-Benchmark association not found');
     }
 
     const units = await Unit.findAll({
-      include: [{
+      include: [
+        {
+          model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
+        },
+        {
         model: db.Benchmark,
         as: "benchmarks",
         attributes: ['id', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription'],
