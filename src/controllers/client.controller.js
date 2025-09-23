@@ -1,19 +1,33 @@
 const db = require('../models');
 const Client = db.Client;
+const Account = db.Account;
 const CompanySize = db.CompanySize;
 
-// GET all clients
+
+// GET clients for the logged-in user's account
 exports.getClients = async (req, res) => {
   try {
+    const userAccId = req.user?.acc_id; // get accountId from logged-in user
+    if (!userAccId) {
+      return res.status(401).json({ message: 'Unauthorized: accountId missing' });
+    }
+
     const clients = await Client.findAll({
-      include: [{ model: CompanySize, as: 'companySize' }] // include company size
+      
+      include: [
+        {
+          model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
+        },
+        { model: CompanySize, as: 'companySize' }] // include company size
     });
+
     res.status(200).json(clients);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error fetching clients', error: error.message });
   }
 };
+
 
 // POST create a new client
 exports.createClient = async (req, res) => {
@@ -29,7 +43,8 @@ exports.createClient = async (req, res) => {
       businessRegistrationNo,
       country,
       companySizeId,
-      status
+      status,
+      accountId 
     } = req.body;
 
     // ✅ Check if email already exists
@@ -49,7 +64,8 @@ exports.createClient = async (req, res) => {
       businessRegistrationNo,
       country,
       companySizeId,
-      status
+      status, 
+      accountId
     });
 
     // Fetch created client including company size
