@@ -1,10 +1,21 @@
 const db = require('../models');
 const Staff = db.Staff;
+const Account = db.Account;
 
 // GET all Staff
 exports.getStaff = async (req, res) => {
     try {
-      const staffs = await Staff.findAll();
+      const userAccId = req.user?.acc_id; // get accountId from logged-in user
+    if (!userAccId) {
+      return res.status(401).json({ message: 'Unauthorized: accountId missing' });
+    }
+      const staffs = await Staff.findAll({
+        include: [
+          {
+            model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
+          }
+        ]
+      });
       res.status(200).json(staffs);
     } catch (error) {
       console.error(error);

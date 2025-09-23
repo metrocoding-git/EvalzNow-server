@@ -69,6 +69,16 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: "3-Point",
       },
+      accountId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'accounts',
+          key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE'
+      }
     },
     {
       tableName: "units",
@@ -107,6 +117,13 @@ module.exports = (sequelize, DataTypes) => {
     Unit.hasMany(models.ScoringCriteria, {
       foreignKey: "unitId",
       as: "scoringCriteria",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Unit.belongsTo(models.Account, {
+      foreignKey: "accountId",
+      as: "account",
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });

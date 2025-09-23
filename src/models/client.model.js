@@ -81,6 +81,5 @@ module.exports = (sequelize, DataTypes) => {
   
   
 
-
   return Client;
 };

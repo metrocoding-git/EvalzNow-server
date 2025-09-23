@@ -195,6 +195,51 @@ db.Client.belongsTo(db.Account, {
 });
 
 
+db.Account.hasMany(db.Staff, {
+  foreignKey: "accountId",
+  as: "staffs",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+db.Staff.belongsTo(db.Account, {
+  foreignKey: "accountId",
+  as: "account",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+
+db.Account.hasMany(db.Candidate, {
+  foreignKey: "accountId",
+  as: "candidates",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+db.Candidate.belongsTo(db.Account, {
+  foreignKey: "accountId",
+  as: "account",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+
+db.Account.hasMany(db.Unit, {
+  foreignKey: "accountId",
+  as: "units",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+db.Unit.belongsTo(db.Account, {
+  foreignKey: "accountId",
+  as: "account",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+
 
 // Export the db object
 module.exports = db;
