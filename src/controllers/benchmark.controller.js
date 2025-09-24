@@ -54,69 +54,74 @@ exports.getBenchmarkById = async (req, res) => {
 };
 
 // CREATE a new benchmark for a unit
+// CREATE new benchmark(s) for a unit
 exports.createBenchmark = async (req, res) => {
   const transaction = await db.sequelize.transaction();
   try {
-    const { unitId, ...benchmarkData } = req.body;
+    const benchmarksData = Array.isArray(req.body) ? req.body : [req.body];
+    const createdBenchmarks = [];
 
-    // Validate unit exists
-    const unit = await Unit.findByPk(unitId, { transaction });
-    if (!unit) {
-      await transaction.rollback();
-      return res.status(404).json({ message: "Unit not found" });
-    }
+    for (const data of benchmarksData) {
+      const { unitId, ...benchmarkData } = data;
 
-    // Validate benchmarkRef is unique for this unit
-    const existingWithSameRef = await Benchmark.findOne({
-      where: {
-        unitId,
-        benchmarkRef: benchmarkData.benchmarkRef
-      },
-      transaction
-    });
+      // Validate unit exists
+      const unit = await Unit.findByPk(unitId, { transaction });
+      if (!unit) {
+        await transaction.rollback();
+        return res.status(404).json({ message: `Unit not found for unitId: ${unitId}` });
+      }
 
-    if (existingWithSameRef) {
-      await transaction.rollback();
-      return res.status(400).json({ 
-        message: "Benchmark reference already exists for this unit",
-        suggestion: "Use a unique benchmarkRef for each unit"
+      // Get max benchmarkId for this unit
+      const result = await Benchmark.findOne({
+        where: { unitId },
+        attributes: [
+          [db.sequelize.fn('MAX', db.sequelize.col('benchmarkId')), 'maxBenchmarkId']
+        ],
+        transaction,
+        raw: true
       });
-    }
 
-    const newBenchmark = await Benchmark.create({
-      unitId,
-      ...benchmarkData
-    }, { transaction });
+      const maxBenchmarkId = result?.maxBenchmarkId || 0;
+      const nextBenchmarkId = maxBenchmarkId + 1;
+
+      // Create benchmark
+      const newBenchmark = await Benchmark.create({
+        unitId,
+        benchmarkId: nextBenchmarkId,
+        ...benchmarkData
+      }, { transaction });
+
+      // Fetch with unit info
+      const created = await Benchmark.findByPk(newBenchmark.id, {
+        include: [{ model: Unit, as: "unit", attributes: ['id', 'unitId', 'unitName'] }]
+      });
+
+      createdBenchmarks.push(created);
+    }
 
     await transaction.commit();
-    
-    // Fetch the newly created benchmark with unit info
-    const createdBenchmark = await Benchmark.findByPk(newBenchmark.id, {
-      include: [{
-        model: Unit,
-        as: "unit",
-        attributes: ['id', 'unitId', 'unitName']
-      }]
-    });
+    res.status(201).json(createdBenchmarks);
 
-    res.status(201).json(createdBenchmark);
   } catch (error) {
     await transaction.rollback();
-    console.error("Error creating benchmark:", error);
-    res.status(500).json({ 
-      message: "Error creating benchmark", 
+    console.error("Error creating benchmark(s):", error);
+    res.status(500).json({
+      message: "Error creating benchmark(s)",
       error: error.message,
-      details: error.errors?.map(err => err.message) // Include validation errors if any
+      details: error.errors?.map(err => err.message)
     });
   }
 };
+
+
+
 
 // UPDATE a benchmark
 exports.updateBenchmark = async (req, res) => {
   const transaction = await db.sequelize.transaction();
   try {
     const { id } = req.params;
-    const { unitId, benchmarkRef, ...updateData } = req.body;
+    const { benchmarkRef, ...updateData } = req.body;
 
     const benchmark = await Benchmark.findByPk(id, { transaction });
     if (!benchmark) {
@@ -124,32 +129,14 @@ exports.updateBenchmark = async (req, res) => {
       return res.status(404).json({ message: "Benchmark not found" });
     }
 
-    // If changing benchmarkRef, validate it's unique for the unit
-    if (benchmarkRef && benchmarkRef !== benchmark.benchmarkRef) {
-      const existingWithSameRef = await Benchmark.findOne({
-        where: {
-          unitId: benchmark.unitId,
-          benchmarkRef
-        },
-        transaction
-      });
-
-      if (existingWithSameRef) {
-        await transaction.rollback();
-        return res.status(400).json({ 
-          message: "Benchmark reference already exists for this unit",
-          suggestion: "Use a unique benchmarkRef for each unit"
-        });
-      }
-    }
-
+    // Update benchmark data (benchmarkRef can now be duplicated)
     await benchmark.update({
       benchmarkRef: benchmarkRef || benchmark.benchmarkRef,
       ...updateData
     }, { transaction });
 
     await transaction.commit();
-    
+
     // Fetch updated benchmark with unit info
     const updatedBenchmark = await Benchmark.findByPk(id, {
       include: [{
@@ -163,13 +150,14 @@ exports.updateBenchmark = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error("Error updating benchmark:", error);
-    res.status(500).json({ 
-      message: "Error updating benchmark", 
+    res.status(500).json({
+      message: "Error updating benchmark",
       error: error.message,
       details: error.errors?.map(err => err.message)
     });
   }
 };
+
 
 // DELETE a benchmark
 exports.deleteBenchmark = async (req, res) => {
@@ -184,6 +172,16 @@ exports.deleteBenchmark = async (req, res) => {
     }
 
     await benchmark.destroy({ transaction });
+    await Benchmark.update(
+      { benchmarkId: db.sequelize.literal('"benchmarkId" - 1') },
+      {
+        where: {
+          unitId: benchmark.unitId,
+          benchmarkId: { [db.Sequelize.Op.gt]: benchmark.benchmarkId }
+        },
+        transaction
+      }
+    );
     await transaction.commit();
 
     res.status(200).json({ 
