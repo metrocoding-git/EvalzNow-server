@@ -70,49 +70,93 @@ exports.getCandidateById = async (req, res) => {
 };
 
 // CREATE a new candidate with optional irregularities
+// CREATE a new candidate with optional irregularities
 exports.createCandidate = async (req, res) => {
-  const transaction = await db.sequelize.transaction();
   try {
     const { irregularities, ...candidateData } = req.body;
 
-    const newCandidate = await Candidate.create(candidateData, { transaction });
-
-    if (irregularities && irregularities.length > 0) {
-      const irregularitiesWithCandidateId = irregularities.map(irregularity => ({
-        ...irregularity,
-        candidateId: newCandidate.id
-      }));
-      
-      await Irregularity.bulkCreate(irregularitiesWithCandidateId, { transaction });
-    }
-
-    await transaction.commit();
-    
-    try {
-      // Fetch the newly created candidate with irregularities in a separate try-catch
-      const createdCandidate = await Candidate.findByPk(newCandidate.id, {
-        include: [{
-          model: Irregularity,
-          as: "irregularities",
-          attributes: ['id', 'type', 'sequenceNumber', 'comments']
-        }]
+    // ✅ Check for duplicate candidateId OUTSIDE of transaction first
+    if (candidateData.candidateId) {
+      const existing = await Candidate.findOne({
+        where: { candidateId: candidateData.candidateId }
       });
 
-      return res.status(201).json(createdCandidate);
-    } catch (fetchError) {
-      console.error("Error fetching created candidate:", fetchError);
-      // Don't try to rollback here - just return the success with basic info
-      return res.status(201).json({
-        ...newCandidate.toJSON(),
-        message: "Candidate created but could not fetch full details"
+      if (existing) {
+        return res.status(400).json({
+          message: `Candidate ID "${candidateData.candidateId}" already exists`
+        });
+      }
+    }
+
+    // ✅ Only start transaction AFTER duplicate check passes
+    const transaction = await db.sequelize.transaction();
+    
+    try {
+      const newCandidate = await Candidate.create(candidateData, { transaction });
+
+      if (irregularities && irregularities.length > 0) {
+        const irregularitiesWithCandidateId = irregularities.map(irregularity => ({
+          ...irregularity,
+          candidateId: newCandidate.id
+        }));
+        
+        await Irregularity.bulkCreate(irregularitiesWithCandidateId, { transaction });
+      }
+
+      await transaction.commit();
+      
+      try {
+        // Fetch the newly created candidate with irregularities
+        const createdCandidate = await Candidate.findByPk(newCandidate.id, {
+          include: [{
+            model: Irregularity,
+            as: "irregularities",
+            attributes: ['id', 'type', 'sequenceNumber', 'comments']
+          }]
+        });
+
+        return res.status(201).json(createdCandidate);
+      } catch (fetchError) {
+        console.error("Error fetching created candidate:", fetchError);
+        return res.status(201).json({
+          ...newCandidate.toJSON(),
+          message: "Candidate created but could not fetch full details"
+        });
+      }
+      
+    } catch (error) {
+      // ✅ Transaction-specific error handling
+      if (transaction && !transaction.finished) {
+        await transaction.rollback();
+      }
+      
+      console.error("Error creating candidate within transaction:", error);
+      
+      // Handle database-level unique constraint errors
+      if (error.name === 'SequelizeUniqueConstraintError') {
+        return res.status(400).json({ 
+          message: `Candidate ID "${candidateData.candidateId}" already exists in the database`,
+          error: "Duplicate entry detected at database level"
+        });
+      }
+      
+      return res.status(500).json({ 
+        message: "Error creating candidate", 
+        error: error.message 
       });
     }
     
   } catch (error) {
-    if (!transaction.finished) {
-      await transaction.rollback();
+    // ✅ Outer catch for the initial duplicate check or other errors
+    console.error("Error in createCandidate:", error);
+    
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({ 
+        message: `Candidate ID already exists`,
+        error: error.message 
+      });
     }
-    console.error("Error creating candidate:", error);
+    
     res.status(500).json({ 
       message: "Error creating candidate", 
       error: error.message 
