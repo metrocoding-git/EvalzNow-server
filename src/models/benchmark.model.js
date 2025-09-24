@@ -7,6 +7,10 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         autoIncrement: true,
       },
+      benchmarkId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
       unitId: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -18,16 +22,12 @@ module.exports = (sequelize, DataTypes) => {
       benchmarkType: {
         type: DataTypes.STRING,
         allowNull: false,
-        validate: {
-          notEmpty: true
-        }
+        validate: { notEmpty: true }
       },
       benchmarkRef: {
         type: DataTypes.STRING,
         allowNull: false,
-        validate: {
-          notEmpty: true
-        }
+        validate: { notEmpty: true }
       },
       benchmarkDescription: {
         type: DataTypes.TEXT,
@@ -39,13 +39,13 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: true,
       indexes: [
         {
-          unique: false,
+          unique: false, // multiple benchmarks can share the same ref
           fields: ['unitId']
         },
         {
-          unique: true,
-          fields: ['unitId', 'benchmarkRef'],
-          name: 'unique_benchmark_per_unit'
+          unique: true, // only benchmarkId per unit must be unique
+          fields: ['unitId', 'benchmarkId'],
+          name: 'unique_benchmarkId_per_unit'
         }
       ]
     }
