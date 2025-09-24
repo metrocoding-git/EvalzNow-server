@@ -1,20 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const benchmarkController = require('../controllers/irregularity.controller');
+const benchmarkController = require('../controllers/benchmark.controller');
 
 // Get all irregularities
-router.get('/', benchmarkController.getIrregularities);
+router.get('/', benchmarkController.getBenchmarks);
 
 // Get a single irregularity by ID
-router.get('/:id', benchmarkController.getIrregularityById);
+router.get('/:id', benchmarkController.getBenchmarkById);
 
 // Create a new irregularity
-router.post('/', benchmarkController.createIrregularity);
+router.post('/', benchmarkController.createBenchmark);
 
 // Update an existing irregularity
-router.put('/:id', benchmarkController.updateIrregularity);
+router.put('/:id', benchmarkController.updateBenchmark);
 
 // Delete an irregularity
-router.delete('/:id', benchmarkController.deleteIrregularity);
+router.delete('/:id', benchmarkController.deleteBenchmark);
 
 module.exports = router;
