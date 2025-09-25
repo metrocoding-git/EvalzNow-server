@@ -25,7 +25,7 @@ exports.getUnits = async (req, res) => {
         {
         model: db.Benchmark,
         as: "benchmarks",
-        attributes: ['id', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription'],
+        attributes: ['id', 'benchmarkId', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription'],
         required: false // Use left join instead of inner join
       }],
       order: [
@@ -53,7 +53,7 @@ exports.getUnitById = async (req, res) => {
       include: [{
         model: Benchmark,
         as: "benchmarks",
-        attributes: ['id', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
+        attributes: ['id', 'benchmarkId', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
       }]
     });
 
@@ -74,52 +74,56 @@ exports.createUnit = async (req, res) => {
   try {
     const { benchmarks, ...unitData } = req.body;
 
+    // Step 1: Create the unit
     const newUnit = await Unit.create(unitData, { transaction });
 
+    // Step 2: Handle benchmarks if provided
     if (benchmarks && benchmarks.length > 0) {
-      const benchmarksWithUnitId = benchmarks.map(benchmark => ({
-        ...benchmark,
-        unitId: newUnit.id
+      // Get max benchmarkId for this unit
+      const result = await Benchmark.findOne({
+        where: { unitId: newUnit.id },
+        attributes: [[db.sequelize.fn('MAX', db.sequelize.col('benchmarkId')), 'maxBenchmarkId']],
+        raw: true,
+        transaction
+      });
+
+      let nextBenchmarkId = (result?.maxBenchmarkId || 0) + 1;
+
+      const benchmarksWithIds = benchmarks.map(b => ({
+        ...b,
+        unitId: newUnit.id,
+        benchmarkId: nextBenchmarkId++  // auto-increment per benchmark
       }));
-      
-      await Benchmark.bulkCreate(benchmarksWithUnitId, { transaction });
+
+      await Benchmark.bulkCreate(benchmarksWithIds, { transaction });
     }
 
     await transaction.commit();
-    
-    try {
-      // Fetch the newly created unit with benchmarks
-      const createdUnit = await Unit.findByPk(newUnit.id, {
-        include: [{
-          model: Benchmark,
-          as: "benchmarks",
-          attributes: ['id', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
-        }]
-      });
 
-      return res.status(201).json(createdUnit);
-    } catch (fetchError) {
-      console.error("Error fetching created unit:", fetchError);
-      return res.status(201).json({
-        ...newUnit.toJSON(),
-        message: "Unit created but could not fetch full details"
-      });
-    }
-    
+    // Fetch unit with benchmarks
+    const createdUnit = await Unit.findByPk(newUnit.id, {
+      include: [{
+        model: Benchmark,
+        as: "benchmarks",
+        attributes: ['id', 'benchmarkId', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
+      }]
+    });
+
+    res.status(201).json(createdUnit);
+
   } catch (error) {
-    if (!transaction.finished) {
-      await transaction.rollback();
-    }
+    if (!transaction.finished) await transaction.rollback();
     console.error("Error creating unit:", error);
     res.status(500).json({ 
       message: "Error creating unit", 
       error: error.message,
-      details: error.errors?.map(err => err.message) // Include validation errors if any
+      details: error.errors?.map(err => err.message)
     });
   }
 };
 
 // UPDATE a unit and its benchmarks
+// UPDATE a unit and its benchmarks (bulk)
 exports.updateUnit = async (req, res) => {
   const transaction = await db.sequelize.transaction();
   try {
@@ -135,22 +139,28 @@ exports.updateUnit = async (req, res) => {
     // Update unit
     await unit.update(unitData, { transaction });
 
-    // Handle benchmarks updates
     if (benchmarks) {
-      // First delete existing benchmarks
-      await Benchmark.destroy({ 
-        where: { unitId: unit.id },
-        transaction
-      });
+      // Delete existing benchmarks
+      await Benchmark.destroy({ where: { unitId: unit.id }, transaction });
 
-      // Then create new ones if provided
       if (benchmarks.length > 0) {
-        const benchmarksWithUnitId = benchmarks.map(benchmark => ({
-          ...benchmark,
-          unitId: unit.id
+        // Get max benchmarkId for this unit
+        const result = await Benchmark.findOne({
+          where: { unitId: unit.id },
+          attributes: [[db.sequelize.fn('MAX', db.sequelize.col('benchmarkId')), 'maxBenchmarkId']],
+          raw: true,
+          transaction
+        });
+
+        let nextBenchmarkId = (result?.maxBenchmarkId || 0) + 1;
+
+        const benchmarksWithIds = benchmarks.map(b => ({
+          ...b,
+          unitId: unit.id,
+          benchmarkId: nextBenchmarkId++
         }));
-        
-        await Benchmark.bulkCreate(benchmarksWithUnitId, { transaction });
+
+        await Benchmark.bulkCreate(benchmarksWithIds, { transaction });
       }
     }
 
@@ -161,11 +171,12 @@ exports.updateUnit = async (req, res) => {
       include: [{
         model: Benchmark,
         as: "benchmarks",
-        attributes: ['id', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
+        attributes: ['id', 'benchmarkId', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
       }]
     });
 
     res.status(200).json(updatedUnit);
+
   } catch (error) {
     await transaction.rollback();
     console.error("Error updating unit:", error);
