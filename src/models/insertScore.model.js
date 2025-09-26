@@ -42,7 +42,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       durationHrs: {
-        type: DataTypes.INTEGER, // storing hours as integer
+        type: DataTypes.DECIMAL(10, 2), // storing hours as integer
         allowNull: true,
       },
       criticalRefDate: {
