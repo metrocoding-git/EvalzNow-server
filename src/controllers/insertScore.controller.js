@@ -169,54 +169,164 @@ exports.createInsertScore = async (req, res) => {
 
 
 // PUT update an Insert Score
+// PUT update an Insert Score
 exports.updateInsertScore = async (req, res) => {
+  const t = await db.sequelize.transaction();
   try {
     const { id } = req.params;
 
+    const existingScore = await InsertScore.findByPk(id, { transaction: t });
+    if (!existingScore) {
+      await t.rollback();
+      return res.status(404).json({ message: "Insert score not found" });
+    }
+
+    // If assessmentBlockId is updated, check existence
     if (req.body.assessmentBlockId) {
       const blockExists = await AssessmentBlockManager.findByPk(req.body.assessmentBlockId);
       if (!blockExists) {
-        return res.status(400).json({ message: 'AssessmentBlockManager not found' });
+        await t.rollback();
+        return res.status(400).json({ message: "AssessmentBlockManager not found" });
       }
     }
 
-    const updated = await InsertScore.update(req.body, { where: { id } });
+    let newPpId = req.body.ppId ?? existingScore.ppId;
 
-    if (updated[0] === 0) {
-      return res.status(404).json({ message: 'Insert score not found or no changes made' });
+    // If ppId is changed, need to update subPpId
+    if (newPpId !== existingScore.ppId) {
+      const { unitId, candidate_id } = existingScore;
+
+      // Step 1: reorder the old ppId to remove gap
+      if (existingScore.ppId > 0) {
+        await InsertScore.increment(
+          { subPpId: -1 },
+          {
+            where: {
+              unitId,
+              candidate_id,
+              ppId: existingScore.ppId,
+              subPpId: { [Op.gt]: existingScore.subPpId },
+            },
+            transaction: t,
+          }
+        );
+      } else {
+        await InsertScore.increment(
+          { subPpId: 1 },
+          {
+            where: {
+              unitId,
+              candidate_id,
+              ppId: existingScore.ppId,
+              subPpId: { [Op.lt]: existingScore.subPpId },
+            },
+            transaction: t,
+          }
+        );
+      }
+
+      // Step 2: calculate new subPpId for the new ppId
+      const existingScores = await InsertScore.findAll({
+        where: { unitId: existingScore.unitId, candidate_id: existingScore.candidate_id, ppId: newPpId },
+        attributes: ["subPpId"],
+        transaction: t,
+      });
+
+      let newSubPpId;
+      if (existingScores.length === 0) newSubPpId = newPpId > 0 ? 1 : -1;
+      else newSubPpId = newPpId > 0
+        ? Math.max(...existingScores.map(s => s.subPpId)) + 1
+        : Math.min(...existingScores.map(s => s.subPpId)) - 1;
+
+      req.body.subPpId = newSubPpId;
     }
+
+    // Step 3: update the record
+    await InsertScore.update(req.body, { where: { id }, transaction: t });
 
     const updatedScore = await InsertScore.findOne({
       where: { id },
-      include: [{ model: AssessmentBlockManager, as: 'assessmentBlock'}, 
+      include: [
+        { model: AssessmentBlockManager, as: 'assessmentBlock' },
         { model: Unit, as: 'unit' },
         { model: Candidate, as: 'candidate' }
-       ]
+      ],
+      transaction: t,
     });
 
+    await t.commit();
     res.status(200).json(updatedScore);
+
   } catch (error) {
+    await t.rollback();
     console.error(error);
-    res.status(500).json({ message: 'Error updating insert score', error: error.message });
+    res.status(500).json({ message: "Error updating insert score", error: error.message });
   }
 };
+
 
 // DELETE an Insert Score
+
 exports.deleteInsertScore = async (req, res) => {
+  const t = await db.sequelize.transaction();
   try {
     const { id } = req.params;
-    const deleted = await InsertScore.destroy({ where: { id } });
 
-    if (deleted === 0) {
-      return res.status(404).json({ message: 'Insert score not found' });
+    // Find the score to delete
+    const score = await InsertScore.findByPk(id, { transaction: t });
+    if (!score) {
+      await t.rollback();
+      return res.status(404).json({ message: "Insert score not found" });
     }
 
-    res.status(200).json({ message: 'Insert score deleted successfully' });
+    const { unitId, candidate_id, ppId, subPpId } = score;
+
+    // Delete the record
+    await InsertScore.destroy({ where: { id }, transaction: t });
+
+    // Reorder subPpIds after the deleted one
+    if (ppId > 0) {
+      // Positive ppId → incrementing subPpIds
+      await InsertScore.increment(
+        { subPpId: -1 }, // decrement by 1
+        {
+          where: {
+            unitId,
+            candidate_id,
+            ppId,
+            subPpId: { [Op.gt]: subPpId }, // shift only bigger ones down
+          },
+          transaction: t,
+        }
+      );
+    } else {
+      // Negative ppId → decrementing subPpIds
+      await InsertScore.increment(
+        { subPpId: 1 }, // increment by 1
+        {
+          where: {
+            unitId,
+            candidate_id,
+            ppId,
+            subPpId: { [Op.lt]: subPpId }, // shift only smaller ones up
+          },
+          transaction: t,
+        }
+      );
+    }
+
+    await t.commit();
+    res.status(200).json({ message: "Insert score deleted and subPpIds reordered" });
   } catch (error) {
+    await t.rollback();
     console.error(error);
-    res.status(500).json({ message: 'Error deleting insert score', error: error.message });
+    res.status(500).json({
+      message: "Error deleting insert score",
+      error: error.message,
+    });
   }
 };
+
 
 
 exports.getInsertScoresByUnitAndCandidate = async (req, res) => {
@@ -416,5 +526,84 @@ exports.getScoresByUnitGrouped = async (req, res) => {
     });
   }
 };
+
+// GET Insert Scores grouped by ppId with criticalRefDate range
+// GET Insert Scores grouped by ppId with startDate from previous ppId's max
+exports.getCriticalDateRangeByPpId = async (req, res) => {
+  try {
+    const { unitId, candidate_id, ppId } = req.query;
+
+    // Step 1: fetch all ppIds and their MAX criticalRefDate
+    const ppDates = await InsertScore.findAll({
+      attributes: [
+        "ppId",
+        [Sequelize.fn("MAX", Sequelize.col("criticalRefDate")), "maxDate"],
+      ],
+      where: {
+        ...(unitId ? { unitId } : {}),
+        ...(candidate_id ? { candidate_id } : {}),
+      },
+      group: ["ppId"],
+      order: [["ppId", "ASC"]],
+      raw: true,
+    });
+
+    // Step 2: separate positive and negative ppIds
+    const positivePpIds = ppDates.filter(p => p.ppId > 0);
+    const negativePpIds = ppDates.filter(p => p.ppId < 0).sort((a, b) => a.ppId - b.ppId); // -1, -2, -3
+
+    const calculateRange = arr => {
+      return arr.map((current, index, arr) => {
+        let startDate;
+        // For first in array or maxDate null => current date
+        if (index === 0 || !current.maxDate) {
+          startDate = new Date().toISOString().split("T")[0];
+        } else {
+          const prevMaxDate = new Date(arr[index - 1].maxDate);
+          prevMaxDate.setDate(prevMaxDate.getDate() + 1);
+          startDate = prevMaxDate.toISOString().split("T")[0];
+        }
+
+        // End date logic (same as before)
+        let endDate = null;
+        if (index < arr.length - 1) {
+          const nextMaxDate = new Date(arr[index + 1].maxDate);
+          nextMaxDate.setDate(nextMaxDate.getDate() - 1);
+          endDate = nextMaxDate.toISOString().split("T")[0];
+        }
+
+        return {
+          ppId: current.ppId,
+          startDate,
+          endDate,
+        };
+      });
+    };
+
+    const positiveResults = calculateRange(positivePpIds);
+    const negativeResults = calculateRange(negativePpIds);
+
+    const results = [...negativeResults, ...positiveResults];
+
+    // If ppId query is provided, return only that ppId
+    if (ppId) {
+      const single = results.find(r => r.ppId == ppId) || null;
+      return res.status(200).json(single);
+    }
+
+    res.status(200).json(results);
+  } catch (error) {
+    console.error("Error fetching critical date range by ppId:", error);
+    res.status(500).json({
+      message: "Error fetching critical date range by ppId",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
 
 
