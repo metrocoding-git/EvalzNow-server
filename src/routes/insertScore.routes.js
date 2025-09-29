@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const insertScoreController = require('../controllers/insertScore.controller');
+const { route } = require('./user.routes');
 
 router.get('/', insertScoreController.getInsertScores);
 // router.get('/unit/:unitId', assessmentBlockController.getAssessmentBlocksByUnitId);
@@ -12,5 +13,6 @@ router.get('/block/:blockId', insertScoreController.getInsertScoresByBlockId);
 router.get('/unit/:unitId/candidate/:candidate_id', insertScoreController.getInsertScoresByUnitAndCandidate)
 router.get('/summary', insertScoreController.getPpSummary);
 router.get('/insert/unit/:unitId', insertScoreController.getScoresByUnitGrouped);
+router.get('/critical-range', insertScoreController.getCriticalDateRangeByPpId);
 
 module.exports = router;
