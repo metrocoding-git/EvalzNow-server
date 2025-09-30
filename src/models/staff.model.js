@@ -59,11 +59,21 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: "Enabled",
       },
-      accountId: {
+      // accountId: {
+      //   type: DataTypes.INTEGER,
+      //   allowNull: false,
+      //   references: {
+      //     model: 'accounts',
+      //     key: 'id'
+      //   },
+      //   onUpdate: 'CASCADE',
+      //   onDelete: 'CASCADE'
+      // },
+      clientId: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: 'accounts',
+          model: 'clients',
           key: 'id'
         },
         onUpdate: 'CASCADE',
@@ -84,9 +94,15 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   Staff.associate = (models) => {
-    Staff.belongsTo(models.Account, {
-      foreignKey: "accountId",
-      as: "account",
+    // Staff.belongsTo(models.Account, {
+    //   foreignKey: "accountId",
+    //   as: "account",
+    //   onDelete: "CASCADE",
+    //   onUpdate: "CASCADE",
+    // });
+    Staff.belongsTo(models.Client, {
+      foreignKey: "clientId",
+      as: "client",
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });

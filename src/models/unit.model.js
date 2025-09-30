@@ -78,6 +78,16 @@ module.exports = (sequelize, DataTypes) => {
         },
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
+      },
+      clientId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'clients',
+          key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE'
       }
     },
     {
@@ -124,6 +134,13 @@ module.exports = (sequelize, DataTypes) => {
     Unit.belongsTo(models.Account, {
       foreignKey: "accountId",
       as: "account",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Unit.belongsTo(models.Client, {
+      foreignKey: "clientId",
+      as: "client",
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
