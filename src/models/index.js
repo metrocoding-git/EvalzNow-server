@@ -209,6 +209,20 @@ db.Staff.belongsTo(db.Account, {
   onUpdate: "CASCADE",
 });
 
+db.Client.hasMany(db.Staff, {
+  foreignKey: "clientId",
+  as: "staffs",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
+db.Staff.belongsTo(db.Client, {
+  foreignKey: "clientId",
+  as: "client",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+
 
 db.Account.hasMany(db.Candidate, {
   foreignKey: "accountId",

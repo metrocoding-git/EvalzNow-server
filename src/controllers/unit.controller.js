@@ -2,26 +2,37 @@ const db = require("../models");
 const Unit = db.Unit;
 const Benchmark = db.Benchmark;
 const Account = db.Account;
+const Client = db.Client;
 
 // GET all units with their benchmarks
 exports.getUnits = async (req, res) => {
   try {
 
-    const userAccId = req.user?.acc_id; // get accountId from logged-in user
-    if (!userAccId) {
-      return res.status(401).json({ message: 'Unauthorized: accountId missing' });
-    }
+    // const userAccId = req.user?.acc_id; // get accountId from logged-in user
+    // if (!userAccId) {
+    //   return res.status(401).json({ message: 'Unauthorized: accountId missing' });
+    // }
+    const { clientId } = req.params;
 
     // Verify association exists
     if (!Unit.associations.benchmarks) {
       throw new Error('Unit-Benchmark association not found');
     }
 
+     // ✅ Ensure client belongs to this account
+    const client = await Client.findOne({
+      where: { id: clientId },
+    });
+    if (!client) {
+      return res.status(404).json({ message: "Client not found or not in your account" });
+    }
+
     const units = await Unit.findAll({
+      where: { clientId: clientId },
       include: [
-        {
-          model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
-        },
+        // {
+        //   model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
+        // },
         {
         model: db.Benchmark,
         as: "benchmarks",
@@ -72,10 +83,12 @@ exports.getUnitById = async (req, res) => {
 exports.createUnit = async (req, res) => {
   const transaction = await db.sequelize.transaction();
   try {
-    const { benchmarks, ...unitData } = req.body;
+    const { benchmarks, clientId, ...unitData } = req.body;
 
     // Step 1: Create the unit
-    const newUnit = await Unit.create(unitData, { transaction });
+    const newUnit = await Unit.create(
+      {...unitData, clientId},
+      { transaction });
 
     // Step 2: Handle benchmarks if provided
     if (benchmarks && benchmarks.length > 0) {
