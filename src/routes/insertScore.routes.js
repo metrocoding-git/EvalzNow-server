@@ -13,6 +13,6 @@ router.get('/block/:blockId', insertScoreController.getInsertScoresByBlockId);
 router.get('/unit/:unitId/candidate/:candidate_id', insertScoreController.getInsertScoresByUnitAndCandidate)
 router.get('/summary', insertScoreController.getPpSummary);
 router.get('/insert/unit/:unitId', insertScoreController.getScoresByUnitGrouped);
-router.get('/critical-range', insertScoreController.getCriticalDateRangeByPpId);
+router.get('/critical-range/:ppId/:unitId/:candidateId', insertScoreController.getCriticalDateRangeByPpId);
 
 module.exports = router;

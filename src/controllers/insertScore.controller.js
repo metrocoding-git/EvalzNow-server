@@ -529,77 +529,143 @@ exports.getScoresByUnitGrouped = async (req, res) => {
 
 // GET Insert Scores grouped by ppId with criticalRefDate range
 // GET Insert Scores grouped by ppId with startDate from previous ppId's max
-exports.getCriticalDateRangeByPpId = async (req, res) => {
-  try {
-    const { unitId, candidate_id, ppId } = req.query;
+// exports.getCriticalDateRangeByPpId = async (req, res) => {
+//   try {
+//     const { unitId, candidate_id, ppId } = req.query;
 
     // Step 1: fetch all ppIds and their MAX criticalRefDate
-    const ppDates = await InsertScore.findAll({
-      attributes: [
-        "ppId",
-        [Sequelize.fn("MAX", Sequelize.col("criticalRefDate")), "maxDate"],
-      ],
-      where: {
-        ...(unitId ? { unitId } : {}),
-        ...(candidate_id ? { candidate_id } : {}),
-      },
-      group: ["ppId"],
-      order: [["ppId", "ASC"]],
-      raw: true,
-    });
+    // const ppDates = await InsertScore.findAll({
+    //   attributes: [
+    //     "ppId",
+    //     [Sequelize.fn("MAX", Sequelize.col("criticalRefDate")), "maxDate"],
+    //   ],
+    //   where: {
+    //     ...(unitId ? { unitId } : {}),
+    //     ...(candidate_id ? { candidate_id } : {}),
+    //   },
+    //   group: ["ppId"],
+    //   order: [["ppId", "ASC"]],
+    //   raw: true,
+    // });
 
     // Step 2: separate positive and negative ppIds
-    const positivePpIds = ppDates.filter(p => p.ppId > 0);
-    const negativePpIds = ppDates.filter(p => p.ppId < 0).sort((a, b) => a.ppId - b.ppId); // -1, -2, -3
+//     const positivePpIds = ppDates.filter(p => p.ppId > 0);
+//     const negativePpIds = ppDates.filter(p => p.ppId < 0).sort((a, b) => a.ppId - b.ppId); // -1, -2, -3
 
-    const calculateRange = arr => {
-      return arr.map((current, index, arr) => {
-        let startDate;
-        // For first in array or maxDate null => current date
-        if (index === 0 || !current.maxDate) {
-          startDate = new Date().toISOString().split("T")[0];
-        } else {
-          const prevMaxDate = new Date(arr[index - 1].maxDate);
-          prevMaxDate.setDate(prevMaxDate.getDate() + 1);
-          startDate = prevMaxDate.toISOString().split("T")[0];
-        }
+//     const calculateRange = arr => {
+//       return arr.map((current, index, arr) => {
+//         let startDate;
+//         // For first in array or maxDate null => current date
+//         if (index === 0 || !current.maxDate) {
+//           startDate = new Date().toISOString().split("T")[0];
+//         } else {
+//           const prevMaxDate = new Date(arr[index - 1].maxDate);
+//           prevMaxDate.setDate(prevMaxDate.getDate() + 1);
+//           startDate = prevMaxDate.toISOString().split("T")[0];
+//         }
 
-        // End date logic (same as before)
-        let endDate = null;
-        if (index < arr.length - 1) {
-          const nextMaxDate = new Date(arr[index + 1].maxDate);
-          nextMaxDate.setDate(nextMaxDate.getDate() - 1);
-          endDate = nextMaxDate.toISOString().split("T")[0];
-        }
+//         // End date logic (same as before)
+//         let endDate = null;
+//         if (index < arr.length - 1) {
+//           const nextMaxDate = new Date(arr[index + 1].maxDate);
+//           nextMaxDate.setDate(nextMaxDate.getDate() - 1);
+//           endDate = nextMaxDate.toISOString().split("T")[0];
+//         }
 
-        return {
-          ppId: current.ppId,
-          startDate,
-          endDate,
-        };
-      });
-    };
+//         return {
+//           ppId: current.ppId,
+//           startDate,
+//           endDate,
+//         };
+//       });
+//     };
 
-    const positiveResults = calculateRange(positivePpIds);
-    const negativeResults = calculateRange(negativePpIds);
+//     const positiveResults = calculateRange(positivePpIds);
+//     const negativeResults = calculateRange(negativePpIds);
 
-    const results = [...negativeResults, ...positiveResults];
+//     const results = [...negativeResults, ...positiveResults];
 
-    // If ppId query is provided, return only that ppId
-    if (ppId) {
-      const single = results.find(r => r.ppId == ppId) || null;
-      return res.status(200).json(single);
+//     // If ppId query is provided, return only that ppId
+//     if (ppId) {
+//       const single = results.find(r => r.ppId == ppId) || null;
+//       return res.status(200).json(single);
+//     }
+
+//     res.status(200).json(results);
+//   } catch (error) {
+//     console.error("Error fetching critical date range by ppId:", error);
+//     res.status(500).json({
+//       message: "Error fetching critical date range by ppId",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
+exports.getCriticalDateRangeByPpId = async (req, res) => {
+  try {
+    const { ppId, unitId, candidateId } = req.params;
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+    const data = await InsertScore.findAll({
+      where: { unitId, candidate_id: candidateId },
+      attributes: ["ppId", "criticalRefDate"],
+      order: [["ppId", "ASC"]],
+    });
+
+    const positives = data.filter(d => d.ppId > 0).sort((a, b) => a.ppId - b.ppId);
+    const negatives = data.filter(d => d.ppId < 0).sort((a, b) => a.ppId - b.ppId); // -3, -2, -1
+
+    const id = parseInt(ppId, 10);
+    let result = null;
+
+    if (id > 0) {
+      const current = positives.find(d => d.ppId === id);
+      const next = positives.find(d => d.ppId > id);
+
+      let startDate;
+      if (id === 1) {
+        startDate = today;
+      } else {
+        const prev = positives.filter(d => d.ppId < id).pop();
+        startDate = prev ? prev.criticalRefDate : today;
+      }
+
+      result = {
+        ppId: id,
+        startDate,
+        endDate: next ? next.criticalRefDate : null,
+      };
+    } else if (id < 0) {
+      const current = negatives.find(d => d.ppId === id);
+      const next = negatives.find(d => d.ppId < id); // farther from zero (e.g., -3 after -2)
+
+      let startDate;
+      if (id === -1) {
+        startDate = today;
+      } else {
+        const prevNeg = negatives.filter(d => d.ppId > id).shift(); // closer to zero (e.g., -2’s prev is -1)
+        startDate = prevNeg ? prevNeg.criticalRefDate : today;
+      }
+
+      result = {
+        ppId: id,
+        startDate,
+        endDate: next ? next.criticalRefDate : null,
+      };
     }
 
-    res.status(200).json(results);
+    res.status(200).json(result);
   } catch (error) {
-    console.error("Error fetching critical date range by ppId:", error);
+    console.error(error);
     res.status(500).json({
       message: "Error fetching critical date range by ppId",
       error: error.message,
     });
   }
 };
+
 
 
 
