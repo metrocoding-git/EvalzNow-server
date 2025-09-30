@@ -1,22 +1,35 @@
 const db = require('../models');
 const Staff = db.Staff;
 const Account = db.Account;
+const Client = db.Client;
+
 
 // GET all Staff
 exports.getStaff = async (req, res) => {
     try {
-      const userAccId = req.user?.acc_id; // get accountId from logged-in user
-    if (!userAccId) {
-      return res.status(401).json({ message: 'Unauthorized: accountId missing' });
+      // const userAccId = req.user?.acc_id; // get accountId from logged-in user
+    // if (!userAccId) {
+    //   return res.status(401).json({ message: 'Unauthorized: accountId missing' });
+    // }
+
+    const { clientId } = req.params;
+
+    // ✅ Ensure client belongs to this account
+    const client = await Client.findOne({
+      where: { id: clientId },
+    });
+    if (!client) {
+      return res.status(404).json({ message: "Client not found or not in your account" });
     }
-      const staffs = await Staff.findAll({
-        include: [
-          {
-            model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
-          }
-        ]
-      });
-      res.status(200).json(staffs);
+
+    // ✅ Fetch staff for this client
+    const staffs = await Staff.findAll({
+      where: { clientId: clientId },
+      include: [
+        { model: Client, as: "client" }, // optional, returns client info
+      ],
+    });
+    res.status(200).json(staffs);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Error fetching clients', error: error.message });
@@ -39,20 +52,35 @@ exports.getStaffById = async (req, res) => {
   // CREATE new staff
   exports.createStaff = async (req, res) => {
     try {
-      const { emailAddress } = req.body;
+      // const userAccId = req.user?.acc_id; 
+      // if (!userAccId) {
+      //   return res.status(401).json({ message: "Unauthorized: accountId missing" });
+      // }
 
-    // ✅ Check if email already exists
-    const existingStaff = await Staff.findOne({ where: { emailAddress } });
-    if (existingStaff) {
-      return res.status(400).json({ message: 'Email address already exists' });
-    }
+      const { emailAddress, clientId } = req.body;
 
-    const newStaff = await Staff.create(req.body);
-    res.status(201).json(newStaff);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Error creating staff', error: error.message });
-    }
+      // ✅ Check if email already exists
+      const existingStaff = await Staff.findOne({ where: { emailAddress } });
+      if (existingStaff) {
+        return res.status(400).json({ message: 'Email address already exists' });
+      }
+
+      const client = await db.Client.findOne({
+        where: { id: clientId},
+      });
+      if (!client) {
+        return res.status(400).json({ message: "Invalid clientId for this account" });
+      }
+
+      const newStaff = await Staff.create({
+        ...req.body,
+        clientId: clientId,
+      });
+      res.status(201).json(newStaff);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error creating staff', error: error.message });
+      }
   };
   
   // UPDATE existing staff

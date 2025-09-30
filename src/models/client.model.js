@@ -77,6 +77,27 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
+    
+    Client.hasMany(models.Staff, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Client.hasMany(models.Candidate, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Client.hasMany(models.Unit, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
   };
   
   

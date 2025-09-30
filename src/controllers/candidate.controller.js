@@ -3,6 +3,7 @@ const Candidate = db.Candidate;
 const Irregularity = db.Irregularity;
 const { Sequelize } = db;
 const Account = db.Account;
+const Client = db.Client;
 
 // GET all candidates with their irregularities
 exports.getCandidates = async (req, res) => {
@@ -12,16 +13,26 @@ exports.getCandidates = async (req, res) => {
       throw new Error('Candidate-Irregularity association not found');
     }
 
-    const userAccId = req.user?.acc_id; // get accountId from logged-in user
-    if (!userAccId) {
-      return res.status(401).json({ message: 'Unauthorized: accountId missing' });
+    // const userAccId = req.user?.acc_id; // get accountId from logged-in user
+    // if (!userAccId) {
+    //   return res.status(401).json({ message: 'Unauthorized: accountId missing' });
+    // }
+    const { clientId } = req.params;
+
+    // ✅ Ensure client belongs to this account
+    const client = await Client.findOne({
+      where: { id: clientId },
+    });
+    if (!client) {
+      return res.status(404).json({ message: "Client not found or not in your account" });
     }
 
     const candidates = await Candidate.findAll({
+      where: { clientId: clientId },
       include: [
-        {
-          model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
-        },
+        // {
+        //   model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
+        // },
         {
         model: db.Irregularity, // Use db.Irregularity directly
         as: "irregularities",
@@ -37,7 +48,7 @@ exports.getCandidates = async (req, res) => {
     
     res.status(200).json(candidates);
   } catch (error) {
-    console.error("Error fetching candidates:", error);
+    // console.error("Error fetching candidates:", error);
     res.status(500).json({ 
       message: "Error fetching candidates", 
       error: error.message,
@@ -73,7 +84,7 @@ exports.getCandidateById = async (req, res) => {
 // CREATE a new candidate with optional irregularities
 exports.createCandidate = async (req, res) => {
   try {
-    const { irregularities, ...candidateData } = req.body;
+    const { irregularities, clientId, ...candidateData } = req.body;
 
     // ✅ Check for duplicate candidateId OUTSIDE of transaction first
     if (candidateData.candidateId) {
@@ -92,7 +103,10 @@ exports.createCandidate = async (req, res) => {
     const transaction = await db.sequelize.transaction();
     
     try {
-      const newCandidate = await Candidate.create(candidateData, { transaction });
+      const newCandidate = await Candidate.create({ 
+        ...candidateData,
+        clientId 
+      }, { transaction });
 
       if (irregularities && irregularities.length > 0) {
         const irregularitiesWithCandidateId = irregularities.map(irregularity => ({
