@@ -23,9 +23,9 @@ exports.getCandidates = async (req, res) => {
     const client = await Client.findOne({
       where: { id: clientId },
     });
-    if (!client) {
-      return res.status(404).json({ message: "Client not found or not in your account" });
-    }
+    // if (!client) {
+    //   return res.status(404).json({ message: "Client not found or not in your account" });
+    // }
 
     const candidates = await Candidate.findAll({
       where: { clientId: clientId },
