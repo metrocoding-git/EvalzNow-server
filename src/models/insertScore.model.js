@@ -24,6 +24,8 @@ module.exports = (sequelize, DataTypes) => {
           model: "assessment_block_manager", // Reference to AssessmentBlockManager
           key: "id",
         },
+        onDelete: "CASCADE",   // important at DB level
+        onUpdate: "CASCADE"
       },
       candidate_id: {
         type: DataTypes.INTEGER,

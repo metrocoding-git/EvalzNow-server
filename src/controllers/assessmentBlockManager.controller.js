@@ -198,7 +198,7 @@ exports.deleteAssessmentBlock = async (req, res) => {
 // GET Assessment Block by Candidate ID and Unit ID
 exports.getAssessmentBlockByCandidateAndUnit = async (req, res) => {
   try {
-    const { unitId, candidateId } = req.params;
+    const { unitId, candidateId, ppId } = req.params;
 
     if (!unitId || !candidateId) {
       return res.status(400).json({ message: "Missing unitId or candidateId" });
@@ -212,7 +212,6 @@ exports.getAssessmentBlockByCandidateAndUnit = async (req, res) => {
       ]
     });
 
-    
 
     res.status(200).json(block);
   } catch (error) {
