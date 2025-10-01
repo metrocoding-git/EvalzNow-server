@@ -7,7 +7,7 @@ module.exports = (sequelize, DataTypes) => {
       username: { type: DataTypes.STRING(100), allowNull: false, unique: true},
       password: { type: DataTypes.STRING(100), allowNull: false},
       acc_id: { type: DataTypes.INTEGER, allowNull: false},
-      role: { type: DataTypes.ENUM("super admin", "admin"), allowNull: false},
+      role: { type: DataTypes.ENUM("super admin", "admin", "staff"), allowNull: false},
     }, {
       tableName: 'accounts',
       timestamps: true,

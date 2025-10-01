@@ -20,12 +20,12 @@ exports.getUnits = async (req, res) => {
     }
 
      // ✅ Ensure client belongs to this account
-    const client = await Client.findOne({
-      where: { id: clientId },
-    });
-    if (!client) {
-      return res.status(404).json({ message: "Client not found or not in your account" });
-    }
+    // const client = await Client.findOne({
+    //   where: { id: clientId },
+    // });
+    // if (!client) {
+    //   return res.status(404).json({ message: "Client not found or not in your account" });
+    // }
 
     const units = await Unit.findAll({
       where: { clientId: clientId },

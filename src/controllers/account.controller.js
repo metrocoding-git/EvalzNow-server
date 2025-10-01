@@ -39,6 +39,10 @@ exports.login = async (req, res) => {
         JWT_SECRET,
         { expiresIn: "30d" } // token expires in 1 hour
       );
+
+      const client = await Client.findOne({
+        where: { emailAddress: account.username }
+      });
   
       res.status(200).json({
         message: "Login successful",
@@ -48,6 +52,7 @@ exports.login = async (req, res) => {
           username: account.username,
           role: account.role,
           acc: account.acc_id,
+          clientId: client ? client.id : null,
         },
       });
     } catch (error) {
@@ -105,12 +110,17 @@ exports.getCurrentUser = async (req, res) => {
     try {
       // req.user is set by authenticateToken middleware
       const account = req.user;
+
+      const client = await Client.findOne({
+        where: { emailAddress: account.username }
+      });
   
       res.status(200).json({
         id: account.id,
         username: account.username,
         role: account.role,
         acc: account.acc_id,
+        clientId: client ? client.id : null,
       });
     } catch (error) {
       console.error("Get current user error:", error);
