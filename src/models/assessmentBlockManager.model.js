@@ -79,6 +79,8 @@ module.exports = (sequelize, DataTypes) => {
     AssessmentBlockManager.hasMany(models.InsertScore, {
       foreignKey: "assessmentBlockId",
       as: "insertScores",
+      onDelete: "CASCADE",   // ensures child records deleted
+      hooks: true 
     });
     
 
