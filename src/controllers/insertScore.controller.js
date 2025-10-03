@@ -239,7 +239,27 @@ exports.updateInsertScore = async (req, res) => {
         : Math.min(...existingScores.map(s => s.subPpId)) - 1;
 
       req.body.subPpId = newSubPpId;
+
+
+      // ✅ Step 3: also update assessmentBlockId to match new ppId
+      const newBlock = await AssessmentBlockManager.findOne({
+        where: {
+          unitId,
+          candidate_id,
+          ppId: newPpId,
+        },
+        transaction: t,
+      });
+
+      if (!newBlock) {
+        await t.rollback();
+        return res.status(400).json({ message: `No AssessmentBlockManager found for new ppId ${newPpId}` });
+      }
+
+      req.body.assessmentBlockId = newBlock.id;
     }
+
+    
 
     // Step 3: update the record
     await InsertScore.update(req.body, { where: { id }, transaction: t });
@@ -339,7 +359,26 @@ exports.getInsertScoresByUnitAndCandidate = async (req, res) => {
         { model: AssessmentBlockManager, as: 'assessmentBlock' },
         { model: Unit, as: 'unit' },
         { model: Candidate, as: 'candidate' }
-      ]
+      ],
+      order: [
+        // First order positives ASC and negatives DESC
+        [
+          Sequelize.literal(`
+            CASE 
+              WHEN "ppId" >= 0 THEN "ppId" 
+            END ASC
+          `),
+        ],
+        [
+          Sequelize.literal(`
+            CASE 
+              WHEN "ppId" < 0 THEN "ppId" 
+            END DESC
+          `),
+        ],
+        // Then within each ppId, order by criticalRefDate ASC
+        ["criticalRefDate", "ASC"],
+      ],
     });
 
     
