@@ -2,6 +2,7 @@ const db = require('../models');
 const AssessmentBlockManager = db.AssessmentBlockManager;
 const Unit = db.Unit;
 const Candidate = db.Candidate;
+const InsertScore = db.InsertScore;
 
 // GET all Assessment Blocks
 exports.getAssessmentBlocks = async (req, res) => {
@@ -149,12 +150,22 @@ exports.deleteAssessmentBlock = async (req, res) => {
       return res.status(404).json({ message: 'Assessment block not found' });
     }
 
-    const { unitId, manageType, ppId } = blockToDelete;
+    const { unitId, candidate_id, manageType, ppId } = blockToDelete;
+
+    // Delete insert scores for this exact candidate + ppId
+    await InsertScore.destroy({
+      where: {
+        unitId,
+        candidate_id,
+        ppId
+      },
+      transaction
+    });
 
     // Delete the block
     await AssessmentBlockManager.destroy({ where: { id }, transaction });
 
-    // Adjust ppIds
+    // Adjust ppIds (ONLY for this candidate)
     if (manageType === "Direct") {
       // Direct: shift ppIds greater than deleted one DOWN by 1
       await AssessmentBlockManager.increment(
@@ -162,7 +173,20 @@ exports.deleteAssessmentBlock = async (req, res) => {
         {
           where: {
             unitId,
+            candidate_id,  // ✅ scope by candidate
             manageType,
+            ppId: { [db.Sequelize.Op.gt]: ppId },
+          },
+          transaction,
+        }
+      );
+
+      await InsertScore.increment(
+        { ppId: -1 },
+        {
+          where: {
+            unitId,
+            candidate_id,  // ✅ scope by candidate
             ppId: { [db.Sequelize.Op.gt]: ppId },
           },
           transaction,
@@ -175,8 +199,21 @@ exports.deleteAssessmentBlock = async (req, res) => {
         {
           where: {
             unitId,
+            candidate_id,  // ✅ scope by candidate
             manageType,
-            ppId: { [db.Sequelize.Op.lt]: ppId }, // less than deleted one
+            ppId: { [db.Sequelize.Op.lt]: ppId }, 
+          },
+          transaction,
+        }
+      );
+
+      await InsertScore.increment(
+        { ppId: 1 },
+        {
+          where: {
+            unitId,
+            candidate_id,  // ✅ scope by candidate
+            ppId: { [db.Sequelize.Op.lt]: ppId },
           },
           transaction,
         }
@@ -192,6 +229,7 @@ exports.deleteAssessmentBlock = async (req, res) => {
     res.status(500).json({ message: 'Error deleting assessment block', error: error.message });
   }
 };
+
 
 
 

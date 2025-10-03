@@ -94,12 +94,12 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   Staff.associate = (models) => {
-    // Staff.belongsTo(models.Account, {
-    //   foreignKey: "accountId",
-    //   as: "account",
-    //   onDelete: "CASCADE",
-    //   onUpdate: "CASCADE",
-    // });
+    Staff.belongsTo(models.Account, {
+      foreignKey: "accountId",
+      as: "account",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
     Staff.belongsTo(models.Client, {
       foreignKey: "clientId",
       as: "client",
