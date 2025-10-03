@@ -79,12 +79,28 @@ module.exports = (sequelize, DataTypes) => {
     AssessmentBlockManager.hasMany(models.InsertScore, {
       foreignKey: "assessmentBlockId",
       as: "insertScores",
-      onDelete: "CASCADE",   // ensures child records deleted
       hooks: true 
     });
     
 
   };
+
+  AssessmentBlockManager.addHook("afterUpdate", async (block, options) => {
+    if (block.changed("ppId")) {
+      const { ppId, id } = block;
+      const { transaction } = options;
+  
+      // Update all InsertScores linked to this block
+      await sequelize.models.InsertScore.update(
+        { ppId },
+        {
+          where: { assessmentBlockId: id },
+          transaction,
+        }
+      );
+    }
+  });
+  
 
   return AssessmentBlockManager;
 };
