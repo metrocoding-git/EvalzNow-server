@@ -3,6 +3,7 @@ const AssessmentBlockManager = db.AssessmentBlockManager;
 const Unit = db.Unit;
 const Candidate = db.Candidate;
 const InsertScore = db.InsertScore;
+const { Op } = require('sequelize');
 
 // GET all Assessment Blocks
 exports.getAssessmentBlocks = async (req, res) => {
@@ -115,11 +116,13 @@ exports.updateAssessmentBlock = async (req, res) => {
       }
     }
 
-    const updated = await AssessmentBlockManager.update(req.body, { where: { id } });
+    const existingBlock = await AssessmentBlockManager.findByPk(id);
 
-    if (updated[0] === 0) {
-      return res.status(404).json({ message: 'Assessment block not found or no changes made' });
+    const [updatedCount] = await AssessmentBlockManager.update(req.body, { where: { id } });
+    if (updatedCount === 0) {
+      return res.status(404).json({ message: 'No changes made' });
     }
+
 
     const updatedBlock = await AssessmentBlockManager.findOne({
       where: { id },
@@ -128,6 +131,84 @@ exports.updateAssessmentBlock = async (req, res) => {
         { model: Candidate, as: 'candidate' }
       ]
     });
+
+
+     // ===== STEP 1: If ppId changed =====
+    if (req.body.ppId && req.body.ppId !== existingBlock.ppId) {
+      const { unitId } = updatedBlock;
+      const newPpId = req.body.ppId;
+
+      // Update InsertScore.ppId for this block
+      await InsertScore.update({ ppId: newPpId }, { where: { assessmentBlockId: id } });
+
+      // Get the updated InsertScore record
+      const currentScore = await InsertScore.findOne({
+        where: { assessmentBlockId: id }
+      });
+
+      if (currentScore) {
+        const { criticalRefDate } = currentScore;
+
+        // ===== STEP 2: Set all InsertScores with same ppId to same criticalRefDate =====
+        const sameGroupScores = await InsertScore.findAll({
+          where: { unitId, ppId: newPpId }
+        });
+
+        if (sameGroupScores.length > 0) {
+          const sameDate = criticalRefDate;
+          for (const s of sameGroupScores) {
+            await s.update({ criticalRefDate: sameDate });
+          }
+          console.log(
+            `🟢 Updated ${sameGroupScores.length} InsertScores in ppId=${newPpId} to same criticalRefDate`
+          );
+        }
+
+        // ===== STEP 3: Find top and bottom distinct ppIds =====
+        const previousScore = await InsertScore.findOne({
+          where: { unitId, ppId: { [Op.lt]: newPpId } },
+          order: [['ppId', 'DESC']]
+        });
+
+        const nextScore = await InsertScore.findOne({
+          where: { unitId, ppId: { [Op.gt]: newPpId } },
+          order: [['ppId', 'ASC']]
+        });
+
+        // ===== STEP 4: Fix order if broken =====
+        if (previousScore) {
+          const prevDate = new Date(previousScore.criticalRefDate);
+          const currDate = new Date(criticalRefDate);
+          if (currDate < prevDate) {
+            // Set all same group to prevDate
+            await InsertScore.update(
+              { criticalRefDate: previousScore.criticalRefDate },
+              { where: { unitId, ppId: newPpId } }
+            );
+            console.log(
+              `🟡 Adjusted group ppId=${newPpId} to match prev ppId=${previousScore.ppId}`
+            );
+          }
+        }
+
+        if (nextScore) {
+          const nextDate = new Date(nextScore.criticalRefDate);
+          const currDate = new Date(criticalRefDate);
+          if (currDate > nextDate) {
+            // Set next group to current date
+            await InsertScore.update(
+              { criticalRefDate },
+              { where: { unitId, ppId: nextScore.ppId } }
+            );
+            console.log(
+              `🟢 Adjusted next group ppId=${nextScore.ppId} to match current ppId=${newPpId}`
+            );
+          }
+        }
+      }
+    }
+
+
 
     res.status(200).json(updatedBlock);
   } catch (error) {
@@ -201,7 +282,7 @@ exports.deleteAssessmentBlock = async (req, res) => {
             unitId,
             candidate_id,  // ✅ scope by candidate
             manageType,
-            ppId: { [db.Sequelize.Op.lt]: ppId }, 
+            ppId: { [db.Sequelize.Op.lt]: ppId },
           },
           transaction,
         }
@@ -287,10 +368,10 @@ exports.duplicateAssessmentBlocks = async (req, res) => {
 
     // Create new blocks with proper ppId sequencing
     const newBlocks = [];
-    
+
     for (const [key, blocks] of Object.entries(blocksByCandidateAndType)) {
       const [candidate_id, manageType] = key.split('-');
-      
+
       // Get the next available ppId for this candidate and type in the new unit
       let nextPpId;
       if (manageType === "Indirect") {
@@ -322,7 +403,7 @@ exports.duplicateAssessmentBlocks = async (req, res) => {
         }, { transaction });
 
         newBlocks.push(newBlock);
-        
+
         // Update nextPpId
         if (manageType === "Indirect") {
           nextPpId--;
