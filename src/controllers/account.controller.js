@@ -113,7 +113,6 @@ exports.createAccount = async (req, res) => {
       });
   
     } catch (error) {
-      console.error("Create account error:", error);
       res.status(500).json({ message: "Error creating account", error: error.message });
     }
 };
