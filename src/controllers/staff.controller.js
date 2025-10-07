@@ -78,7 +78,6 @@ exports.getStaffById = async (req, res) => {
       });
       res.status(201).json(newStaff);
       } catch (error) {
-        console.error(error);
         res.status(500).json({ message: 'Error creating staff', error: error.message });
       }
   };
