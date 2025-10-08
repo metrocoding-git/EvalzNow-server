@@ -98,9 +98,21 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
+
+    Client.hasMany(models.Ethinicity, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Client.hasMany(models.Income, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
   };
-  
-  
 
   return Client;
 };
