@@ -1,10 +1,23 @@
 const db = require('../models');
 const Ethinicity = db.Ethinicity;
+const Client = db.Client;
 
 // GET all ethinicities
 exports.getEthinicities = async (req, res) => {
   try {
-    const ethinicities = await Ethinicity.findAll();
+    const { clientId } = req.params;
+
+    // ✅ Ensure client belongs to this account
+    const client = await Client.findOne({
+      where: { id: clientId },
+    });
+    if (!client) {
+      return res.status(404).json({ message: "Client not found or not in your account" });
+    }
+
+    const ethinicities = await Ethinicity.findAll({
+      where: { clientId: clientId },
+    });
     res.status(200).json(ethinicities);
   } catch (error) {
     console.error(error);
@@ -32,13 +45,20 @@ exports.getEthinicityById = async (req, res) => {
 // POST create a new ethinicity
 exports.createEthinicity = async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, clientId } = req.body;
 
     if (!name) {
       return res.status(400).json({ message: 'Name is required' });
     }
 
-    const newEthinicity = await Ethinicity.create({ name });
+    const client = await db.Client.findOne({
+      where: { id: clientId},
+    });
+    if (!client) {
+      return res.status(400).json({ message: "Invalid clientId for this account" });
+    }
+
+    const newEthinicity = await Ethinicity.create({ name, clientId });
     res.status(201).json(newEthinicity);
   } catch (error) {
     console.error(error);
