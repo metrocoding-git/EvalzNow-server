@@ -258,12 +258,14 @@ exports.deleteCandidate = async (req, res) => {
 
 // ✅ Get distinct ethnicities
 exports.getEthnicities = async (req, res) => {
+  const { clientId } = req.params;
   try {
     const ethnicities = await Candidate.findAll({
       attributes: [
         [Sequelize.fn("DISTINCT", Sequelize.col("ethnicity")), "name"]
       ],
       where: {
+        clientId,
         ethnicity: { [Sequelize.Op.ne]: null } // skip null values
       },
       order: [[Sequelize.col("ethnicity"), "ASC"]],
@@ -284,12 +286,14 @@ exports.getEthnicities = async (req, res) => {
 
 // ✅ Get distinct incomes
 exports.getIncomes = async (req, res) => {
+  const { clientId } = req.params;
   try {
     const incomes = await Candidate.findAll({
       attributes: [
         [Sequelize.fn("DISTINCT", Sequelize.col("income")), "name"]
       ],
       where: {
+        clientId,
         income: { [Sequelize.Op.ne]: null }
       },
       order: [[Sequelize.col("income"), "ASC"]],
