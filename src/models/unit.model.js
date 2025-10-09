@@ -17,7 +17,6 @@ module.exports = (sequelize, DataTypes) => {
       unitId: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
         validate: {
           notEmpty: true
         }
@@ -96,9 +95,9 @@ module.exports = (sequelize, DataTypes) => {
       indexes: [
         {
           unique: true,
-          fields: ['unitId']
-        }
-      ]
+          fields: ['clientId', 'unitId'], // Composite uniqueness
+        },
+      ],      
     }
   );
 
