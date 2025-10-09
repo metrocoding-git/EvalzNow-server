@@ -12,7 +12,6 @@ module.exports = (sequelize, DataTypes) => {
       staffId: {
         type: DataTypes.STRING(10),
         allowNull: false,
-        unique: true,
         defaultValue: () => crypto.randomBytes(5).toString("hex").toUpperCase(),
       },
       lastName: {
@@ -90,6 +89,12 @@ module.exports = (sequelize, DataTypes) => {
           }
         },
       },
+      indexes: [
+        {
+          unique: true,
+          fields: ['clientId', 'staffId'], // Composite uniqueness
+        },
+      ], 
     }
   );
 
