@@ -47,7 +47,6 @@ exports.getUnits = async (req, res) => {
           model: StaffLookup, 
           attributes: ["roleType"] // include Leader/Assessor info
         },
-        attributes: ["id", "firstName", "lastName", "emailAddress"],
         required: false
       }],
       order: [
@@ -85,7 +84,6 @@ exports.getUnitById = async (req, res) => {
           {
             model: db.Staff,
             as: "staff",
-            attributes: ["id", "firstName", "lastName", "emailAddress"]
           }
         ]
       }
@@ -186,12 +184,12 @@ exports.createUnit = async (req, res) => {
 
 
 // UPDATE a unit and its benchmarks
-// UPDATE a unit and its benchmarks (bulk)
+// UPDATE a unit, its benchmarks, and staff assignments
 exports.updateUnit = async (req, res) => {
   const transaction = await db.sequelize.transaction();
   try {
     const { id } = req.params;
-    const { benchmarks, ...unitData } = req.body;
+    const { benchmarks, staffLookup, ...unitData } = req.body;
 
     const unit = await Unit.findByPk(id, { transaction });
     if (!unit) {
@@ -199,57 +197,83 @@ exports.updateUnit = async (req, res) => {
       return res.status(404).json({ message: "Unit not found" });
     }
 
-    // Update unit
+    // ✅ Step 1: Update basic unit fields
     await unit.update(unitData, { transaction });
 
+    // ✅ Step 2: Update Benchmarks
     if (benchmarks) {
       // Delete existing benchmarks
       await Benchmark.destroy({ where: { unitId: unit.id }, transaction });
 
       if (benchmarks.length > 0) {
-        // Get max benchmarkId for this unit
-        const result = await Benchmark.findOne({
-          where: { unitId: unit.id },
-          attributes: [[db.sequelize.fn('MAX', db.sequelize.col('benchmarkId')), 'maxBenchmarkId']],
-          raw: true,
-          transaction
-        });
+        let nextBenchmarkId = 1;
 
-        let nextBenchmarkId = (result?.maxBenchmarkId || 0) + 1;
-
-        const benchmarksWithIds = benchmarks.map(b => ({
+        const benchmarksWithIds = benchmarks.map((b) => ({
           ...b,
           unitId: unit.id,
-          benchmarkId: nextBenchmarkId++
+          benchmarkId: nextBenchmarkId++,
         }));
 
         await Benchmark.bulkCreate(benchmarksWithIds, { transaction });
       }
     }
 
+    // ✅ Step 3: Update Staff Assignments
+    if (staffLookup && Array.isArray(staffLookup)) {
+      // Delete old staff assignments for this unit
+      await StaffLookup.destroy({ where: { unitId: unit.id }, transaction });
+
+      const validRoles = ["Leader", "Assessor"];
+      const staffEntries = staffLookup
+        .filter((entry) => validRoles.includes(entry.roleType))
+        .map((entry) => ({
+          unitId: unit.id,
+          staffId: entry.staffId,
+          roleType: entry.roleType,
+        }));
+
+      if (staffEntries.length > 0) {
+        await StaffLookup.bulkCreate(staffEntries, { transaction });
+      }
+    }
+
     await transaction.commit();
 
-    // Fetch updated unit with benchmarks
+    // ✅ Step 4: Fetch the updated unit with associations
     const updatedUnit = await Unit.findByPk(id, {
-      include: [{
-        model: Benchmark,
-        as: "benchmarks",
-        attributes: ['id', 'benchmarkId', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
-      }]
+      include: [
+        {
+          model: Benchmark,
+          as: "benchmarks",
+          attributes: [
+            "id",
+            "benchmarkId",
+            "benchmarkType",
+            "benchmarkRef",
+            "benchmarkDescription",
+          ],
+        },
+        {
+          model: db.Staff,
+          as: "staffMembers",
+          through: { attributes: ["roleType"] },
+          attributes: ["id", "firstName", "lastName", "emailAddress"],
+        },
+      ],
     });
 
     res.status(200).json(updatedUnit);
-
   } catch (error) {
-    await transaction.rollback();
+    if (!transaction.finished) await transaction.rollback();
     console.error("Error updating unit:", error);
-    res.status(500).json({ 
-      message: "Error updating unit", 
+    res.status(500).json({
+      message: "Error updating unit",
       error: error.message,
-      details: error.errors?.map(err => err.message)
+      details: error.errors?.map((err) => err.message),
     });
   }
 };
+
 
 // DELETE a unit (benchmarks will be deleted automatically due to CASCADE)
 exports.deleteUnit = async (req, res) => {
