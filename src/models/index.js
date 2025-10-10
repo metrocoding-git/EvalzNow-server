@@ -22,6 +22,7 @@ db.Income = require("./income.model")(sequelize, Sequelize);
 db.InsertScore = require("./insertScore.model")(sequelize, Sequelize);
 db.ScoringCriteria = require("./scoringCriteria.model")(sequelize, Sequelize);
 db.Account = require("./account.model")(sequelize, Sequelize);
+db.StaffLookup = require("./staffLookUp.model")(sequelize, Sequelize);
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -252,6 +253,55 @@ db.Unit.belongsTo(db.Account, {
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
 });
+
+
+// ================== UNIT ↔ STAFF (via StaffLookup) ==================
+if (db.Unit && db.Staff && db.StaffLookup) {
+  // Unit has many StaffLookup entries
+  db.Unit.hasMany(db.StaffLookup, {
+    foreignKey: "unitId",
+    as: "staffAssignments",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  // Staff has many StaffLookup entries
+  db.Staff.hasMany(db.StaffLookup, {
+    foreignKey: "staffId",
+    as: "unitAssignments",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  // Many-to-Many between Unit ↔ Staff through StaffLookup
+  db.Unit.belongsToMany(db.Staff, {
+    through: db.StaffLookup,
+    foreignKey: "unitId",
+    otherKey: "staffId",
+    as: "staffMembers",
+  });
+
+  db.Staff.belongsToMany(db.Unit, {
+    through: db.StaffLookup,
+    foreignKey: "staffId",
+    otherKey: "unitId",
+    as: "units",
+  });
+
+  // StaffLookup belongs to Unit and Staff
+  db.StaffLookup.belongsTo(db.Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+  db.StaffLookup.belongsTo(db.Staff, {
+    foreignKey: "staffId",
+    as: "staff",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+}
 
 
 

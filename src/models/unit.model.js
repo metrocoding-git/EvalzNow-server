@@ -143,6 +143,21 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
+
+
+    Unit.hasMany(models.StaffLookup, {
+      foreignKey: "unitId",
+      as: "staffAssignments",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Unit.belongsToMany(models.Staff, {
+      through: models.StaffLookup,
+      foreignKey: "unitId",
+      otherKey: "staffId",
+      as: "staffMembers",
+    });
   };
 
   

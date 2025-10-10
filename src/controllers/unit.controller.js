@@ -3,6 +3,7 @@ const Unit = db.Unit;
 const Benchmark = db.Benchmark;
 const Account = db.Account;
 const Client = db.Client;
+const StaffLookup = db.StaffLookup; 
 
 // GET all units with their benchmarks
 exports.getUnits = async (req, res) => {
@@ -38,6 +39,16 @@ exports.getUnits = async (req, res) => {
         as: "benchmarks",
         attributes: ['id', 'benchmarkId', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription'],
         required: false // Use left join instead of inner join
+      },
+      {
+        model: db.Staff,
+        as: "staffMembers", // alias you define in Unit.associate
+        through: { 
+          model: StaffLookup, 
+          attributes: ["roleType"] // include Leader/Assessor info
+        },
+        attributes: ["id", "firstName", "lastName", "emailAddress"],
+        required: false
       }],
       order: [
         ['id', 'ASC'],
@@ -65,7 +76,20 @@ exports.getUnitById = async (req, res) => {
         model: Benchmark,
         as: "benchmarks",
         attributes: ['id', 'benchmarkId', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
-      }]
+      },
+      {
+        model: StaffLookup,
+        as: "staffAssignments",
+        attributes: ['roleType'],
+        include: [
+          {
+            model: db.Staff,
+            as: "staff",
+            attributes: ["id", "firstName", "lastName", "emailAddress"]
+          }
+        ]
+      }
+    ]
     });
 
     if (!unit) {
@@ -79,20 +103,19 @@ exports.getUnitById = async (req, res) => {
   }
 };
 
-// CREATE a new unit with optional benchmarks
+// CREATE a new unit with optional benchmarks and staff lookup
 exports.createUnit = async (req, res) => {
   const transaction = await db.sequelize.transaction();
   try {
-    const { benchmarks, clientId, ...unitData } = req.body;
+    const { benchmarks, staffLookup, clientId, ...unitData } = req.body;
+    // `staffLookup` = array of { staffId, roleType } objects
+    // Example: [{ staffId: 1, roleType: "Leader" }, { staffId: 1, roleType: "Assessor" }, { staffId: 2, roleType: "Assessor" }]
 
     // Step 1: Create the unit
-    const newUnit = await Unit.create(
-      {...unitData, clientId},
-      { transaction });
+    const newUnit = await Unit.create({ ...unitData, clientId }, { transaction });
 
     // Step 2: Handle benchmarks if provided
     if (benchmarks && benchmarks.length > 0) {
-      // Get max benchmarkId for this unit
       const result = await Benchmark.findOne({
         where: { unitId: newUnit.id },
         attributes: [[db.sequelize.fn('MAX', db.sequelize.col('benchmarkId')), 'maxBenchmarkId']],
@@ -105,21 +128,47 @@ exports.createUnit = async (req, res) => {
       const benchmarksWithIds = benchmarks.map(b => ({
         ...b,
         unitId: newUnit.id,
-        benchmarkId: nextBenchmarkId++  // auto-increment per benchmark
+        benchmarkId: nextBenchmarkId++
       }));
 
       await Benchmark.bulkCreate(benchmarksWithIds, { transaction });
     }
 
+    
+    // ✅ Step 3: Handle StaffLookup entries (Leaders & Assessors)
+    if (staffLookup && Array.isArray(staffLookup) && staffLookup.length > 0) {
+      const validRoles = ["Leader", "Assessor"];
+      const staffEntries = staffLookup
+        .filter(entry => validRoles.includes(entry.roleType))
+        .map(entry => ({
+          unitId: newUnit.id,
+          staffId: entry.staffId,
+          roleType: entry.roleType
+        }));
+
+      if (staffEntries.length > 0) {
+        await db.StaffLookup.bulkCreate(staffEntries, { transaction });
+      }
+    }
+
+
     await transaction.commit();
 
-    // Fetch unit with benchmarks
+    // Step 4: Fetch created unit with benchmarks + staff
     const createdUnit = await Unit.findByPk(newUnit.id, {
-      include: [{
-        model: Benchmark,
-        as: "benchmarks",
-        attributes: ['id', 'benchmarkId', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
-      }]
+      include: [
+        {
+          model: Benchmark,
+          as: "benchmarks",
+          attributes: ['id', 'benchmarkId', 'benchmarkType', 'benchmarkRef', 'benchmarkDescription']
+        },
+        {
+          model: db.Staff,
+          as: "staffMembers",
+          through: { attributes: ["roleType"] }, // include Leader/Assessor info
+          attributes: ["id", "firstName", "lastName", "emailAddress"]
+        }
+      ]
     });
 
     res.status(201).json(createdUnit);
@@ -127,13 +176,14 @@ exports.createUnit = async (req, res) => {
   } catch (error) {
     if (!transaction.finished) await transaction.rollback();
     console.error("Error creating unit:", error);
-    res.status(500).json({ 
-      message: "Error creating unit", 
+    res.status(500).json({
+      message: "Error creating unit",
       error: error.message,
       details: error.errors?.map(err => err.message)
     });
   }
 };
+
 
 // UPDATE a unit and its benchmarks
 // UPDATE a unit and its benchmarks (bulk)
