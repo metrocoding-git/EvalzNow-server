@@ -259,6 +259,38 @@ exports.updateInsertScore = async (req, res) => {
       req.body.assessmentBlockId = newBlock.id;
     }
 
+    const unit = await Unit.findByPk(existingScore.unitId, { transaction: t });
+    if (unit && unit.environment === "Workforce") {
+      const maxAllowed = unit.scoringSystem === "3-Point" ? 3 : 5;
+      let total = 0;
+      let filledCount = 0;
+
+      // Use the new values from req.body if present, otherwise fall back to existing ones
+      for (let i = 1; i <= 20; i++) {
+        const mcKey = `mc${i}`;
+        const ccKey = `cc${i}`;
+
+        const mcVal = req.body.hasOwnProperty(mcKey)
+          ? req.body[mcKey]
+          : existingScore[mcKey];
+        const ccVal = req.body.hasOwnProperty(ccKey)
+          ? req.body[ccKey]
+          : existingScore[ccKey];
+
+        if (mcVal !== null && mcVal !== undefined && mcVal !== "") {
+          total += parseFloat(mcVal);
+          filledCount++;
+        }
+        if (ccVal !== null && ccVal !== undefined && ccVal !== "") {
+          total += parseFloat(ccVal);
+          filledCount++;
+        }
+      }
+
+      req.body.attainedScore = total;
+      req.body.maxScore = filledCount * maxAllowed;
+    }
+
     
 
     // Step 3: update the record
@@ -642,16 +674,16 @@ exports.getScoresByUnitGrouped = async (req, res) => {
 
 
 
+
 exports.getCriticalDateRangeByPpId = async (req, res) => {
   try {
     const { ppId, unitId, candidateId } = req.params;
     const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-    const fallbackDate = "1999-12-31";
 
     const data = await InsertScore.findAll({
       where: { unitId, candidate_id: candidateId },
       attributes: ["ppId", "criticalRefDate"],
-      order: [["ppId", "ASC"]],
+      order: [["ppId", "ASC"], ["criticalRefDate", "DESC"]],
     });
 
     const positives = data.filter(d => d.ppId > 0).sort((a, b) => a.ppId - b.ppId);
@@ -666,10 +698,10 @@ exports.getCriticalDateRangeByPpId = async (req, res) => {
 
       let startDate;
       if (id === 1) {
-        startDate = fallbackDate;
+        startDate = today;
       } else {
         const prev = positives.filter(d => d.ppId < id).pop();
-        startDate = prev ? prev.criticalRefDate : fallbackDate;
+        startDate = prev ? prev.criticalRefDate : today;
       }
 
       result = {
@@ -683,10 +715,10 @@ exports.getCriticalDateRangeByPpId = async (req, res) => {
 
       let startDate;
       if (id === -1) {
-        startDate = fallbackDate;
+        startDate = today;
       } else {
         const prevNeg = negatives.filter(d => d.ppId > id).shift(); // closer to zero (e.g., -2’s prev is -1)
-        startDate = prevNeg ? prevNeg.criticalRefDate : fallbackDate;
+        startDate = prevNeg ? prevNeg.criticalRefDate : today;
       }
 
       result = {
