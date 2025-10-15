@@ -678,7 +678,7 @@ exports.getScoresByUnitGrouped = async (req, res) => {
 exports.getCriticalDateRangeByPpId = async (req, res) => {
   try {
     const { ppId, unitId, candidateId } = req.params;
-    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    const today = "2000-12-31"; // YYYY-MM-DD
 
     const data = await InsertScore.findAll({
       where: { unitId, candidate_id: candidateId },
