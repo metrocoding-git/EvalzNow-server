@@ -12,8 +12,7 @@ const AssessmentBlockManager = db.AssessmentBlockManager;
 const Unit = db.Unit;
 const Candidate = db.Candidate;
 
-
-// ✅ NEW CONTROLLER: Sequential, row-wise data summary
+// ✅ UPDATED CONTROLLER: Separate positive and negative ppIds with independent serial numbers
 exports.getInsertScoreSequential = async (req, res) => {
   try {
     const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
@@ -22,7 +21,7 @@ exports.getInsertScoreSequential = async (req, res) => {
       return res.status(400).json({ message: "unitId and candidate_id are required" });
     }
 
-    // Build dynamic filter
+    // Dynamic WHERE clause
     const where = { unitId, candidate_id };
 
     if (ppIdFrom !== undefined && ppIdTo !== undefined) {
@@ -39,42 +38,48 @@ exports.getInsertScoreSequential = async (req, res) => {
       if (criticalRefDateTo) where.criticalRefDate[Sequelize.Op.lte] = new Date(criticalRefDateTo);
     }
 
-    // Fetch all matching records ordered by ppId (or id)
+    // Fetch all matching records ordered by ppId
     const rows = await InsertScore.findAll({
       where,
-      order: [["id", "ASC"]],
+      order: [["ppId", "ASC"]],
       raw: true,
     });
 
-    // Transform each row
-    const transformed = rows.map((row, index) => {
-      const mcValues = {};
-      const ccValues = {};
+    // Separate positive and negative ppId rows
+    const positiveRows = rows.filter(r => r.ppId > 0);
+    const negativeRows = rows.filter(r => r.ppId < 0);
 
-      // Loop through mc1 - mc20 and cc1 - cc20, replace nulls with 0
-      for (let i = 1; i <= 20; i++) {
-        mcValues[`mc${i}`] = row[`mc${i}`] != null ? Number(row[`mc${i}`]) : 0;
-        ccValues[`cc${i}`] = row[`cc${i}`] != null ? Number(row[`cc${i}`]) : 0;
-      }
+    // Transform rows with separate serial numbering
+    const transformRows = (rows) =>
+      rows.map((row, index) => {
+        const mcValues = {};
+        const ccValues = {};
 
-      return {
-        serialNo: index + 1,   // sequential numbering
-        // id: row.id,
-        ppId: row.ppId,
-        // candidate_id: row.candidate_id,
-        // unitId: row.unitId,
-        // assessmentBlockId: row.assessmentBlockId,
-        // criticalRefDate: row.criticalRefDate,
-        mcValues,
-        ccValues,
-        attainedScore: row.attainedScore,
-        maxScore: row.maxScore,
-      };
-    });
+        for (let i = 1; i <= 20; i++) {
+          mcValues[`mc${i}`] = row[`mc${i}`] != null ? Number(row[`mc${i}`]) : 0;
+          ccValues[`cc${i}`] = row[`cc${i}`] != null ? Number(row[`cc${i}`]) : 0;
+        }
 
+        return {
+          serialNo: index + 1,
+          ppId: row.ppId,
+          mcValues,
+          ccValues,
+          attainedScore: row.attainedScore,
+          maxScore: row.maxScore,
+        };
+      });
+
+    const transformedPositive = transformRows(positiveRows);
+    const transformedNegative = transformRows(negativeRows);
+
+    // Combine into final structured response
     res.status(200).json({
-      total: transformed.length,
-      data: transformed,
+      total: rows.length,
+      totalPositive: transformedPositive.length,
+      totalNegative: transformedNegative.length,
+      positiveData: transformedPositive,
+      negativeData: transformedNegative,
     });
 
   } catch (error) {
@@ -85,6 +90,8 @@ exports.getInsertScoreSequential = async (req, res) => {
     });
   }
 };
+
+
 
 // GET Insert Score summary for chart grouped by ppId
 exports.getInsertScoreSummary = async (req, res) => {
