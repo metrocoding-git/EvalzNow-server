@@ -3,7 +3,7 @@ const router = express.Router();
 const tabulationController = require('../controllers/tabulationTable.controller');
 
 
-router.get('/:unitId/:candidateId', tabulationController.getUnitAndCandidateSummary);
+// router.get('/:unitId/:candidateId', tabulationController.getUnitAndCandidateSummary);
 router.get('/ratio', tabulationController.getPpCompetencyRatios);
 
 
