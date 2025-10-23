@@ -160,7 +160,7 @@ exports.getInsertScoreSummary = async (req, res) => {
   
 
 
-  // GET Insert Score summary for Attained Score vs Insert Score Row Counter 
+ // GET Insert Score summary for Attained Score vs Insert Score Row Counter 
 exports.getAttainedScoreSummary = async (req, res) => {
   try {
     const {
@@ -198,7 +198,7 @@ exports.getAttainedScoreSummary = async (req, res) => {
         where.criticalRefDate[Sequelize.Op.lte] = new Date(criticalRefDateTo);
     }
 
-    // 🔹 Fetch all rows sorted by ppId (or createdAt if you prefer)
+    // 🔹 Fetch all rows sorted by ppId
     const rows = await InsertScore.findAll({
       where,
       attributes: ["ppId", "attainedScore", "maxScore"],
@@ -206,17 +206,33 @@ exports.getAttainedScoreSummary = async (req, res) => {
       raw: true,
     });
 
-    // 🔹 Map rows sequentially 1, 2, 3, ... like row counters
-    const result = rows.map((row, index) => ({
-      serialNo: index + 1,
+    // 🔹 Separate into positive and negative ppIds
+    const positiveRows = rows.filter(r => r.ppId >= 0);
+    const negativeRows = rows.filter(r => r.ppId < 0);
+
+    // 🔹 Assign serial numbers starting from 1 in each group
+    const positiveResult = positiveRows.map((row, i) => ({
+      serialNo: i + 1,
       ppId: row.ppId,
       attainedScore: Number(row.attainedScore ?? 0),
       maxScore: Number(row.maxScore ?? 0),
     }));
 
+    const negativeResult = negativeRows.map((row, i) => ({
+      serialNo: i + 1,
+      ppId: row.ppId,
+      attainedScore: Number(row.attainedScore ?? 0),
+      maxScore: Number(row.maxScore ?? 0),
+    }));
+
+    // 🔹 Merge both results for frontend compatibility
+    const result = [...negativeResult, ...positiveResult];
+
     return res.status(200).json({
       total: result.length,
-      data: result,
+      positiveData: positiveResult,
+      negativeData: negativeResult,
+      data: result, // full combined list if needed
     });
 
   } catch (error) {
@@ -227,6 +243,7 @@ exports.getAttainedScoreSummary = async (req, res) => {
     });
   }
 };
+
 
 
   // GET Insert Score summary for Max Score vs Insert Score Row Counter
