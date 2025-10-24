@@ -2337,7 +2337,7 @@ function calculateStdErrors(results, stdDevRow) {
 
 exports.getPpCompetencyRatios = async (req, res) => {
   try {
-    const { unitId, candidate_id } = req.query;
+    const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
 
     if (!unitId || !candidate_id) {
       return res.status(400).json({ message: "unitId and candidate_id are required" });
@@ -2361,13 +2361,34 @@ exports.getPpCompetencyRatios = async (req, res) => {
     const unitStart = new Date(unitStartDate);
     const candidateStart = new Date(candidate.startDate);
 
+    // 🔹 Build base where clause for filtering
+    const whereClause = { unitId, candidate_id };
+
+    // 🔹 Add ppId range filters (if provided)
+    if (ppIdFrom && ppIdTo) {
+      whereClause.ppId = { [Op.between]: [Number(ppIdFrom), Number(ppIdTo)] };
+    } else if (ppIdFrom) {
+      whereClause.ppId = { [Op.gte]: Number(ppIdFrom) };
+    } else if (ppIdTo) {
+      whereClause.ppId = { [Op.lte]: Number(ppIdTo) };
+    }
+
+    // 🔹 Add criticalRefDate range filters (if provided)
+    if (criticalRefDateFrom && criticalRefDateTo) {
+      whereClause.criticalRefDate = { [Op.between]: [new Date(criticalRefDateFrom), new Date(criticalRefDateTo)] };
+    } else if (criticalRefDateFrom) {
+      whereClause.criticalRefDate = { [Op.gte]: new Date(criticalRefDateFrom) };
+    } else if (criticalRefDateTo) {
+      whereClause.criticalRefDate = { [Op.lte]: new Date(criticalRefDateTo) };
+    }
+
     const aggregates = await InsertScore.findAll({
       attributes: [
         "ppId",
         [Sequelize.fn("SUM", Sequelize.col("durationHrs")), "totalDuration"],
         [Sequelize.fn("MAX", Sequelize.col("criticalRefDate")), "latestCriticalRefDate"],
       ],
-      where: { unitId, candidate_id },
+      where: whereClause,
       group: ["ppId"],
       raw: true,
     });
@@ -2380,8 +2401,11 @@ exports.getPpCompetencyRatios = async (req, res) => {
         const totalDuration = Number(agg.totalDuration) || 0;
         const criticalRefDate = agg.latestCriticalRefDate ? new Date(agg.latestCriticalRefDate) : null;
 
+        // 🔹 Use same filters per ppId
+        const scoreWhere = { ...whereClause, ppId };
+
         const scores = await InsertScore.findAll({
-          where: { ppId, unitId, candidate_id },
+          where: scoreWhere,
           attributes: [
             "competency",
             [Sequelize.fn("SUM", Sequelize.col("attainedScore")), "sumAttained"],
@@ -2575,6 +2599,37 @@ exports.getPpCompetencyRatios = async (req, res) => {
 
     // Sort results by ppId ascending to maintain order
     results.sort((a, b) => a.ppId - b.ppId);
+
+    // --- Separate and sort ppIds for proper cumulative calculation ---
+const positiveResults = results
+.filter((r) => r.ppId > 0)
+.sort((a, b) => a.ppId - b.ppId); // ascending
+
+const negativeResults = results
+.filter((r) => r.ppId < 0)
+.sort((a, b) => b.ppId - a.ppId); // descending
+
+// Compute cumulative totalDuration separately
+let cumulativePositive = 0;
+let cumulativeNegative = 0;
+
+positiveResults.forEach((row) => {
+cumulativePositive += row.totalDuration || 0;
+row.cumulativeDuration = +cumulativePositive.toFixed(3);
+});
+
+negativeResults.forEach((row) => {
+cumulativeNegative += row.totalDuration || 0;
+row.cumulativeDuration = +cumulativeNegative.toFixed(3);
+});
+
+// Merge them back together and sort again by ppId ascending for final output
+const mergedResults = [...negativeResults, ...positiveResults].sort((a, b) => a.ppId - b.ppId);
+
+// Replace original results array
+results.length = 0;
+results.push(...mergedResults);
+
 
     // --- Compute deltaRRN, deltaPRN, deltaARN ---
     let prevRRN = 0;
