@@ -5,6 +5,7 @@ const tabulationController = require('../controllers/tabulationTable.controller'
 
 // router.get('/:unitId/:candidateId', tabulationController.getUnitAndCandidateSummary);
 router.get('/ratio', tabulationController.getPpCompetencyRatios);
+router.get('/proficiency', tabulationController.getPpCompetencyRatioMultipleCandidate);
 
 
 module.exports = router;
