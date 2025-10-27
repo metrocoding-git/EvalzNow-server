@@ -2419,6 +2419,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
           ppId,
           criticalRefDate,
           totalDuration,
+          unitType,
           XLR: null,
           XRR: null,
           XSR: null,
@@ -2687,3 +2688,416 @@ results.push(...mergedResults);
   }
 };
   
+
+exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
+  try {
+    const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+
+    // 🔹 Parse candidate_id - supports both single and comma-separated multiple IDs
+    const candidateIds = candidate_id 
+      ? candidate_id.split(',').map(id => id.trim()).filter(Boolean)
+      : [];
+
+    if (!unitId || !candidateIds.length) {
+      return res.status(400).json({ message: "unitId and candidate_id are required" });
+    }
+
+    // 🔹 Fetch unit once (same for all candidates)
+    const unit = await Unit.findByPk(unitId, {
+      attributes: ["unitStartDate", "unitType", "signatureProfile"],
+      raw: true,
+    });
+
+    if (!unit) {
+      return res.status(404).json({ message: "Unit not found" });
+    }
+
+    const { unitStartDate, unitType, signatureProfile } = unit;
+    const unitStart = new Date(unitStartDate);
+
+    // 🔹 Fetch all candidates at once
+    const candidates = await Candidate.findAll({
+      where: { id: { [Op.in]: candidateIds } },
+      attributes: ["id", "startDate"],
+      raw: true,
+    });
+
+    if (candidates.length !== candidateIds.length) {
+      return res.status(404).json({ 
+        message: "One or more candidates not found",
+        found: candidates.map(c => c.id),
+        requested: candidateIds
+      });
+    }
+
+    // 🔹 Create lookup map for candidate start dates
+    const candidateStartDates = candidates.reduce((acc, c) => {
+      acc[c.id] = new Date(c.startDate);
+      return acc;
+    }, {});
+
+    // 🔹 Process each candidate
+    const allResults = {};
+
+    for (const candidateId of candidateIds) {
+      const candidateStart = candidateStartDates[candidateId];
+
+      // 🔹 Build base where clause for this candidate
+      const whereClause = { unitId, candidate_id: candidateId };
+
+      // 🔹 Add ppId range filters (if provided)
+      if (ppIdFrom && ppIdTo) {
+        whereClause.ppId = { [Op.between]: [Number(ppIdFrom), Number(ppIdTo)] };
+      } else if (ppIdFrom) {
+        whereClause.ppId = { [Op.gte]: Number(ppIdFrom) };
+      } else if (ppIdTo) {
+        whereClause.ppId = { [Op.lte]: Number(ppIdTo) };
+      }
+
+      // 🔹 Add criticalRefDate range filters (if provided)
+      if (criticalRefDateFrom && criticalRefDateTo) {
+        whereClause.criticalRefDate = { [Op.between]: [new Date(criticalRefDateFrom), new Date(criticalRefDateTo)] };
+      } else if (criticalRefDateFrom) {
+        whereClause.criticalRefDate = { [Op.gte]: new Date(criticalRefDateFrom) };
+      } else if (criticalRefDateTo) {
+        whereClause.criticalRefDate = { [Op.lte]: new Date(criticalRefDateTo) };
+      }
+
+      const aggregates = await InsertScore.findAll({
+        attributes: [
+          "ppId",
+          [Sequelize.fn("SUM", Sequelize.col("durationHrs")), "totalDuration"],
+          [Sequelize.fn("MAX", Sequelize.col("criticalRefDate")), "latestCriticalRefDate"],
+        ],
+        where: whereClause,
+        group: ["ppId"],
+        raw: true,
+      });
+
+      if (!aggregates.length) {
+        allResults[candidateId] = [];
+        continue;
+      }
+
+      const results = await Promise.all(
+        aggregates.map(async (agg) => {
+          const ppId = agg.ppId;
+          const totalDuration = Number(agg.totalDuration) || 0;
+          const criticalRefDate = agg.latestCriticalRefDate ? new Date(agg.latestCriticalRefDate) : null;
+
+          // 🔹 Use same filters per ppId
+          const scoreWhere = { ...whereClause, ppId };
+
+          const scores = await InsertScore.findAll({
+            where: scoreWhere,
+            attributes: [
+              "competency",
+              [Sequelize.fn("SUM", Sequelize.col("attainedScore")), "sumAttained"],
+              [Sequelize.fn("SUM", Sequelize.col("maxScore")), "sumMax"],
+            ],
+            group: ["competency"],
+            raw: true,
+          });
+
+          const out = {
+            ppId,
+            criticalRefDate,
+            totalDuration,
+            XLR: null,
+            XRR: null,
+            XSR: null,
+            XWR: null,
+            XTR: null,
+            XPR: null,
+            XRVSR: null,
+            XPVSR: null,
+            XAVSR: null,
+            ARS: null, ALS: null, ASP: null, AWS: null,
+            MRS: null, MLS: null, MSS: null, MWS: null,
+            ATS: null, APS: null, MTS: null, MPS: null,
+            ARVS: null, APVS: null, AAVS: null,
+            MRVS: null, MPVS: null, MAVS: null,
+            RRN: null,
+            PRN: null,
+            ARN: null,
+            XEP: null,
+            Productivity_CSD: null,
+            Productivity_USD: null,
+          };
+
+          // --- Compute competency ratios ---
+          scores.forEach((row) => {
+            const key = competencyToKey[row.competency];
+            if (!key) return;
+            const sumAttained = Number(row.sumAttained) || 0;
+            const sumMax = Number(row.sumMax) || 0;
+            out[key] = sumMax ? +(sumAttained / sumMax).toFixed(3) : null;
+
+            switch (row.competency) {
+              case "Reading": out.ARS = sumAttained; out.MRS = sumMax; break;
+              case "Listening": out.ALS = sumAttained; out.MLS = sumMax; break;
+              case "Speaking": out.ASP = sumAttained; out.MSS = sumMax; break;
+              case "Writing": out.AWS = sumAttained; out.MWS = sumMax; break;
+              case "Theory": out.ATS = sumAttained; out.MTS = sumMax; break;
+              case "Practice": out.APS = sumAttained; out.MPS = sumMax; break;
+              case "Receptive": out.ARVS = sumAttained; out.MRVS = sumMax; break;
+              case "Productive": out.APVS = sumAttained; out.MPVS = sumMax; break;
+              case "Acuity": out.AAVS = sumAttained; out.MAVS = sumMax; break;
+            }
+          });
+
+          // --- Compute productivity ---
+          if (criticalRefDate && totalDuration > 0 && ppId > 0) {
+            const diffUSD = (criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
+            const diffCSD = (criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
+            out.Productivity_USD = +((diffUSD / totalDuration).toFixed(3));
+            out.Productivity_CSD = +((diffCSD / totalDuration).toFixed(3));
+          } else {
+            out.Productivity_CSD = null;
+            out.Productivity_USD = null;
+          }
+
+          // --- Compute RRN, PRN, ARN ---
+          let rr = null,
+            pr = null,
+            ar = null;
+
+          if (unitType === "Communicative I/O") {
+            if (signatureProfile === "Case 1: Solid Balanced")
+              [rr, pr] = PerformancePointCICOCase1(out.XRR, out.XLR, out.XSR, out.XWR);
+            else if (signatureProfile === "Case 2: Rigorous Balanced")
+              [rr, pr] = PerformancePointCICOCase2(out.XRR, out.XLR, out.XSR, out.XWR);
+            else if (signatureProfile === "Case 3a: Productive-Weighted")
+              [rr, pr] = PerformancePointCICOCase3a(out.XRR, out.XLR, out.XSR, out.XWR);
+            else if (signatureProfile === "Case 3b: Receptive-Weighed")
+              [rr, pr] = PerformancePointCICOCase3b(out.XRR, out.XLR, out.XSR, out.XWR);
+          } else if (unitType === "Third Parameter" && signatureProfile === "Case 1: Solid Balanced") {
+            [rr, pr, ar] = PerformancePointTPRM(out.XRVSR, out.XPVSR, out.XAVSR);
+          } else if (unitType === "Theory & Practice") {
+            [rr, pr] = PerformancePointTPAllCases(out.XTR, out.XPR);
+          }
+
+          out.RRN = rr ? +rr.toFixed(3) : null;
+          out.PRN = pr ? +pr.toFixed(3) : null;
+          out.ARN = ar ? +ar.toFixed(3) : null;
+
+          if (ppId > 0 && (unitType === "Communicative I/O" || unitType === "Theory & Practice")) {
+            const [rrGt1, prGt1] = getGrowthTarget1(out.RRN, out.PRN, null, unitType);
+            const [rrGt2, prGt2] = getGrowthTarget2(out.RRN, out.PRN, null, unitType);
+            const [rrGt3, prGt3] = getGrowthTarget3(out.RRN, out.PRN, null, unitType);
+            const [rrGt4, prGt4] = getGrowthTarget4(out.RRN, out.PRN, null, unitType);
+            const [rrGt5, prGt5] = getGrowthTarget5(out.RRN, out.PRN, null, unitType);
+            out.RRGT1 = rrGt1;
+            out.PRGT1 = prGt1;
+            out.RRGT2 = rrGt2;
+            out.PRGT2 = prGt2;
+            out.RRGT3 = rrGt3;
+            out.PRGT3 = prGt3;
+            out.RRGT4 = rrGt4;
+            out.PRGT4 = prGt4;
+            out.RRGT5 = rrGt5;
+            out.PRGT5 = prGt5;
+          } else if (ppId > 0 && unitType === "Third Parameter") {
+            const [rrGt1, prGt1, arGt1] = getGrowthTarget1(out.RRN, out.PRN, out.ARN, unitType);
+            const [rrGt2, prGt2, arGt2] = getGrowthTarget2(out.RRN, out.PRN, out.ARN, unitType);
+            const [rrGt3, prGt3, arGt3] = getGrowthTarget3(out.RRN, out.PRN, out.ARN, unitType);
+            const [rrGt4, prGt4, arGt4] = getGrowthTarget4(out.RRN, out.PRN, out.ARN, unitType);
+            const [rrGt5, prGt5, arGt5] = getGrowthTarget5(out.RRN, out.PRN, out.ARN, unitType);
+            out.RRGT1 = rrGt1;
+            out.PRGT1 = prGt1;
+            out.ARGT1 = arGt1;
+            out.RRGT2 = rrGt2;
+            out.PRGT2 = prGt2;
+            out.ARGT2 = arGt2;
+            out.RRGT3 = rrGt3;
+            out.PRGT3 = prGt3;
+            out.ARGT3 = arGt3;
+            out.RRGT4 = rrGt4;
+            out.PRGT4 = prGt4;
+            out.ARGT4 = arGt4;
+            out.RRGT5 = rrGt5;
+            out.PRGT5 = prGt5;
+            out.ARGT5 = arGt5;
+          } else {
+            out.RRGT1 = null;
+            out.PRGT1 = null;
+            out.ARGT1 = null;
+            out.RRGT2 = null;
+            out.PRGT2 = null;
+            out.ARGT2 = null;
+            out.RRGT3 = null;
+            out.PRGT3 = null;
+            out.ARGT3 = null;
+            out.RRGT4 = null;
+            out.PRGT4 = null;
+            out.ARGT4 = null;
+            out.RRGT5 = null;
+            out.PRGT5 = null;
+            out.ARGT5 = null;
+          }
+
+          const rrnVal = out.RRN ?? 0;
+          const prnVal = out.PRN ?? 0;
+          const arnVal = out.ARN ?? 0;
+
+          if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+            out.XEP = calculateXEP_CIO(rrnVal, prnVal);
+          } else if (unitType === "Third Parameter") {
+            out.XEP = calculateXEP_TP(rrnVal, prnVal, arnVal);
+          }
+
+          // --- Compute XCP, XBP, MSIP using real attained/max scores ---
+          if (unitType === "Communicative I/O") {
+            out.XCP = +CalcCompositeProficiencyCIO(
+              out.ARS, out.ALS, out.ASP, out.AWS,
+              out.MRS, out.MLS, out.MSS, out.MWS
+            ).toFixed(3);
+            out.XBP = +CalcBandProficiencyCIO(out.XRR, out.XLR, out.XSR, out.XWR).toFixed(3);
+            out.MSIP = +CalcButlerIntProfCIO({
+              ARS: out.ARS, ALS: out.ALS, ASP: out.ASP, AWS: out.AWS,
+              MRS: out.MRS, MLS: out.MLS, MSS: out.MSS, MWS: out.MWS,
+            }).toFixed(3);
+          } else if (unitType === "Theory & Practice") {
+            out.XCP = +CalcCompositeProficiencyTP(out.ATS, out.APS, out.MTS, out.MPS).toFixed(3);
+            out.XBP = +CalcBandProficiencyTP(out.XTR, out.XPR).toFixed(3);
+            out.MSIP = +CalcButlerIntProfTP(out.ATS, out.APS, out.MTS, out.MPS).toFixed(3);
+          } else if (unitType === "Third Parameter") {
+            out.XCP = +CalcCompositeProficiency3P(out.ARVS, out.APVS, out.AAVS, out.MRVS, out.MPVS, out.MAVS).toFixed(3);
+            out.XBP = +CalcBandProficiency3P(out.XRVSR, out.XPVSR, out.XAVSR).toFixed(3);
+            out.MSIP = +CalcButlerIntProf3P(out.ARVS, out.APVS, out.AAVS, out.MRVS, out.MPVS, out.MAVS).toFixed(3);
+          }
+
+          // --- Compute STA/P ---
+          out.STAP = calculateSTAP(out.RRN, out.PRN, out.ARN, out.MSIP, unitType);
+
+          // --- Compute Interaction Class ---
+          out.IC = calculateInteractionClass(out.RRN, out.PRN, out.ARN, unitType, signatureProfile);
+
+          return out;
+        })
+      );
+
+      // Sort results by ppId ascending
+      results.sort((a, b) => a.ppId - b.ppId);
+
+      // --- Separate and sort ppIds for proper cumulative calculation ---
+      const positiveResults = results
+        .filter((r) => r.ppId > 0)
+        .sort((a, b) => a.ppId - b.ppId);
+
+      const negativeResults = results
+        .filter((r) => r.ppId < 0)
+        .sort((a, b) => b.ppId - a.ppId);
+
+      // Compute cumulative totalDuration separately
+      let cumulativePositive = 0;
+      let cumulativeNegative = 0;
+
+      positiveResults.forEach((row) => {
+        cumulativePositive += row.totalDuration || 0;
+        row.cumulativeDuration = +cumulativePositive.toFixed(3);
+      });
+
+      negativeResults.forEach((row) => {
+        cumulativeNegative += row.totalDuration || 0;
+        row.cumulativeDuration = +cumulativeNegative.toFixed(3);
+      });
+
+      // Merge them back together and sort again by ppId ascending for final output
+      const mergedResults = [...negativeResults, ...positiveResults].sort((a, b) => a.ppId - b.ppId);
+
+      // Replace original results array
+      results.length = 0;
+      results.push(...mergedResults);
+
+      // --- Compute deltaRRN, deltaPRN, deltaARN ---
+      let prevRRN = 0;
+      let prevPRN = 0;
+      let prevARN = 0;
+
+      results.forEach((row, index) => {
+        if (row.ppId > 0) {
+          const currRRN = row.RRN ?? 0;
+          const currPRN = row.PRN ?? 0;
+          const currARN = row.ARN ?? 0;
+
+          row.deltaRRN = +(currRRN - (index === 0 ? 0 : prevRRN)).toFixed(3);
+          row.deltaPRN = +(currPRN - (index === 0 ? 0 : prevPRN)).toFixed(3);
+          row.deltaARN = +(currARN - (index === 0 ? 0 : prevARN)).toFixed(3);
+
+          // --- Calculate STAG ---
+          row.STAG = calculateSTAG(row.deltaRRN, row.deltaPRN, row.deltaARN, row.MSIP, unitType);
+
+          if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+            row.GEQ = calculateGEQ_CIO(row.deltaRRN, row.deltaPRN);
+          } else if (unitType === "Third Parameter") {
+            row.GEQ = calculateGEQ_TP(row.deltaRRN, row.deltaPRN, row.deltaARN);
+          }
+          // update previous values for next iteration
+          prevRRN = currRRN;
+          prevPRN = currPRN;
+          prevARN = currARN;
+        } else {
+          row.deltaRRN = null;
+          row.deltaPRN = null;
+          row.deltaARN = null;
+          row.STAG = null;
+          row.GEQ = null;
+        }
+      });
+
+      // --- Calculate summary rows ---
+      const average = calculateAverages(results);
+      const stdDev = calculateStdDevs(results);
+      const stdErr = stdDev ? calculateStdErrors(results, stdDev) : null;
+
+      allResults[candidateId] = {
+        results,
+        average,
+        stdDev,
+        stdErr
+      };
+    }
+
+    // 🔹 Return results - combine all candidates into single flat array
+    const combinedResults = [];
+    const combinedAverages = [];
+    const combinedStdDevs = [];
+    const combinedStdErrs = [];
+
+    for (const candidateId of candidateIds) {
+      const candidateData = allResults[candidateId];
+      combinedResults.push(...candidateData.results);
+      
+      if (candidateData.average) {
+        combinedAverages.push({ candidateId, ...candidateData.average });
+      }
+      if (candidateData.stdDev) {
+        combinedStdDevs.push({ candidateId, ...candidateData.stdDev });
+      }
+      if (candidateData.stdErr) {
+        combinedStdErrs.push({ candidateId, ...candidateData.stdErr });
+      }
+    }
+
+    // Sort combined results by candidate_id first, then ppId
+    combinedResults.sort((a, b) => {
+      // Note: results don't have candidate_id attached, so they maintain their order
+      return 0;
+    });
+
+    res.status(200).json({
+      results: combinedResults,
+      averages: combinedAverages.length > 0 ? combinedAverages : undefined,
+      stdDevs: combinedStdDevs.length > 0 ? combinedStdDevs : undefined,
+      stdErrs: combinedStdErrs.length > 0 ? combinedStdErrs : undefined
+    });
+
+  } catch (error) {
+    console.error("getPpCompetencyRatios error:", error);
+    res.status(500).json({
+      message: "Error computing PP competency ratios",
+      error: error.message,
+    });
+  }
+};
