@@ -2775,9 +2775,14 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       });
 
       if (!aggregates.length) {
-        allResults[candidateId] = [];
+        allResults[candidateId] = {
+          results: [],
+          average: null,
+          stdDev: null,
+          stdErr: null
+        };
         continue;
-      }
+      }      
 
       const results = await Promise.all(
         aggregates.map(async (agg) => {
@@ -3005,6 +3010,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
       // Merge them back together and sort again by ppId ascending for final output
       const mergedResults = [...negativeResults, ...positiveResults].sort((a, b) => a.ppId - b.ppId);
+      
 
       // Replace original results array
       results.length = 0;
