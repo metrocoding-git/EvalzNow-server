@@ -41,7 +41,7 @@ exports.getInsertScoreSequential = async (req, res) => {
     // Fetch all matching records ordered by ppId
     const rows = await InsertScore.findAll({
       where,
-      order: [["ppId", "ASC"]],
+      order: [["criticalRefDate", "ASC"]],
       raw: true,
     });
 
