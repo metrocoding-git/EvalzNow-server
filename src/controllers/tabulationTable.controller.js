@@ -2630,8 +2630,8 @@ row.cumulativeDuration = +cumulativeNegative.toFixed(3);
   if (row.criticalRefDate && row.cumulativeDuration > 0 && row.ppId > 0) {
     const diffUSD = (row.criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
     const diffCSD = (row.criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-    row.Productivity_USD = +((diffUSD / row.cumulativeDuration).toFixed(3));
-    row.Productivity_CSD = +((diffCSD / row.cumulativeDuration).toFixed(3));
+    row.Productivity_USD = (diffUSD / row.cumulativeDuration).toFixed(3);
+    row.Productivity_CSD = (diffCSD / row.cumulativeDuration).toFixed(3);
   } else {
     row.Productivity_USD = null;
     row.Productivity_CSD = null;
