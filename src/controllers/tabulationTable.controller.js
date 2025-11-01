@@ -2630,8 +2630,8 @@ row.cumulativeDuration = +cumulativeNegative.toFixed(3);
   if (row.criticalRefDate && row.cumulativeDuration > 0 && row.ppId > 0) {
     const diffUSD = (row.criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
     const diffCSD = (row.criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-    row.Productivity_USD = (diffUSD / row.cumulativeDuration).toFixed(3);
-    row.Productivity_CSD = (diffCSD / row.cumulativeDuration).toFixed(3);
+    row.Productivity_USD = (row.cumulativeDuration / diffUSD).toFixed(3);
+    row.Productivity_CSD = (row.cumulativeDuration / diffCSD).toFixed(3);
   } else {
     row.Productivity_USD = null;
     row.Productivity_CSD = null;
@@ -2870,8 +2870,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           if (criticalRefDate && totalDuration > 0 && ppId > 0) {
             const diffUSD = (criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
             const diffCSD = (criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-            out.Productivity_USD = +((diffUSD / totalDuration).toFixed(3));
-            out.Productivity_CSD = +((diffCSD / totalDuration).toFixed(3));
+            out.Productivity_USD = +(( totalDuration / diffUSD).toFixed(3));
+            out.Productivity_CSD = +(( totalDuration / diffCSD).toFixed(3));
           } else {
             out.Productivity_CSD = null;
             out.Productivity_USD = null;
