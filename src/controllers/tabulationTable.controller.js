@@ -358,6 +358,399 @@ function FindRoots(a, b, c, d) {
   return roots;
 }
 
+
+function CalcGTSpecialCases(rr, pr) {
+  let gt = [];
+  let rrGt1 = 0.0;
+  let rrGt2 = 0.0;
+  let rrGt3 = 0.0;
+  let rrGt4 = 0.0;
+  let rrGt5 = 0.0;
+  let prGt1 = 0.0;
+  let prGt2 = 0.0;
+  let prGt3 = 0.0;
+  let prGt4 = 0.0;
+  let prGt5 = 0.0;
+
+  if (pr == 1 && rr == 0) {
+    rrGt1 = null;
+    prGt1 = null;
+
+    gt.push(rrGt1);
+    gt.push(prGt1);
+
+    rrGt2 = 0.4142;
+    prGt2 = 1.0;
+
+    gt.push(rrGt2);
+    gt.push(prGt2);
+
+    rrGt3 = 0.6682;
+    prGt3 = 1.0;
+
+    gt.push(rrGt3);
+    gt.push(prGt3);
+
+    rrGt4 = 1.0;
+    prGt4 = 1.0;
+
+    gt.push(rrGt4);
+    gt.push(prGt4);
+
+    rrGt5 = 1.0;
+    prGt5 = 1.0;
+
+    gt.push(rrGt5);
+    gt.push(prGt5);
+
+    return gt;
+  } else if (pr == 0 && rr == 1) {
+    rrGt1 = null;
+    prGt1 = null;
+
+    gt.push(rrGt1);
+    gt.push(prGt1);
+
+    rrGt2 = 1.0;
+    prGt2 = 0.4142;
+
+    gt.push(rrGt2);
+    gt.push(prGt2);
+
+    rrGt3 = 1.0;
+    prGt3 = 0.6682;
+
+    gt.push(rrGt3);
+    gt.push(prGt3);
+
+    rrGt4 = 1.0;
+    prGt4 = 1.0;
+
+    gt.push(rrGt4);
+    gt.push(prGt4);
+
+    rrGt5 = 1.0;
+    prGt5 = 1.0;
+
+    gt.push(rrGt5);
+    gt.push(prGt5);
+
+    return gt;
+  } else if ((pr == 0 && rr == 0) || (pr == 1 && rr == 1)) {
+    rrGt1 = null;
+    prGt1 = null;
+    rrGt2 = null;
+    prGt2 = null;
+    rrGt3 = null;
+    prGt3 = null;
+    rrGt4 = null;
+    prGt4 = null;
+    rrGt5 = null;
+    prGt5 = null;
+
+    return gt;
+  }
+
+  return gt;
+}
+
+function CalcGTSpecialCasesTM(rr, pr, ar) {
+  let gt = [];
+  let rrGt1 = 0;
+  let prGt1 = 0;
+  let arGt1 = 0;
+  let rrGt2 = 0;
+  let prGt2 = 0;
+  let arGt2 = 0;
+  let rrGt3 = 0;
+  let prGt3 = 0;
+  let arGt3 = 0;
+  let rrGt4 = 0;
+  let prGt4 = 0;
+  let arGt4 = 0;
+  let rrGt5 = 0;
+  let prGt5 = 0;
+  let arGt5 = 0;
+
+  if (rr == 0 && pr == 1 && ar == 0) {
+    rrGt1 = null;
+    prGt1 = null;
+    arGt1 = null;
+
+    gt.push(rrGt1);
+    gt.push(prGt1);
+    gt.push(arGt1);
+
+    rrGt2 = 0.4142;
+    prGt2 = 1.0;
+    arGt2 = 0.0;
+
+    gt.push(rrGt2);
+    gt.push(prGt2);
+    gt.push(arGt2);
+
+    rrGt3 = 0.6682;
+    prGt3 = 1.0;
+    arGt3 = 0.0;
+
+    gt.push(rrGt3);
+    gt.push(prGt3);
+    gt.push(arGt3);
+
+    rrGt4 = 1.0;
+    prGt4 = 1.0;
+    arGt4 = 0.0;
+
+    gt.push(rrGt4);
+    gt.push(prGt4);
+    gt.push(arGt4);
+
+    rrGt5 = 1.0;
+    prGt5 = 1.0;
+    arGt5 = 0.5;
+
+    gt.push(rrGt5);
+    gt.push(prGt5);
+    gt.push(arGt5);
+
+    return gt;
+  } else if (rr == 0 && pr == 1 && ar == 1) {
+    rrGt1 = null;
+    prGt1 = null;
+    arGt1 = null;
+
+    gt.push(rrGt1);
+    gt.push(prGt1);
+    gt.push(arGt1);
+
+    rrGt2 = 0.4142;
+    prGt2 = 1.0;
+    arGt2 = 1.0;
+
+    gt.push(rrGt2);
+    gt.push(prGt2);
+    gt.push(arGt2);
+
+    rrGt3 = 0.6682;
+    prGt3 = 1.0;
+    arGt3 = 1.0;
+
+    gt.push(rrGt3);
+    gt.push(prGt3);
+    gt.push(arGt3);
+
+    rrGt4 = 1.0;
+    prGt4 = 1.0;
+    arGt4 = 1.0;
+
+    gt.push(rrGt4);
+    gt.push(prGt4);
+    gt.push(arGt4);
+
+    rrGt5 = 1.0;
+    prGt5 = 1.0;
+    arGt5 = 1.0;
+
+    gt.push(rrGt5);
+    gt.push(prGt5);
+    gt.push(arGt5);
+
+    return gt;
+  } else if (rr == 1 && pr == 0 && ar == 0) {
+    rrGt1 = null;
+    prGt1 = null;
+    arGt1 = null;
+
+    gt.push(rrGt1);
+    gt.push(prGt1);
+    gt.push(arGt1);
+
+    rrGt2 = 1.0;
+    prGt2 = 0.4142;
+    arGt2 = 0.0;
+
+    gt.push(rrGt2);
+    gt.push(prGt2);
+    gt.push(arGt2);
+
+    rrGt3 = 1.0;
+    prGt3 = 0.6682;
+    arGt3 = 0.0;
+
+    gt.push(rrGt3);
+    gt.push(prGt3);
+    gt.push(arGt3);
+
+    rrGt4 = 1.0;
+    prGt4 = 1.0;
+    arGt4 = 0.0;
+
+    gt.push(rrGt4);
+    gt.push(prGt4);
+    gt.push(arGt4);
+
+    rrGt5 = 1.0;
+    prGt5 = 1.0;
+    arGt5 = 0.5;
+
+    gt.push(rrGt5);
+    gt.push(prGt5);
+    gt.push(arGt5);
+
+    return gt;
+  } else if (rr == 1 && pr == 0 && ar == 1) {
+    rrGt1 = null;
+    prGt1 = null;
+    arGt1 = null;
+
+    gt.push(rrGt1);
+    gt.push(prGt1);
+    gt.push(arGt1);
+
+    rrGt2 = 1.0;
+    prGt2 = 0.4142;
+    arGt2 = 1.0;
+
+    gt.push(rrGt2);
+    gt.push(prGt2);
+    gt.push(arGt2);
+
+    rrGt3 = 1.0;
+    prGt3 = 0.6682;
+    arGt3 = 1.0;
+
+    gt.push(rrGt3);
+    gt.push(prGt3);
+    gt.push(arGt3);
+
+    rrGt4 = 1.0;
+    prGt4 = 1.0;
+    arGt4 = 1.0;
+
+    gt.push(rrGt4);
+    gt.push(prGt4);
+    gt.push(arGt4);
+
+    rrGt5 = 1.0;
+    prGt5 = 1.0;
+    arGt5 = 1.0;
+
+    gt.push(rrGt4);
+    gt.push(prGt4);
+    gt.push(arGt4);
+
+    return gt;
+  } else if (rr == 0 && pr == 0 && ar == 1) {
+    rrGt1 = null;
+    prGt1 = null;
+    arGt1 = null;
+
+    gt.push(rrGt1);
+    gt.push(prGt1);
+    gt.push(arGt1);
+
+    rrGt2 = 0.25;
+    prGt2 = 0.25;
+    arGt2 = 1.0;
+
+    gt.push(rrGt2);
+    gt.push(prGt2);
+    gt.push(arGt2);
+
+    rrGt3 = 0.5;
+    prGt3 = 0.5;
+    arGt3 = 1.0;
+
+    gt.push(rrGt3);
+    gt.push(prGt3);
+    gt.push(arGt3);
+
+    rrGt4 = 0.75;
+    prGt4 = 0.75;
+    arGt4 = 1.0;
+
+    gt.push(rrGt4);
+    gt.push(prGt4);
+    gt.push(arGt4);
+
+    rrGt5 = 1.0;
+    prGt5 = 1.0;
+    arGt5 = 1.0;
+
+    gt.push(rrGt5);
+    gt.push(prGt5);
+    gt.push(arGt5);
+
+    return gt;
+  } else if (rr == 1 && pr == 1 && ar == 0) {
+    rrGt1 = null;
+    prGt1 = null;
+    arGt1 = null;
+
+    gt.push(rrGt1);
+    gt.push(prGt1);
+    gt.push(arGt1);
+
+    rrGt2 = 1.0;
+    prGt2 = 1.0;
+    arGt2 = 0.25;
+
+    gt.push(rrGt2);
+    gt.push(prGt2);
+    gt.push(arGt2);
+
+    rrGt3 = 1.0;
+    prGt3 = 1.0;
+    arGt3 = 0.5;
+
+    gt.push(rrGt3);
+    gt.push(prGt3);
+    gt.push(arGt3);
+
+    rrGt4 = 1.0;
+    prGt4 = 1.0;
+    arGt4 = 0.75;
+
+    gt.push(rrGt4);
+    gt.push(prGt4);
+    gt.push(arGt4);
+
+    rrGt5 = 1.0;
+    prGt5 = 1.0;
+    arGt5 = 1.0;
+
+    gt.push(rrGt5);
+    gt.push(prGt5);
+    gt.push(arGt5);
+
+    return gt;
+  } else if (
+    (rr == 0 && pr == 0 && ar == 0) ||
+    (rr == 1 && pr == 1 && ar == 1)
+  ) {
+    rrGt1 = null;
+    prGt1 = null;
+    arGt1 = null;
+    rrGt2 = null;
+    prGt2 = null;
+    arGt2 = null;
+    rrGt3 = null;
+    prGt3 = null;
+    arGt3 = null;
+    rrGt4 = null;
+    prGt4 = null;
+    arGt4 = null;
+    rrGt5 = null;
+    prGt5 = null;
+    arGt5 = null;
+
+    return gt;
+  }
+
+  return gt;
+}
+
+
 function CalcGT1_CIO(rr, pr, signature) {
   let gt1 = [];
 
@@ -2035,132 +2428,132 @@ function CalcGT5(rr, pr, ar) {
 }
 
 function getGrowthTarget1(rr, pr, ar, unitType) {
-  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    // existing 2D GT1 logic
-    const signature = null; // signature already used in 2D cases
-    const gt1 = CalcGT1_CIO(rr ?? 0, pr ?? 0, signature);
-    if (!gt1 || gt1.length < 2) return [null, null];
-    const [rrGt1, prGt1] = gt1.map(v => (isNaN(v) ? null : +v.toFixed(3)));
-    return [rrGt1, prGt1];
-  } 
-  else if (unitType === "Third Parameter") {
-    // 3D GT1 logic
+  if (unitType === "Third Parameter") {
+    // Check for special cases
+    const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
+    if (special && special.length > 0) {
+      const [rrGt1, prGt1, arGt1] = special.slice(0, 3).map(v => (v == null ? null : +v.toFixed(3)));
+      return [rrGt1, prGt1, arGt1];
+    }
+
+    // Standard 3D GT1 calculation
     const gt1 = CalcGT1(rr ?? 0, pr ?? 0, ar ?? 0);
     if (!gt1 || gt1.length < 3) return [null, null, null];
-    const [rrGt1, prGt1, arGt1] = gt1.map(v => (isNaN(v) ? null : +v.toFixed(3)));
-    return [rrGt1, prGt1, arGt1];
-  } 
-  else {
-    return unitType === "Third Parameter" ? [null, null, null] : [null, null];
+    return gt1.map(v => (v == null ? null : +v.toFixed(3)));
   }
+
+  // 2D units fallback
+  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+    const signature = null;
+    const gt1 = CalcGT1_CIO(rr ?? 0, pr ?? 0, signature);
+    if (!gt1 || gt1.length < 2) return [null, null];
+    return gt1.map(v => (v == null ? null : +v.toFixed(3)));
+  }
+
+  return unitType === "Third Parameter" ? [null, null, null] : [null, null];
 }
 
-
+// Repeat for getGrowthTarget2..5 with special slice indexes
 function getGrowthTarget2(rr, pr, ar, unitType) {
-  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    // existing 2D GT1 logic
-    const signature = null; // signature already used in 2D cases
-    const gt2 = CalcGT2_CIO(rr ?? 0, pr ?? 0, signature);
-    if (!gt2 || gt2.length < 2) return [null, null];
-    const [rrGt2, prGt2] = gt2.map(v =>
-      v == null || isNaN(v) ? null : +Number(v).toFixed(3)
-    );
-    return [rrGt2, prGt2];
-  } 
-  else if (unitType === "Third Parameter") {
-    // 3D GT1 logic
+  if (unitType === "Third Parameter") {
+    const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
+    if (special && special.length > 0) {
+      const [rrGt2, prGt2, arGt2] = special.slice(3, 6).map(v => (v == null ? null : +v.toFixed(3)));
+      return [rrGt2, prGt2, arGt2];
+    }
     const gt2 = CalcGT2(rr ?? 0, pr ?? 0, ar ?? 0);
     if (!gt2 || gt2.length < 3) return [null, null, null];
-    const [rrGt2, prGt2, arGt2] = gt2.map(v =>
-      v == null || isNaN(v) ? null : +Number(v).toFixed(3)
-    );
-    
-    return [rrGt2, prGt2, arGt2];
-  } 
-  else {
-    return unitType === "Third Parameter" ? [null, null, null] : [null, null];
+    return gt2.map(v => (v == null ? null : +v.toFixed(3)));
   }
+  // fallback 2D
+  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+    const signature = null;
+    const gt2 = CalcGT2_CIO(rr ?? 0, pr ?? 0, signature);
+    if (!gt2 || gt2.length < 2) return [null, null];
+    return gt2.map(v => (v == null ? null : +v.toFixed(3)));
+  }
+  return unitType === "Third Parameter" ? [null, null, null] : [null, null];
 }
 
 
 function getGrowthTarget3(rr, pr, ar, unitType) {
-  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    // existing 2D GT1 logic
-    const signature = null; // signature already used in 2D cases
-    const gt3 = CalcGT3_CIO(rr ?? 0, pr ?? 0, signature);
-    if (!gt3 || gt3.length < 2) return [null, null];
-    const [rrGt3, prGt3] = gt3.map(v =>
-      v == null || isNaN(v) ? null : +Number(v).toFixed(3)
-    );
-    return [rrGt3, prGt3];
-  } 
-  else if (unitType === "Third Parameter") {
-    // 3D GT1 logic
+  if (unitType === "Third Parameter") {
+    // Check for special cases
+    const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
+    if (special && special.length > 0) {
+      const [rrGt3, prGt3, arGt3] = special.slice(6, 9).map(v => (v == null ? null : +v.toFixed(3)));
+      return [rrGt3, prGt3, arGt3];
+    }
+
+    // Standard 3D GT1 calculation
     const gt3 = CalcGT3(rr ?? 0, pr ?? 0, ar ?? 0);
     if (!gt3 || gt3.length < 3) return [null, null, null];
-    const [rrGt3, prGt3, arGt3] = gt3.map(v =>
-      v == null || isNaN(v) ? null : +Number(v).toFixed(3)
-    );
-    
-    return [rrGt3, prGt3, arGt3];
-  } 
-  else {
-    return unitType === "Third Parameter" ? [null, null, null] : [null, null];
+    return gt3.map(v => (v == null ? null : +v.toFixed(3)));
   }
+
+  // 2D units fallback
+  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+    const signature = null;
+    const gt3 = CalcGT3_CIO(rr ?? 0, pr ?? 0, signature);
+    if (!gt3 || gt3.length < 2) return [null, null];
+    return gt3.map(v => (v == null ? null : +v.toFixed(3)));
+  }
+
+  return unitType === "Third Parameter" ? [null, null, null] : [null, null];
 }
 
 
 function getGrowthTarget4(rr, pr, ar, unitType) {
-  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    // existing 2D GT1 logic
-    const signature = null; // signature already used in 2D cases
-    const gt4 = CalcGT4_CIO(rr ?? 0, pr ?? 0, signature);
-    if (!gt4 || gt4.length < 2) return [null, null];
-    const [rrGt4, prGt4] = gt4.map(v =>
-      v == null || isNaN(v) ? null : +Number(v).toFixed(3)
-    );
-    return [rrGt4, prGt4];
-  } 
-  else if (unitType === "Third Parameter") {
-    // 3D GT1 logic
+  if (unitType === "Third Parameter") {
+    // Check for special cases
+    const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
+    if (special && special.length > 0) {
+      const [rrGt4, prGt4, arGt4] = special.slice(9, 12).map(v => (v == null ? null : +v.toFixed(3)));
+      return [rrGt4, prGt4, arGt4];
+    }
+
+    // Standard 3D GT1 calculation
     const gt4 = CalcGT4(rr ?? 0, pr ?? 0, ar ?? 0);
     if (!gt4 || gt4.length < 3) return [null, null, null];
-    const [rrGt4, prGt4, arGt4] = gt4.map(v =>
-      v == null || isNaN(v) ? null : +Number(v).toFixed(3)
-    );
-    
-    return [rrGt4, prGt4, arGt4];
-  } 
-  else {
-    return unitType === "Third Parameter" ? [null, null, null] : [null, null];
+    return gt4.map(v => (v == null ? null : +v.toFixed(3)));
   }
+
+  // 2D units fallback
+  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+    const signature = null;
+    const gt4 = CalcGT4_CIO(rr ?? 0, pr ?? 0, signature);
+    if (!gt4 || gt4.length < 2) return [null, null];
+    return gt4.map(v => (v == null ? null : +v.toFixed(3)));
+  }
+
+  return unitType === "Third Parameter" ? [null, null, null] : [null, null];
 }
 
 
 function getGrowthTarget5(rr, pr, ar, unitType) {
-  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    // existing 2D GT1 logic
-    const signature = null; // signature already used in 2D cases
-    const gt5 = CalcGT5_CIO(rr ?? 0, pr ?? 0, signature);
-    if (!gt5 || gt5.length < 2) return [null, null];
-    const [rrGt5, prGt5] = gt5.map(v =>
-      v == null || isNaN(v) ? null : +Number(v).toFixed(3)
-    );
-    return [rrGt5, prGt5];
-  } 
-  else if (unitType === "Third Parameter") {
-    // 3D GT1 logic
+  if (unitType === "Third Parameter") {
+    // Check for special cases
+    const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
+    if (special && special.length > 0) {
+      const [rrGt5, prGt5, arGt5] = special.slice(12, 15).map(v => (v == null ? null : +v.toFixed(3)));
+      return [rrGt5, prGt5, arGt5];
+    }
+
+    // Standard 3D GT1 calculation
     const gt5 = CalcGT5(rr ?? 0, pr ?? 0, ar ?? 0);
     if (!gt5 || gt5.length < 3) return [null, null, null];
-    const [rrGt5, prGt5, arGt5] = gt5.map(v =>
-      v == null || isNaN(v) ? null : +Number(v).toFixed(3)
-    );
-    
-    return [rrGt5, prGt5, arGt5];
-  } 
-  else {
-    return unitType === "Third Parameter" ? [null, null, null] : [null, null];
+    return gt5.map(v => (v == null ? null : +v.toFixed(3)));
   }
+
+  // 2D units fallback
+  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+    const signature = null;
+    const gt5 = CalcGT5_CIO(rr ?? 0, pr ?? 0, signature);
+    if (!gt5 || gt5.length < 2) return [null, null];
+    return gt5.map(v => (v == null ? null : +v.toFixed(3)));
+  }
+
+  return unitType === "Third Parameter" ? [null, null, null] : [null, null];
 }
 
 
@@ -2901,60 +3294,88 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           out.PRN = pr ? +pr.toFixed(3) : null;
           out.ARN = ar ? +ar.toFixed(3) : null;
 
-          if (ppId > 0 && (unitType === "Communicative I/O" || unitType === "Theory & Practice")) {
-            const [rrGt1, prGt1] = getGrowthTarget1(out.RRN, out.PRN, null, unitType);
-            const [rrGt2, prGt2] = getGrowthTarget2(out.RRN, out.PRN, null, unitType);
-            const [rrGt3, prGt3] = getGrowthTarget3(out.RRN, out.PRN, null, unitType);
-            const [rrGt4, prGt4] = getGrowthTarget4(out.RRN, out.PRN, null, unitType);
-            const [rrGt5, prGt5] = getGrowthTarget5(out.RRN, out.PRN, null, unitType);
-            out.RRGT1 = rrGt1;
-            out.PRGT1 = prGt1;
-            out.RRGT2 = rrGt2;
-            out.PRGT2 = prGt2;
-            out.RRGT3 = rrGt3;
-            out.PRGT3 = prGt3;
-            out.RRGT4 = rrGt4;
-            out.PRGT4 = prGt4;
-            out.RRGT5 = rrGt5;
-            out.PRGT5 = prGt5;
-          } else if (ppId > 0 && unitType === "Third Parameter") {
-            const [rrGt1, prGt1, arGt1] = getGrowthTarget1(out.RRN, out.PRN, out.ARN, unitType);
-            const [rrGt2, prGt2, arGt2] = getGrowthTarget2(out.RRN, out.PRN, out.ARN, unitType);
-            const [rrGt3, prGt3, arGt3] = getGrowthTarget3(out.RRN, out.PRN, out.ARN, unitType);
-            const [rrGt4, prGt4, arGt4] = getGrowthTarget4(out.RRN, out.PRN, out.ARN, unitType);
-            const [rrGt5, prGt5, arGt5] = getGrowthTarget5(out.RRN, out.PRN, out.ARN, unitType);
-            out.RRGT1 = rrGt1;
-            out.PRGT1 = prGt1;
-            out.ARGT1 = arGt1;
-            out.RRGT2 = rrGt2;
-            out.PRGT2 = prGt2;
-            out.ARGT2 = arGt2;
-            out.RRGT3 = rrGt3;
-            out.PRGT3 = prGt3;
-            out.ARGT3 = arGt3;
-            out.RRGT4 = rrGt4;
-            out.PRGT4 = prGt4;
-            out.ARGT4 = arGt4;
-            out.RRGT5 = rrGt5;
-            out.PRGT5 = prGt5;
-            out.ARGT5 = arGt5;
-          } else {
-            out.RRGT1 = null;
-            out.PRGT1 = null;
-            out.ARGT1 = null;
-            out.RRGT2 = null;
-            out.PRGT2 = null;
-            out.ARGT2 = null;
-            out.RRGT3 = null;
-            out.PRGT3 = null;
-            out.ARGT3 = null;
-            out.RRGT4 = null;
-            out.PRGT4 = null;
-            out.ARGT4 = null;
-            out.RRGT5 = null;
-            out.PRGT5 = null;
-            out.ARGT5 = null;
+          if (ppId > 0) {
+            // 🔹 First, check for special case
+            const specialGT = CalcGTSpecialCases(out.RRN, out.PRN); // array of [rrGt1, prGt1, rrGt2, prGt2, ...]
+          
+            if (specialGT && specialGT.length > 0) {
+              // --- Apply special case values ---
+              if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+                out.RRGT1 = specialGT[0];
+                out.PRGT1 = specialGT[1];
+                out.RRGT2 = specialGT[2];
+                out.PRGT2 = specialGT[3];
+                out.RRGT3 = specialGT[4];
+                out.PRGT3 = specialGT[5];
+                out.RRGT4 = specialGT[6];
+                out.PRGT4 = specialGT[7];
+                out.RRGT5 = specialGT[8];
+                out.PRGT5 = specialGT[9];
+              } else if (unitType === "Third Parameter") {
+                // For 3D case, add AR as null (or compute if needed)
+                out.RRGT1 = specialGT[0];
+                out.PRGT1 = specialGT[1];
+                out.ARGT1 = null;
+          
+                out.RRGT2 = specialGT[2];
+                out.PRGT2 = specialGT[3];
+                out.ARGT2 = null;
+          
+                out.RRGT3 = specialGT[4];
+                out.PRGT3 = specialGT[5];
+                out.ARGT3 = null;
+          
+                out.RRGT4 = specialGT[6];
+                out.PRGT4 = specialGT[7];
+                out.ARGT4 = null;
+          
+                out.RRGT5 = specialGT[8];
+                out.PRGT5 = specialGT[9];
+                out.ARGT5 = null;
+              }
+            } else {
+              // 🔹 Normal calculation if special case not applicable
+              if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+                const [rrGt1, prGt1] = getGrowthTarget1(out.RRN, out.PRN, null, unitType);
+                const [rrGt2, prGt2] = getGrowthTarget2(out.RRN, out.PRN, null, unitType);
+                const [rrGt3, prGt3] = getGrowthTarget3(out.RRN, out.PRN, null, unitType);
+                const [rrGt4, prGt4] = getGrowthTarget4(out.RRN, out.PRN, null, unitType);
+                const [rrGt5, prGt5] = getGrowthTarget5(out.RRN, out.PRN, null, unitType);
+                out.RRGT1 = rrGt1;
+                out.PRGT1 = prGt1;
+                out.RRGT2 = rrGt2;
+                out.PRGT2 = prGt2;
+                out.RRGT3 = rrGt3;
+                out.PRGT3 = prGt3;
+                out.RRGT4 = rrGt4;
+                out.PRGT4 = prGt4;
+                out.RRGT5 = rrGt5;
+                out.PRGT5 = prGt5;
+              } else if (unitType === "Third Parameter") {
+                const [rrGt1, prGt1, arGt1] = getGrowthTarget1(out.RRN, out.PRN, out.ARN, unitType);
+                const [rrGt2, prGt2, arGt2] = getGrowthTarget2(out.RRN, out.PRN, out.ARN, unitType);
+                const [rrGt3, prGt3, arGt3] = getGrowthTarget3(out.RRN, out.PRN, out.ARN, unitType);
+                const [rrGt4, prGt4, arGt4] = getGrowthTarget4(out.RRN, out.PRN, out.ARN, unitType);
+                const [rrGt5, prGt5, arGt5] = getGrowthTarget5(out.RRN, out.PRN, out.ARN, unitType);
+                out.RRGT1 = rrGt1;
+                out.PRGT1 = prGt1;
+                out.ARGT1 = arGt1;
+                out.RRGT2 = rrGt2;
+                out.PRGT2 = prGt2;
+                out.ARGT2 = arGt2;
+                out.RRGT3 = rrGt3;
+                out.PRGT3 = prGt3;
+                out.ARGT3 = arGt3;
+                out.RRGT4 = rrGt4;
+                out.PRGT4 = prGt4;
+                out.ARGT4 = arGt4;
+                out.RRGT5 = rrGt5;
+                out.PRGT5 = prGt5;
+                out.ARGT5 = arGt5;
+              }
+            }
           }
+          
 
           const rrnVal = out.RRN ?? 0;
           const prnVal = out.PRN ?? 0;
