@@ -2427,7 +2427,7 @@ function CalcGT5(rr, pr, ar) {
   return gt5;
 }
 
-function getGrowthTarget1(rr, pr, ar, unitType) {
+function getGrowthTarget1(rr, pr, ar, unitType, signature) {
   if (unitType === "Third Parameter") {
     // Check for special cases
     const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
@@ -2444,7 +2444,7 @@ function getGrowthTarget1(rr, pr, ar, unitType) {
 
   // 2D units fallback
   if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    const signature = null;
+    // const signature = null;
     const gt1 = CalcGT1_CIO(rr ?? 0, pr ?? 0, signature);
     if (!gt1 || gt1.length < 2) return [null, null];
     return gt1.map(v => (v == null ? null : +v.toFixed(3)));
@@ -2454,7 +2454,7 @@ function getGrowthTarget1(rr, pr, ar, unitType) {
 }
 
 // Repeat for getGrowthTarget2..5 with special slice indexes
-function getGrowthTarget2(rr, pr, ar, unitType) {
+function getGrowthTarget2(rr, pr, ar, unitType, signature) {
   if (unitType === "Third Parameter") {
     const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
     if (special && special.length > 0) {
@@ -2467,7 +2467,7 @@ function getGrowthTarget2(rr, pr, ar, unitType) {
   }
   // fallback 2D
   if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    const signature = null;
+    // const signature = null;
     const gt2 = CalcGT2_CIO(rr ?? 0, pr ?? 0, signature);
     if (!gt2 || gt2.length < 2) return [null, null];
     return gt2.map(v => (v == null ? null : +v.toFixed(3)));
@@ -2476,7 +2476,7 @@ function getGrowthTarget2(rr, pr, ar, unitType) {
 }
 
 
-function getGrowthTarget3(rr, pr, ar, unitType) {
+function getGrowthTarget3(rr, pr, ar, unitType, signature) {
   if (unitType === "Third Parameter") {
     // Check for special cases
     const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
@@ -2493,7 +2493,7 @@ function getGrowthTarget3(rr, pr, ar, unitType) {
 
   // 2D units fallback
   if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    const signature = null;
+    // const signature = null;
     const gt3 = CalcGT3_CIO(rr ?? 0, pr ?? 0, signature);
     if (!gt3 || gt3.length < 2) return [null, null];
     return gt3.map(v => (v == null ? null : +v.toFixed(3)));
@@ -2503,7 +2503,7 @@ function getGrowthTarget3(rr, pr, ar, unitType) {
 }
 
 
-function getGrowthTarget4(rr, pr, ar, unitType) {
+function getGrowthTarget4(rr, pr, ar, unitType, signature) {
   if (unitType === "Third Parameter") {
     // Check for special cases
     const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
@@ -2520,7 +2520,7 @@ function getGrowthTarget4(rr, pr, ar, unitType) {
 
   // 2D units fallback
   if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    const signature = null;
+    // const signature = null;
     const gt4 = CalcGT4_CIO(rr ?? 0, pr ?? 0, signature);
     if (!gt4 || gt4.length < 2) return [null, null];
     return gt4.map(v => (v == null ? null : +v.toFixed(3)));
@@ -2530,7 +2530,7 @@ function getGrowthTarget4(rr, pr, ar, unitType) {
 }
 
 
-function getGrowthTarget5(rr, pr, ar, unitType) {
+function getGrowthTarget5(rr, pr, ar, unitType, signature) {
   if (unitType === "Third Parameter") {
     // Check for special cases
     const special = CalcGTSpecialCasesTM(rr ?? 0, pr ?? 0, ar ?? 0);
@@ -2547,7 +2547,7 @@ function getGrowthTarget5(rr, pr, ar, unitType) {
 
   // 2D units fallback
   if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-    const signature = null;
+    // const signature = null;
     const gt5 = CalcGT5_CIO(rr ?? 0, pr ?? 0, signature);
     if (!gt5 || gt5.length < 2) return [null, null];
     return gt5.map(v => (v == null ? null : +v.toFixed(3)));
@@ -2751,6 +2751,12 @@ exports.getPpCompetencyRatios = async (req, res) => {
     }
 
     const { unitStartDate, unitType, signatureProfile } = unit;
+
+    const signature = signatureProfile
+      ?.replace(/^Case\s*\d+[a-zA-Z]?:\s*/, "") // remove "Case 1:", "Case 3b:" etc.
+      ?.trim();
+
+    console.log("signature", signature);
     const unitStart = new Date(unitStartDate);
     const candidateStart = new Date(candidate.startDate);
 
@@ -2892,11 +2898,11 @@ exports.getPpCompetencyRatios = async (req, res) => {
         out.ARN = ar ? +ar.toFixed(3) : null;
 
         if (ppId > 0 && (unitType === "Communicative I/O" || unitType === "Theory & Practice")) {
-          const [rrGt1, prGt1] = getGrowthTarget1(out.RRN, out.PRN, null, unitType);
-          const [rrGt2, prGt2] = getGrowthTarget2(out.RRN, out.PRN, null, unitType);
-          const [rrGt3, prGt3] = getGrowthTarget3(out.RRN, out.PRN, null, unitType);
-          const [rrGt4, prGt4] = getGrowthTarget4(out.RRN, out.PRN, null, unitType);
-          const [rrGt5, prGt5] = getGrowthTarget4(out.RRN, out.PRN, null, unitType);
+          const [rrGt1, prGt1] = getGrowthTarget1(out.RRN, out.PRN, null, unitType, signature);
+          const [rrGt2, prGt2] = getGrowthTarget2(out.RRN, out.PRN, null, unitType, signature);
+          const [rrGt3, prGt3] = getGrowthTarget3(out.RRN, out.PRN, null, unitType, signature);
+          const [rrGt4, prGt4] = getGrowthTarget4(out.RRN, out.PRN, null, unitType, signature);
+          const [rrGt5, prGt5] = getGrowthTarget4(out.RRN, out.PRN, null, unitType, signature);
           out.RRGT1 = rrGt1;
           out.PRGT1 = prGt1;
           out.RRGT2 = rrGt2;
@@ -2908,11 +2914,11 @@ exports.getPpCompetencyRatios = async (req, res) => {
           out.RRGT5 = rrGt5;
           out.PRGT5 = prGt5;
         } else if (ppId > 0 &&unitType === "Third Parameter") {
-          const [rrGt1, prGt1, arGt1] = getGrowthTarget1(out.RRN, out.PRN, out.ARN, unitType);
-          const [rrGt2, prGt2, arGt2] = getGrowthTarget2(out.RRN, out.PRN, out.ARN, unitType);
-          const [rrGt3, prGt3, arGt3] = getGrowthTarget3(out.RRN, out.PRN, out.ARN, unitType);
-          const [rrGt4, prGt4, arGt4] = getGrowthTarget4(out.RRN, out.PRN, out.ARN, unitType);
-          const [rrGt5, prGt5, arGt5] = getGrowthTarget5(out.RRN, out.PRN, out.ARN, unitType);
+          const [rrGt1, prGt1, arGt1] = getGrowthTarget1(out.RRN, out.PRN, out.ARN, unitType, signature);
+          const [rrGt2, prGt2, arGt2] = getGrowthTarget2(out.RRN, out.PRN, out.ARN, unitType, signature);
+          const [rrGt3, prGt3, arGt3] = getGrowthTarget3(out.RRN, out.PRN, out.ARN, unitType, signature);
+          const [rrGt4, prGt4, arGt4] = getGrowthTarget4(out.RRN, out.PRN, out.ARN, unitType, signature);
+          const [rrGt5, prGt5, arGt5] = getGrowthTarget5(out.RRN, out.PRN, out.ARN, unitType, signature);
           out.RRGT1 = rrGt1;
           out.PRGT1 = prGt1;
           out.ARGT1 = arGt1;
