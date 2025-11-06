@@ -65,7 +65,7 @@ module.exports = (sequelize, DataTypes) => {
       XAVSR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
       scoringSystem: {
         type: DataTypes.ENUM("3-Point", "5-Point"),
-        allowNull: false,
+        allowNull: true,
         defaultValue: "3-Point",
       },
       accountId: {
