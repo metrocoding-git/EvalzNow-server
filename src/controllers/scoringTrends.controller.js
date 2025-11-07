@@ -202,7 +202,7 @@ exports.getAttainedScoreSummary = async (req, res) => {
     const rows = await InsertScore.findAll({
       where,
       attributes: ["ppId", "attainedScore", "maxScore"],
-      order: [["ppId", "ASC"]],
+      order: [["criticalRefDate", "ASC"]],
       raw: true,
     });
 

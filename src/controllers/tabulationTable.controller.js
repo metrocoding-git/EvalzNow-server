@@ -3127,6 +3127,10 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
     }
 
     const { unitStartDate, unitType, signatureProfile } = unit;
+
+    const signature = signatureProfile
+      ?.replace(/^Case\s*\d+[a-zA-Z]?:\s*/, "") // remove "Case 1:", "Case 3b:" etc.
+      ?.trim();
     const unitStart = new Date(unitStartDate);
 
     // 🔹 Fetch all candidates at once
@@ -3342,11 +3346,11 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
             } else {
               // 🔹 Normal calculation if special case not applicable
               if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-                const [rrGt1, prGt1] = getGrowthTarget1(out.RRN, out.PRN, null, unitType);
-                const [rrGt2, prGt2] = getGrowthTarget2(out.RRN, out.PRN, null, unitType);
-                const [rrGt3, prGt3] = getGrowthTarget3(out.RRN, out.PRN, null, unitType);
-                const [rrGt4, prGt4] = getGrowthTarget4(out.RRN, out.PRN, null, unitType);
-                const [rrGt5, prGt5] = getGrowthTarget5(out.RRN, out.PRN, null, unitType);
+                const [rrGt1, prGt1] = getGrowthTarget1(out.RRN, out.PRN, null, unitType, signature);
+                const [rrGt2, prGt2] = getGrowthTarget2(out.RRN, out.PRN, null, unitType, signature);
+                const [rrGt3, prGt3] = getGrowthTarget3(out.RRN, out.PRN, null, unitType, signature);
+                const [rrGt4, prGt4] = getGrowthTarget4(out.RRN, out.PRN, null, unitType, signature);
+                const [rrGt5, prGt5] = getGrowthTarget5(out.RRN, out.PRN, null, unitType, signature);
                 out.RRGT1 = rrGt1;
                 out.PRGT1 = prGt1;
                 out.RRGT2 = rrGt2;
@@ -3358,11 +3362,11 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 out.RRGT5 = rrGt5;
                 out.PRGT5 = prGt5;
               } else if (unitType === "Third Parameter") {
-                const [rrGt1, prGt1, arGt1] = getGrowthTarget1(out.RRN, out.PRN, out.ARN, unitType);
-                const [rrGt2, prGt2, arGt2] = getGrowthTarget2(out.RRN, out.PRN, out.ARN, unitType);
-                const [rrGt3, prGt3, arGt3] = getGrowthTarget3(out.RRN, out.PRN, out.ARN, unitType);
-                const [rrGt4, prGt4, arGt4] = getGrowthTarget4(out.RRN, out.PRN, out.ARN, unitType);
-                const [rrGt5, prGt5, arGt5] = getGrowthTarget5(out.RRN, out.PRN, out.ARN, unitType);
+                const [rrGt1, prGt1, arGt1] = getGrowthTarget1(out.RRN, out.PRN, out.ARN, unitType, signature);
+                const [rrGt2, prGt2, arGt2] = getGrowthTarget2(out.RRN, out.PRN, out.ARN, unitType, signature);
+                const [rrGt3, prGt3, arGt3] = getGrowthTarget3(out.RRN, out.PRN, out.ARN, unitType, signature);
+                const [rrGt4, prGt4, arGt4] = getGrowthTarget4(out.RRN, out.PRN, out.ARN, unitType, signature);
+                const [rrGt5, prGt5, arGt5] = getGrowthTarget5(out.RRN, out.PRN, out.ARN, unitType, signature);
                 out.RRGT1 = rrGt1;
                 out.PRGT1 = prGt1;
                 out.ARGT1 = arGt1;
@@ -3378,7 +3382,23 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 out.RRGT5 = rrGt5;
                 out.PRGT5 = prGt5;
                 out.ARGT5 = arGt5;
-              }
+              } else {
+                out.RRGT1 = null;
+                out.PRGT1 = null;
+                out.ARGT1 = null;
+                out.RRGT2 = null;
+                out.PRGT2 = null;
+                out.ARGT2 = null;
+                out.RRGT3 = null;
+                out.PRGT3 = null;
+                out.ARGT3 = null;
+                out.RRGT4 = null;
+                out.PRGT4 = null;
+                out.ARGT4 = null;
+                out.RRGT5 = null;
+                out.PRGT5 = null;
+                out.ARGT5 = null;
+              } 
             }
           }
           
@@ -3494,6 +3514,22 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
         }
       });
 
+
+      // --- Compute sum & average of deltaRRN, deltaPRN, deltaARN ---
+      const validDeltas = results.filter(
+        r => r.ppId > 0 && r.deltaRRN !== null && r.deltaPRN !== null && r.deltaARN !== null
+      );
+      
+
+      const sumDeltaRRN = validDeltas.reduce((sum, r) => sum + (r.deltaRRN ?? 0), 0);
+      const sumDeltaPRN = validDeltas.reduce((sum, r) => sum + (r.deltaPRN ?? 0), 0);
+      const sumDeltaARN = validDeltas.reduce((sum, r) => sum + (r.deltaARN ?? 0), 0);
+
+      const avgDeltaRRN = validDeltas.length ? +(sumDeltaRRN / validDeltas.length).toFixed(3) : null;
+      const avgDeltaPRN = validDeltas.length ? +(sumDeltaPRN / validDeltas.length).toFixed(3) : null;
+      const avgDeltaARN = validDeltas.length ? +(sumDeltaARN / validDeltas.length).toFixed(3) : null;
+
+
       // --- Calculate summary rows ---
       const average = calculateAverages(results);
       const stdDev = calculateStdDevs(results);
@@ -3503,7 +3539,10 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
         results,
         average,
         stdDev,
-        stdErr
+        stdErr,
+        cumalativeSum: { deltaRRN: sumDeltaRRN, deltaPRN: sumDeltaPRN, deltaARN: sumDeltaARN },
+        cumalativeAverage: { deltaRRN: avgDeltaRRN, deltaPRN: avgDeltaPRN, deltaARN: avgDeltaARN }
+        
       };
     }
 
@@ -3512,6 +3551,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
     const combinedAverages = [];
     const combinedStdDevs = [];
     const combinedStdErrs = [];
+    const combinedCumulativeSums = [];
+    const combinedCumulativeAverages = [];
 
     for (const candidateId of candidateIds) {
       const candidateData = allResults[candidateId];
@@ -3526,6 +3567,14 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       if (candidateData.stdErr) {
         combinedStdErrs.push({ candidateId, ...candidateData.stdErr });
       }
+
+      if (candidateData.cumalativeSum) {
+        combinedCumulativeSums.push({ candidateId, ...candidateData.cumalativeSum });
+      }
+      if (candidateData.cumalativeAverage) {
+        combinedCumulativeAverages.push({ candidateId, ...candidateData.cumalativeAverage });
+      }
+    
     }
 
     // Sort combined results by candidate_id first, then ppId
@@ -3538,7 +3587,9 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       results: combinedResults,
       averages: combinedAverages.length > 0 ? combinedAverages : undefined,
       stdDevs: combinedStdDevs.length > 0 ? combinedStdDevs : undefined,
-      stdErrs: combinedStdErrs.length > 0 ? combinedStdErrs : undefined
+      stdErrs: combinedStdErrs.length > 0 ? combinedStdErrs : undefined,
+      cumulativeSums: combinedCumulativeSums.length > 0 ? combinedCumulativeSums : undefined,
+      cumulativeAverages: combinedCumulativeAverages.length > 0 ? combinedCumulativeAverages : undefined
     });
 
   } catch (error) {
