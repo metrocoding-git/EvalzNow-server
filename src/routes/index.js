@@ -18,5 +18,6 @@ router.use('/scoring-criteria', require('./scoringCriteria.routes'));
 router.use('/scoring-trends', require('./scoringTrends.routes'));
 router.use('/tabulation', require('./tabulationTable.routes'));
 router.use('/account', require('./account.routes'));
+router.use('/projection', require('./projection.routes'));
 
 module.exports = router;
