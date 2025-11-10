@@ -158,6 +158,14 @@ module.exports = (sequelize, DataTypes) => {
       otherKey: "staffId",
       as: "staffMembers",
     });
+
+
+    Unit.hasMany(models.ProjectionSession, {
+      foreignKey: "sessionId",
+      as: "session",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
   };
 
   

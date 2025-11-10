@@ -23,6 +23,8 @@ db.InsertScore = require("./insertScore.model")(sequelize, Sequelize);
 db.ScoringCriteria = require("./scoringCriteria.model")(sequelize, Sequelize);
 db.Account = require("./account.model")(sequelize, Sequelize);
 db.StaffLookup = require("./staffLookUp.model")(sequelize, Sequelize);
+db.ProjectionSession = require("./projectionSession.model")(sequelize, Sequelize);
+db.ProjectionPoint = require("./projectionPoints.model")(sequelize, Sequelize);
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -253,6 +255,54 @@ db.Unit.belongsTo(db.Account, {
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
 });
+
+
+// ================== ProjectionSession ↔ ProjectionPoint ==================
+if (db.ProjectionSession && db.ProjectionPoint) {
+  db.ProjectionSession.hasMany(db.ProjectionPoint, {
+    foreignKey: "sessionId",
+    as: "points",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  db.ProjectionPoint.belongsTo(db.ProjectionSession, {
+    foreignKey: "sessionId",
+    as: "session",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+}
+
+
+if (db.Unit && db.ProjectionSession) {
+  db.Unit.hasMany(db.ProjectionSession, {
+    foreignKey: "unitId",
+    as: "projectionSessions",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  db.ProjectionSession.belongsTo(db.Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+  });
+}
+
+// ✅ 2️⃣ Candidate ↔ ProjectionSession
+if (db.Candidate && db.ProjectionSession) {
+  db.Candidate.hasMany(db.ProjectionSession, {
+    foreignKey: "candidateId",
+    as: "projectionSessions",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  db.ProjectionSession.belongsTo(db.Candidate, {
+    foreignKey: "candidateId",
+    as: "candidate",
+  });
+}
 
 
 // ================== UNIT ↔ STAFF (via StaffLookup) ==================

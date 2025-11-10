@@ -88,6 +88,12 @@ module.exports = (sequelize, DataTypes) => {
       onUpdate: "CASCADE",
     });
 
+    Candidate.hasMany(models.ProjectionSession, {
+      foreignKey: "candidate_id", 
+      as: "candidates",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
     
     Candidate.belongsTo(models.Account, {
       foreignKey: "accountId",
