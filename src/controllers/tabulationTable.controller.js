@@ -3470,6 +3470,18 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
         row.cumulativeDuration = +cumulativeNegative.toFixed(3);
       });
 
+      [...positiveResults, ...negativeResults].forEach((row) => {
+        if (row.criticalRefDate && row.cumulativeDuration > 0 && row.ppId > 0) {
+          const diffUSD = (row.criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
+          const diffCSD = (row.criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
+          row.Productivity_USD = (row.cumulativeDuration / diffUSD).toFixed(3);
+          row.Productivity_CSD = (row.cumulativeDuration / diffCSD).toFixed(3);
+        } else {
+          row.Productivity_USD = null;
+          row.Productivity_CSD = null;
+        }
+      });
+
       // Merge them back together and sort again by ppId ascending for final output
       const mergedResults = [...negativeResults, ...positiveResults].sort((a, b) => a.ppId - b.ppId);
       
@@ -3535,6 +3547,33 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       const stdDev = calculateStdDevs(results);
       const stdErr = stdDev ? calculateStdErrors(results, stdDev) : null;
 
+      // 🔹 Calculate average Interaction Class (IC) using average RRN, PRN, ARN
+      if (average) {
+        const avgRRN = average.RRN ?? 0;
+        const avgPRN = average.PRN ?? 0;
+        const avgARN = average.ARN ?? 0;
+        const avgMSIP = average.MSIP ?? 0;
+
+        average.IC = calculateInteractionClass(
+          avgRRN,
+          avgPRN,
+          avgARN,
+          unitType,
+          signatureProfile
+        );
+
+        average.STAP = calculateSTAP(avgRRN, avgPRN, avgARN, avgMSIP, unitType);
+
+        average.STAG = calculateSTAG(
+          avgDeltaRRN,
+          avgDeltaPRN,
+          avgDeltaARN,
+          avgMSIP,
+          unitType
+        );
+
+      }
+
       allResults[candidateId] = {
         results,
         average,
@@ -3556,7 +3595,16 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
     for (const candidateId of candidateIds) {
       const candidateData = allResults[candidateId];
-      combinedResults.push(...candidateData.results);
+
+      const enrichedResults = candidateData.results.map(r => ({
+        ...r,
+        unitId,
+        unitType,              // <--- include unitType
+        signatureProfile       // optional but often useful for analysis
+      }));
+
+  combinedResults.push(...enrichedResults);
+
       
       if (candidateData.average) {
         combinedAverages.push({ candidateId, ...candidateData.average });
