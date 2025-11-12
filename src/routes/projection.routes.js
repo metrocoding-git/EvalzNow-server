@@ -5,7 +5,7 @@ const projectionController = require('../controllers/projectionController.contro
 
 router.get('/unit/:unitId/candidate/:candidateId', projectionController.getProjectionSessions);
 router.post('/', projectionController.createProjectionSession);
-router.put('/update/:sessionId', projectionController.updateProjectionPoints);
+router.put('/:sessionId/points', projectionController.updateProjectionPoints);
 // router.delete('/:id', insertScoreController.deleteInsertScore);
 router.get('/:id', projectionController.getProjectionSessionById);
 
