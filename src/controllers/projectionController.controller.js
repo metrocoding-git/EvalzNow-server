@@ -185,86 +185,80 @@ exports.getProjectionSessionById = async (req, res) => {
  * PUT /api/projections/:sessionId/points
  */
 exports.updateProjectionPoints = async (req, res) => {
-    const transaction = await db.sequelize.transaction();
-    try {
-      const { sessionId } = req.params;
-      const { points } = req.body;
-  
-      if (!Array.isArray(points) || points.length === 0) {
-        return res.status(400).json({
-          message: "At least one projection point is required to update.",
-        });
-      }
-  
-      // ✅ Verify session exists
-      const session = await ProjectionSession.findByPk(sessionId, { transaction });
-      if (!session) {
-        await transaction.rollback();
-        return res.status(404).json({ message: "Projection session not found." });
-      }
-  
-      // ✅ Fetch existing points
-      const existingPoints = await ProjectionPoint.findAll({
-        where: { sessionId },
-        transaction,
-      });
-  
-      // ✅ Update each point by ID (if exists)
-      for (const p of points) {
-        const existing = existingPoints.find((ep) => ep.id === p.id);
-        if (existing) {
-          await existing.update(
-            {
-              PP_ID: p.PP_ID ?? existing.PP_ID,
-              Callout: p.Callout ?? existing.Callout,
-              RRN: p.RRN ?? existing.RRN,
-              PRN: p.PRN ?? existing.PRN,
-              ARN: p.ARN ?? existing.ARN,
-              IC: p.IC ?? existing.IC,
-              deltaRRN: p.deltaRRN ?? existing.deltaRRN,
-              deltaPRN: p.deltaPRN ?? existing.deltaPRN,
-              deltaARN: p.deltaARN ?? existing.deltaARN,
-              dayCount: p.dayCount ?? existing.dayCount,
-            },
-            { transaction }
-          );
-        }
-      }
-  
-      await transaction.commit();
-  
-      // ✅ Fetch updated session with all associations
-      const updatedSession = await ProjectionSession.findByPk(sessionId, {
-        include: [
-          {
-            model: ProjectionPoint,
-            as: "points",
-            order: [["dayCount", "ASC"]],
-          },
-          {
-            model: Unit,
-            as: "unit",
-            attributes: ["id", "unitName"],
-          },
-          {
-            model: Candidate,
-            as: "candidate",
-            attributes: ["id", "lastName", "firstName"],
-          },
-        ],
-      });
-  
-      res.status(200).json({
-        message: "Projection points updated successfully.",
-        session: updatedSession,
-      });
-    } catch (error) {
-      if (!transaction.finished) await transaction.rollback();
-      console.error("Error updating projection points:", error);
-      res.status(500).json({
-        message: "Error updating projection points.",
-        error: error.message,
+  const transaction = await db.sequelize.transaction();
+  try {
+    const { sessionId } = req.params;
+    const { points } = req.body;
+
+    if (!Array.isArray(points) || points.length === 0) {
+      return res.status(400).json({
+        message: "At least one projection point is required to update.",
       });
     }
-  };
-  
+
+    // ✅ Verify session exists
+    const session = await ProjectionSession.findByPk(sessionId, { transaction });
+    if (!session) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Projection session not found." });
+    }
+
+    // ✅ Delete all existing points for this session
+    await ProjectionPoint.destroy({
+      where: { sessionId },
+      transaction,
+    });
+
+    // ✅ Create new points with updated data
+    const formattedPoints = points.map((p) => ({
+      sessionId,
+      ppId: p.ppId,
+      callout: p.callout,
+      RRN: p.RRN,
+      PRN: p.PRN,
+      ARN: p.ARN,
+      IC: p.IC,
+      deltaRRN: p.deltaRRN,
+      deltaPRN: p.deltaPRN,
+      deltaARN: p.deltaARN,
+      dayCount: p.dayCount,
+    }));
+
+    await ProjectionPoint.bulkCreate(formattedPoints, { transaction });
+
+    await transaction.commit();
+
+    // ✅ Fetch updated session with all associations
+    const updatedSession = await ProjectionSession.findByPk(sessionId, {
+      include: [
+        {
+          model: ProjectionPoint,
+          as: "points",
+          order: [["dayCount", "ASC"]],
+        },
+        {
+          model: Unit,
+          as: "unit",
+          attributes: ["id", "unitName"],
+        },
+        {
+          model: Candidate,
+          as: "candidate",
+          attributes: ["id", "lastName", "firstName"],
+        },
+      ],
+    });
+
+    res.status(200).json({
+      message: "Projection points updated successfully.",
+      session: updatedSession,
+    });
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    console.error("Error updating projection points:", error);
+    res.status(500).json({
+      message: "Error updating projection points.",
+      error: error.message,
+    });
+  }
+};

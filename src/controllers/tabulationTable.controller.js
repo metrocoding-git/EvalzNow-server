@@ -2557,6 +2557,95 @@ function getGrowthTarget5(rr, pr, ar, unitType, signature) {
 }
 
 
+function GetAllGrowthTarget(rr, pr, signature) {
+  var gt1 = CalcGT1_CIO(rr, pr, signature);
+  var gt2 = [];
+  var gt3 = [];
+  var gt4 = [];
+  var gt5 = [];
+
+  var growthTargets = [];
+
+  if (gt1[0] == null && gt1[1] == null) {
+    gt2 = CalcGT2_CIO(parseFloat(rr), parseFloat(pr), signature);
+  } else {
+    gt2 = CalcGT2_CIO(parseFloat(gt1[0]), parseFloat(gt1[1]), signature);
+  }
+  if (gt2[0] == null && gt2[1] == null) {
+    // eslint-disable-next-line no-unused-expressions
+    gt3[0] == null && gt3[1] == null;
+
+    if (gt1[0] == null && gt1[1] == null) {
+      gt4 = CalcGT4_CIO(parseFloat(rr), parseFloat(pr), signature);
+    } else {
+      gt4 = CalcGT4_CIO(parseFloat(gt1[0]), parseFloat(gt1[1]), signature);
+    }
+    gt5 = CalcGT5_CIO(parseFloat(gt4[0]), parseFloat(gt4[1]), signature);
+  } else {
+    gt3 = CalcGT3_CIO(parseFloat(gt2[0]), parseFloat(gt2[1]), signature);
+    gt4 = CalcGT4_CIO(parseFloat(gt3[0]), parseFloat(gt3[1]), signature);
+    gt5 = CalcGT5_CIO(parseFloat(gt4[0]), parseFloat(gt4[1]), signature);
+  }
+
+  growthTargets.push(gt1);
+  growthTargets.push(gt2);
+  growthTargets.push(gt3);
+  growthTargets.push(gt4);
+  growthTargets.push(gt5);
+
+  return growthTargets;
+}
+
+
+/// <summary>
+/// Method to get all growth target
+/// </summary>
+/// <param name="rr">receptive ratio</param>
+/// <param name="pr">productive ratio</param>
+/// <param name="ar">acuity ratio</param>
+/// <param name="signature">Case 1 only</param>
+/// <returns>array of all growth target</returns>
+function GetAllGrowthTargetThird(rr, pr, ar) {
+  var gt1 = CalcGT1(parseFloat(rr), parseFloat(pr), parseFloat(ar));
+  var gt2 = [];
+  var gt3 = [];
+  var gt4 = [];
+  var gt5 = [];
+
+  var growthTargets = [];
+
+  if (gt1[0] == null && gt1[1] == null && gt1[2] == null) {
+    gt2 = CalcGT2(parseFloat(rr), parseFloat(pr), parseFloat(ar));
+  } else {
+    gt2 = CalcGT2(parseFloat(gt1[0]), parseFloat(gt1[1]), parseFloat(gt1[2]));
+  }
+  if (gt2[0] == null && gt2[1] == null && gt2[2] == null) {
+    // eslint-disable-next-line no-unused-expressions
+    gt3[0] == null && gt3[1] == null && gt3[2] == null;
+
+    if (gt1[0] == null && gt1[1] == null && gt1[2] == null) {
+      gt4 = CalcGT4(parseFloat(rr), parseFloat(pr), parseFloat(ar));
+    } else {
+      gt4 = CalcGT4(parseFloat(gt1[0]), parseFloat(gt1[1]), parseFloat(gt1[2]));
+    }
+    gt5 = CalcGT5(parseFloat(gt4[0]), parseFloat(gt4[1]), parseFloat(gt4[2]));
+  } else {
+    gt3 = CalcGT3(parseFloat(gt2[0]), parseFloat(gt2[1]), parseFloat(gt2[2]));
+    gt4 = CalcGT4(parseFloat(gt3[0]), parseFloat(gt3[1]), parseFloat(gt3[2]));
+    gt5 = CalcGT5(parseFloat(gt4[0]), parseFloat(gt4[1]), parseFloat(gt4[2]));
+  }
+
+  growthTargets.push(gt1);
+  growthTargets.push(gt2);
+  growthTargets.push(gt3);
+  growthTargets.push(gt4);
+  growthTargets.push(gt5);
+
+  return growthTargets;
+}
+
+
+
 // ----------------- finding average calculation -----------------
 
 function calculateAverages(results) {
@@ -3242,7 +3331,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
             MRVS: null, MPVS: null, MAVS: null,
             RRN: null,
             PRN: null,
-            ARN: null,
+            ARN: 0,
             XEP: null,
             Productivity_CSD: null,
             Productivity_USD: null,
@@ -3346,42 +3435,47 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
             } else {
               // 🔹 Normal calculation if special case not applicable
               if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-                const [rrGt1, prGt1] = getGrowthTarget1(out.RRN, out.PRN, null, unitType, signature);
-                const [rrGt2, prGt2] = getGrowthTarget2(out.RRN, out.PRN, null, unitType, signature);
-                const [rrGt3, prGt3] = getGrowthTarget3(out.RRN, out.PRN, null, unitType, signature);
-                const [rrGt4, prGt4] = getGrowthTarget4(out.RRN, out.PRN, null, unitType, signature);
-                const [rrGt5, prGt5] = getGrowthTarget5(out.RRN, out.PRN, null, unitType, signature);
-                out.RRGT1 = rrGt1;
-                out.PRGT1 = prGt1;
-                out.RRGT2 = rrGt2;
-                out.PRGT2 = prGt2;
-                out.RRGT3 = rrGt3;
-                out.PRGT3 = prGt3;
-                out.RRGT4 = rrGt4;
-                out.PRGT4 = prGt4;
-                out.RRGT5 = rrGt5;
-                out.PRGT5 = prGt5;
+                // Use GetAllGrowthTarget to get all growth targets at once
+                const growthTargets = GetAllGrowthTarget(out.RRN, out.PRN, signature);
+                console.log(out.RRN, out.PRN, signature);
+                console.log(growthTargets);
+                console.log(GetAllGrowthTarget(out.RRN, out.PRN, signature));
+                
+                // Assign all growth targets from the array
+                out.RRGT1 = growthTargets[0]?.[0] || null;
+                out.PRGT1 = growthTargets[0]?.[1] || null;
+                out.RRGT2 = growthTargets[1]?.[0] || null;
+                out.PRGT2 = growthTargets[1]?.[1] || null;
+                out.RRGT3 = growthTargets[2]?.[0] || null;
+                out.PRGT3 = growthTargets[2]?.[1] || null;
+                out.RRGT4 = growthTargets[3]?.[0] || null;
+                out.PRGT4 = growthTargets[3]?.[1] || null;
+                out.RRGT5 = growthTargets[4]?.[0] || null;
+                out.PRGT5 = growthTargets[4]?.[1] || null;
               } else if (unitType === "Third Parameter") {
-                const [rrGt1, prGt1, arGt1] = getGrowthTarget1(out.RRN, out.PRN, out.ARN, unitType, signature);
-                const [rrGt2, prGt2, arGt2] = getGrowthTarget2(out.RRN, out.PRN, out.ARN, unitType, signature);
-                const [rrGt3, prGt3, arGt3] = getGrowthTarget3(out.RRN, out.PRN, out.ARN, unitType, signature);
-                const [rrGt4, prGt4, arGt4] = getGrowthTarget4(out.RRN, out.PRN, out.ARN, unitType, signature);
-                const [rrGt5, prGt5, arGt5] = getGrowthTarget5(out.RRN, out.PRN, out.ARN, unitType, signature);
-                out.RRGT1 = rrGt1;
-                out.PRGT1 = prGt1;
-                out.ARGT1 = arGt1;
-                out.RRGT2 = rrGt2;
-                out.PRGT2 = prGt2;
-                out.ARGT2 = arGt2;
-                out.RRGT3 = rrGt3;
-                out.PRGT3 = prGt3;
-                out.ARGT3 = arGt3;
-                out.RRGT4 = rrGt4;
-                out.PRGT4 = prGt4;
-                out.ARGT4 = arGt4;
-                out.RRGT5 = rrGt5;
-                out.PRGT5 = prGt5;
-                out.ARGT5 = arGt5;
+                // Use GetAllGrowthTargetThird to get all growth targets at once
+                const growthTargets = GetAllGrowthTargetThird(out.RRN || 0, out.PRN || 0, out.ARN || 0);
+                
+                // Assign all growth targets from the array
+                out.RRGT1 = growthTargets[0]?.[0] || null;
+                out.PRGT1 = growthTargets[0]?.[1] || null;
+                out.ARGT1 = growthTargets[0]?.[2] || null;
+                out.RRGT2 = growthTargets[1]?.[0] || null;
+                out.PRGT2 = growthTargets[1]?.[1] || null;
+                out.ARGT2 = growthTargets[1]?.[2] || null;
+                out.RRGT3 = growthTargets[2]?.[0] || null;
+                out.PRGT3 = growthTargets[2]?.[1] || null;
+                out.ARGT3 = growthTargets[2]?.[2] || null;
+                out.RRGT4 = growthTargets[3]?.[0] || null;
+                out.PRGT4 = growthTargets[3]?.[1] || null;
+                out.ARGT4 = growthTargets[3]?.[2] || null;
+                out.RRGT5 = growthTargets[4]?.[0] || null;
+                out.PRGT5 = growthTargets[4]?.[1] || null;
+                out.ARGT5 = growthTargets[4]?.[2] || null;
+
+                console.log(out.RRN, out.PRN, out.ARN);
+                console.log(growthTargets);
+                console.log(GetAllGrowthTargetThird(out.RRN, out.PRN, out.ARN));
               } else {
                 out.RRGT1 = null;
                 out.PRGT1 = null;
@@ -3398,7 +3492,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 out.RRGT5 = null;
                 out.PRGT5 = null;
                 out.ARGT5 = null;
-              } 
+              }            
             }
           }
           
