@@ -226,13 +226,21 @@ function GetInteractionClassAreaCase3b(eqn) {
   else return "5R5P";
 }
 
+// function GetInteractionClassAreaThird(eqn) {
+//   if (eqn < 0.6) return 0;
+//   else if (eqn < 0.7) return 1;
+//   else if (eqn < 0.8) return 2;
+//   else if (eqn < 0.9) return 3;
+//   else if (eqn < 1.0) return 4;
+//   else return 5;
+// }
 function GetInteractionClassAreaThird(eqn) {
-  if (eqn < 0.6) return 0;
-  else if (eqn < 0.7) return 1;
-  else if (eqn < 0.8) return 2;
-  else if (eqn < 0.9) return 3;
-  else if (eqn < 1.0) return 4;
-  else return 5;
+  if (eqn < 0.6) return '0R0P';
+  else if (eqn >= 0.6 && eqn < 0.7) return '1R1P';
+  else if (eqn >= 0.7 && eqn < 0.8) return '2R2P';
+  else if (eqn >= 0.8 && eqn < 0.9) return '3R3P';
+  else if (eqn >= 0.9 && eqn < 1.0) return '4R4P';
+  else return '5R5P';
 }
 
 // --- Unified router function ---
@@ -326,29 +334,29 @@ function FindRoots(a, b, c, d) {
       x1 =
         -b / 3 / a +
         2 *
-          Math.sqrt(-A / 3) *
-          Math.cos(
-            (1 / 3) *
-              Math.acos(-B / 2 / Math.sqrt(((((-A / 3) * -A) / 3) * -A) / 3))
-          );
+        Math.sqrt(-A / 3) *
+        Math.cos(
+          (1 / 3) *
+          Math.acos(-B / 2 / Math.sqrt(((((-A / 3) * -A) / 3) * -A) / 3))
+        );
       x2 =
         -b / 3 / a +
         2 *
-          Math.sqrt(-A / 3) *
-          Math.cos(
-            (2 * Math.PI) / 3 +
-              (1 / 3) *
-                Math.acos(-B / 2 / Math.sqrt(((((-A / 3) * -A) / 3) * -A) / 3))
-          );
+        Math.sqrt(-A / 3) *
+        Math.cos(
+          (2 * Math.PI) / 3 +
+          (1 / 3) *
+          Math.acos(-B / 2 / Math.sqrt(((((-A / 3) * -A) / 3) * -A) / 3))
+        );
       x3 =
         -b / 3 / a +
         2 *
-          Math.sqrt(-A / 3) *
-          Math.cos(
-            (2 * Math.PI) / 3 -
-              (1 / 3) *
-                Math.acos(-B / 2 / Math.sqrt(((((-A / 3) * -A) / 3) * -A) / 3))
-          );
+        Math.sqrt(-A / 3) *
+        Math.cos(
+          (2 * Math.PI) / 3 -
+          (1 / 3) *
+          Math.acos(-B / 2 / Math.sqrt(((((-A / 3) * -A) / 3) * -A) / 3))
+        );
       roots[0] = x1;
       roots[1] = x2;
       roots[2] = x3;
@@ -3002,7 +3010,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
           out.PRGT4 = prGt4;
           out.RRGT5 = rrGt5;
           out.PRGT5 = prGt5;
-        } else if (ppId > 0 &&unitType === "Third Parameter") {
+        } else if (ppId > 0 && unitType === "Third Parameter") {
           const [rrGt1, prGt1, arGt1] = getGrowthTarget1(out.RRN, out.PRN, out.ARN, unitType, signature);
           const [rrGt2, prGt2, arGt2] = getGrowthTarget2(out.RRN, out.PRN, out.ARN, unitType, signature);
           const [rrGt3, prGt3, arGt3] = getGrowthTarget3(out.RRN, out.PRN, out.ARN, unitType, signature);
@@ -3040,7 +3048,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
           out.PRGT5 = null;
           out.ARGT5 = null;
         }
-        
+
 
         const rrnVal = out.RRN ?? 0;
         const prnVal = out.PRN ?? 0;
@@ -3080,7 +3088,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
         out.IC = calculateInteractionClass(out.RRN, out.PRN, out.ARN, unitType, signatureProfile);
 
 
-      
+
 
         return out;
       })
@@ -3090,49 +3098,49 @@ exports.getPpCompetencyRatios = async (req, res) => {
     results.sort((a, b) => a.ppId - b.ppId);
 
     // --- Separate and sort ppIds for proper cumulative calculation ---
-const positiveResults = results
-.filter((r) => r.ppId > 0)
-.sort((a, b) => a.ppId - b.ppId); // ascending
+    const positiveResults = results
+      .filter((r) => r.ppId > 0)
+      .sort((a, b) => a.ppId - b.ppId); // ascending
 
-const negativeResults = results
-.filter((r) => r.ppId < 0)
-.sort((a, b) => b.ppId - a.ppId); // descending
+    const negativeResults = results
+      .filter((r) => r.ppId < 0)
+      .sort((a, b) => b.ppId - a.ppId); // descending
 
-// Compute cumulative totalDuration separately
-let cumulativePositive = 0;
-let cumulativeNegative = 0;
+    // Compute cumulative totalDuration separately
+    let cumulativePositive = 0;
+    let cumulativeNegative = 0;
 
-positiveResults.forEach((row) => {
-cumulativePositive += row.totalDuration || 0;
-row.cumulativeDuration = +cumulativePositive.toFixed(3);
-});
+    positiveResults.forEach((row) => {
+      cumulativePositive += row.totalDuration || 0;
+      row.cumulativeDuration = +cumulativePositive.toFixed(3);
+    });
 
-negativeResults.forEach((row) => {
-cumulativeNegative += row.totalDuration || 0;
-row.cumulativeDuration = +cumulativeNegative.toFixed(3);
-});
-
-
-// --- Recalculate Productivity (after cumulativeDuration) ---
-[...positiveResults, ...negativeResults].forEach((row) => {
-  if (row.criticalRefDate && row.cumulativeDuration > 0 && row.ppId > 0) {
-    const diffUSD = (row.criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
-    const diffCSD = (row.criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-    row.Productivity_USD = (row.cumulativeDuration / diffUSD).toFixed(3);
-    row.Productivity_CSD = (row.cumulativeDuration / diffCSD).toFixed(3);
-  } else {
-    row.Productivity_USD = null;
-    row.Productivity_CSD = null;
-  }
-});
+    negativeResults.forEach((row) => {
+      cumulativeNegative += row.totalDuration || 0;
+      row.cumulativeDuration = +cumulativeNegative.toFixed(3);
+    });
 
 
-// Merge them back together and sort again by ppId ascending for final output
-const mergedResults = [...negativeResults, ...positiveResults].sort((a, b) => a.ppId - b.ppId);
+    // --- Recalculate Productivity (after cumulativeDuration) ---
+    [...positiveResults, ...negativeResults].forEach((row) => {
+      if (row.criticalRefDate && row.cumulativeDuration > 0 && row.ppId > 0) {
+        const diffUSD = (row.criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
+        const diffCSD = (row.criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
+        row.Productivity_USD = (row.cumulativeDuration / diffUSD).toFixed(3);
+        row.Productivity_CSD = (row.cumulativeDuration / diffCSD).toFixed(3);
+      } else {
+        row.Productivity_USD = null;
+        row.Productivity_CSD = null;
+      }
+    });
 
-// Replace original results array
-results.length = 0;
-results.push(...mergedResults);
+
+    // Merge them back together and sort again by ppId ascending for final output
+    const mergedResults = [...negativeResults, ...positiveResults].sort((a, b) => a.ppId - b.ppId);
+
+    // Replace original results array
+    results.length = 0;
+    results.push(...mergedResults);
 
 
     // --- Compute deltaRRN, deltaPRN, deltaARN ---
@@ -3190,14 +3198,14 @@ results.push(...mergedResults);
     });
   }
 };
-  
+
 
 exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
   try {
     const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
 
     // 🔹 Parse candidate_id - supports both single and comma-separated multiple IDs
-    const candidateIds = candidate_id 
+    const candidateIds = candidate_id
       ? candidate_id.split(',').map(id => id.trim()).filter(Boolean)
       : [];
 
@@ -3230,7 +3238,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
     });
 
     if (candidates.length !== candidateIds.length) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         message: "One or more candidates not found",
         found: candidates.map(c => c.id),
         requested: candidateIds
@@ -3289,7 +3297,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           stdErr: null
         };
         continue;
-      }      
+      }
 
       const results = await Promise.all(
         aggregates.map(async (agg) => {
@@ -3362,8 +3370,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           if (criticalRefDate && totalDuration > 0 && ppId > 0) {
             const diffUSD = (criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
             const diffCSD = (criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-            out.Productivity_USD = +(( totalDuration / diffUSD).toFixed(3));
-            out.Productivity_CSD = +(( totalDuration / diffCSD).toFixed(3));
+            out.Productivity_USD = +((totalDuration / diffUSD).toFixed(3));
+            out.Productivity_CSD = +((totalDuration / diffCSD).toFixed(3));
           } else {
             out.Productivity_CSD = null;
             out.Productivity_USD = null;
@@ -3396,7 +3404,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           if (ppId > 0) {
             // 🔹 First, check for special case
             const specialGT = CalcGTSpecialCases(out.RRN, out.PRN); // array of [rrGt1, prGt1, rrGt2, prGt2, ...]
-          
+
             if (specialGT && specialGT.length > 0) {
               // --- Apply special case values ---
               if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
@@ -3415,19 +3423,19 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 out.RRGT1 = specialGT[0];
                 out.PRGT1 = specialGT[1];
                 out.ARGT1 = null;
-          
+
                 out.RRGT2 = specialGT[2];
                 out.PRGT2 = specialGT[3];
                 out.ARGT2 = null;
-          
+
                 out.RRGT3 = specialGT[4];
                 out.PRGT3 = specialGT[5];
                 out.ARGT3 = null;
-          
+
                 out.RRGT4 = specialGT[6];
                 out.PRGT4 = specialGT[7];
                 out.ARGT4 = null;
-          
+
                 out.RRGT5 = specialGT[8];
                 out.PRGT5 = specialGT[9];
                 out.ARGT5 = null;
@@ -3440,7 +3448,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 console.log(out.RRN, out.PRN, signature);
                 console.log(growthTargets);
                 console.log(GetAllGrowthTarget(out.RRN, out.PRN, signature));
-                
+
                 // Assign all growth targets from the array
                 out.RRGT1 = growthTargets[0]?.[0] || null;
                 out.PRGT1 = growthTargets[0]?.[1] || null;
@@ -3455,7 +3463,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
               } else if (unitType === "Third Parameter") {
                 // Use GetAllGrowthTargetThird to get all growth targets at once
                 const growthTargets = GetAllGrowthTargetThird(out.RRN || 0, out.PRN || 0, out.ARN || 0);
-                
+
                 // Assign all growth targets from the array
                 out.RRGT1 = growthTargets[0]?.[0] || null;
                 out.PRGT1 = growthTargets[0]?.[1] || null;
@@ -3492,10 +3500,10 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 out.RRGT5 = null;
                 out.PRGT5 = null;
                 out.ARGT5 = null;
-              }            
+              }
             }
           }
-          
+
 
           const rrnVal = out.RRN ?? 0;
           const prnVal = out.PRN ?? 0;
@@ -3578,7 +3586,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
       // Merge them back together and sort again by ppId ascending for final output
       const mergedResults = [...negativeResults, ...positiveResults].sort((a, b) => a.ppId - b.ppId);
-      
+
 
       // Replace original results array
       results.length = 0;
@@ -3625,7 +3633,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       const validDeltas = results.filter(
         r => r.ppId > 0 && r.deltaRRN !== null && r.deltaPRN !== null && r.deltaARN !== null
       );
-      
+
 
       const sumDeltaRRN = validDeltas.reduce((sum, r) => sum + (r.deltaRRN ?? 0), 0);
       const sumDeltaPRN = validDeltas.reduce((sum, r) => sum + (r.deltaPRN ?? 0), 0);
@@ -3675,7 +3683,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
         stdErr,
         cumalativeSum: { deltaRRN: sumDeltaRRN, deltaPRN: sumDeltaPRN, deltaARN: sumDeltaARN },
         cumalativeAverage: { deltaRRN: avgDeltaRRN, deltaPRN: avgDeltaPRN, deltaARN: avgDeltaARN }
-        
+
       };
     }
 
@@ -3697,9 +3705,9 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
         signatureProfile       // optional but often useful for analysis
       }));
 
-  combinedResults.push(...enrichedResults);
+      combinedResults.push(...enrichedResults);
 
-      
+
       if (candidateData.average) {
         combinedAverages.push({ candidateId, ...candidateData.average });
       }
@@ -3716,7 +3724,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       if (candidateData.cumalativeAverage) {
         combinedCumulativeAverages.push({ candidateId, ...candidateData.cumalativeAverage });
       }
-    
+
     }
 
     // Sort combined results by candidate_id first, then ppId
