@@ -2690,7 +2690,17 @@ function calculateAverages(results) {
   const avgRow = { ppId: "Average" };
 
   numericFields.forEach(field => {
-    const values = validRows.map(r => r[field]).filter(v => typeof v === "number" && !isNaN(v));
+    const values = validRows.map(r => {
+      const value = r[field];
+      // Handle both numbers and numeric strings
+      if (typeof value === 'number' && !isNaN(value)) return value;
+      if (typeof value === 'string' && value !== null && value !== '') {
+        const parsed = parseFloat(value);
+        return !isNaN(parsed) ? parsed : null;
+      }
+      return null;
+    }).filter(v => v !== null);
+    
     avgRow[field] = values.length
       ? +(values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(3)
       : null;
@@ -2755,7 +2765,17 @@ function calculateStdDevs(results) {
   const stdRow = { ppId: "StdDev" };
 
   numericFields.forEach(field => {
-    const values = validRows.map(r => r[field]).filter(v => typeof v === "number" && !isNaN(v));
+    const values = validRows.map(r => {
+      const value = r[field];
+      // Handle both numbers and numeric strings
+      if (typeof value === 'number' && !isNaN(value)) return value;
+      if (typeof value === 'string' && value !== null && value !== '') {
+        const parsed = parseFloat(value);
+        return !isNaN(parsed) ? parsed : null;
+      }
+      return null;
+    }).filter(v => v !== null);
+    
     stdRow[field] =
       values.length > 1
         ? +CalculateStandardDevTS(values, false)
@@ -2812,10 +2832,20 @@ function calculateStdErrors(results, stdDevRow) {
   const stdErrRow = { ppId: "StdErr" };
 
   numericFields.forEach(field => {
-    const stdDev = parseFloat(stdDevRow[field]);
-    stdErrRow[field] = !isNaN(stdDev)
-      ? CalculateStandardError(stdDev, validRows)
-      : null
+    const stdDev = stdDevRow[field];
+    // Handle both numbers and numeric strings for stdDev
+    let stdDevValue;
+    if (typeof stdDev === 'number' && !isNaN(stdDev)) {
+      stdDevValue = stdDev;
+    } else if (typeof stdDev === 'string' && stdDev !== null && stdDev !== '') {
+      stdDevValue = parseFloat(stdDev);
+    } else {
+      stdDevValue = NaN;
+    }
+    
+    stdErrRow[field] = !isNaN(stdDevValue)
+      ? CalculateStandardError(stdDevValue, validRows)
+      : null;
   });
 
   return stdErrRow;
@@ -3126,8 +3156,8 @@ exports.getPpCompetencyRatios = async (req, res) => {
       if (row.criticalRefDate && row.cumulativeDuration > 0 && row.ppId > 0) {
         const diffUSD = (row.criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
         const diffCSD = (row.criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-        row.Productivity_USD = (row.cumulativeDuration / diffUSD).toFixed(3);
-        row.Productivity_CSD = (row.cumulativeDuration / diffCSD).toFixed(3);
+        row.Productivity_USD = +(row.cumulativeDuration / diffUSD).toFixed(3);
+row.Productivity_CSD = +(row.cumulativeDuration / diffCSD).toFixed(3);
       } else {
         row.Productivity_USD = null;
         row.Productivity_CSD = null;
