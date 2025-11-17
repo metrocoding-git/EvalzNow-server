@@ -2845,7 +2845,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
       ?.replace(/^Case\s*\d+[a-zA-Z]?:\s*/, "") // remove "Case 1:", "Case 3b:" etc.
       ?.trim();
 
-    console.log("signature", signature);
+    // console.log("signature", signature);
     const unitStart = new Date(unitStartDate);
     const candidateStart = new Date(candidate.startDate);
 
@@ -3393,6 +3393,12 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           out.PRN = pr ? +pr.toFixed(3) : null;
           out.ARN = ar ? +ar.toFixed(3) : null;
 
+          console.log("signature ", signature, signatureProfile);
+          console.log("cimo: ", out.XLR, out.XRR, out.XWR, out.XSR);
+          console.log("tp: ", out.XTR, out.XPR);
+          console.log("tm: ", out.XRVSR, out.XPVSR, out.XAVSR);
+          console.log("values of the RN ", out.RRN, out.PRN, out.ARN);
+
           if (ppId > 0) {
             // 🔹 First, check for special case
             const specialGT = CalcGTSpecialCases(out.RRN, out.PRN); // array of [rrGt1, prGt1, rrGt2, prGt2, ...]
@@ -3438,8 +3444,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 // Use GetAllGrowthTarget to get all growth targets at once
                 const growthTargets = GetAllGrowthTarget(out.RRN, out.PRN, signature);
                 console.log(out.RRN, out.PRN, signature);
-                console.log(growthTargets);
-                console.log(GetAllGrowthTarget(out.RRN, out.PRN, signature));
+                // console.log(growthTargets);
+                // console.log(GetAllGrowthTarget(out.RRN, out.PRN, signature));
                 
                 // Assign all growth targets from the array
                 out.RRGT1 = growthTargets[0]?.[0] || null;
@@ -3474,8 +3480,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 out.ARGT5 = growthTargets[4]?.[2] || null;
 
                 console.log(out.RRN, out.PRN, out.ARN);
-                console.log(growthTargets);
-                console.log(GetAllGrowthTargetThird(out.RRN, out.PRN, out.ARN));
+                // console.log(growthTargets);
+                // console.log(GetAllGrowthTargetThird(out.RRN, out.PRN, out.ARN));
               } else {
                 out.RRGT1 = null;
                 out.PRGT1 = null;
