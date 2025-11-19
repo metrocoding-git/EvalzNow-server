@@ -2656,6 +2656,7 @@ function GetAllGrowthTargetThird(rr, pr, ar) {
 
 // ----------------- finding average calculation -----------------
 
+// ----------------- finding average calculation -----------------
 function calculateAverages(results) {
   const numericFields = [
     "Productivity_CSD",
@@ -2682,7 +2683,7 @@ function calculateAverages(results) {
     "GEQ",
   ];
 
-  // Filter only valid rows with positive ppId
+  // Filter only valid rows with positive ppId (for individual candidate average)
   const validRows = results.filter(r => r.ppId > 0);
 
   if (validRows.length === 0) return null;
@@ -2707,6 +2708,65 @@ function calculateAverages(results) {
   });
 
   return avgRow;
+}
+
+// Add this new function to calculate averages across ALL candidates
+function calculateCombinedAverages(allResults) {
+  const numericFields = [
+    "Productivity_CSD",
+    "Productivity_USD",
+    "RRN",
+    "PRN",
+    "ARN",
+    "XLR",
+    "XRR",
+    "XSR",
+    "XWR",
+    "XTR",
+    "XPR",
+    "XRVSR",
+    "XPVSR",
+    "XAVSR",
+    "XEP",
+    "XCP",
+    "XBP",
+    "MSIP",
+    "deltaRRN",
+    "deltaPRN",
+    "deltaARN",
+    "GEQ",
+  ];
+
+  // Collect all valid rows from ALL candidates
+  const allValidRows = [];
+  
+  for (const candidateId in allResults) {
+    const candidateData = allResults[candidateId];
+    const validRows = candidateData.results.filter(r => r.ppId > 0);
+    allValidRows.push(...validRows);
+  }
+
+  if (allValidRows.length === 0) return null;
+
+  const combinedAvgRow = { ppId: "Combined Average" };
+
+  numericFields.forEach(field => {
+    const values = allValidRows.map(r => {
+      const value = r[field];
+      if (typeof value === 'number' && !isNaN(value)) return value;
+      if (typeof value === 'string' && value !== null && value !== '') {
+        const parsed = parseFloat(value);
+        return !isNaN(parsed) ? parsed : null;
+      }
+      return null;
+    }).filter(v => v !== null);
+    
+    combinedAvgRow[field] = values.length
+      ? +(values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(3)
+      : null;
+  });
+
+  return combinedAvgRow;
 }
 
 // ---------------------------------------------------------------
@@ -3726,6 +3786,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       };
     }
 
+    const combinedAverage = calculateCombinedAverages(allResults);
+
     // 🔹 Return results - combine all candidates into single flat array
     const combinedResults = [];
     const combinedAverages = [];
@@ -3766,12 +3828,21 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
     }
 
-    // Sort combined results by candidate_id first, then ppId
-    combinedResults.sort((a, b) => {
-      // Note: results don't have candidate_id attached, so they maintain their order
-      return 0;
-    });
 
+    // if (combinedAverage) {
+    //   combinedAverages.push({ candidateId: "ALL", ...combinedAverage });
+    // }
+
+    // Sort combined results by candidate_id first, then ppId
+    // combinedResults.sort((a, b) => {
+      // Note: results don't have candidate_id attached, so they maintain their order
+      // return 0;
+    // });
+
+    // if (combinedAverage) {
+    //   combinedAverages.push({ candidateId: "ALL", ...combinedAverage });
+    // }
+    
     res.status(200).json({
       results: combinedResults,
       averages: combinedAverages.length > 0 ? combinedAverages : undefined,
