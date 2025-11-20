@@ -2656,6 +2656,7 @@ function GetAllGrowthTargetThird(rr, pr, ar) {
 
 // ----------------- finding average calculation -----------------
 
+// ----------------- finding average calculation -----------------
 function calculateAverages(results) {
   const numericFields = [
     "Productivity_CSD",
@@ -2682,7 +2683,7 @@ function calculateAverages(results) {
     "GEQ",
   ];
 
-  // Filter only valid rows with positive ppId
+  // Filter only valid rows with positive ppId (for individual candidate average)
   const validRows = results.filter(r => r.ppId > 0);
 
   if (validRows.length === 0) return null;
@@ -2690,13 +2691,82 @@ function calculateAverages(results) {
   const avgRow = { ppId: "Average" };
 
   numericFields.forEach(field => {
-    const values = validRows.map(r => r[field]).filter(v => typeof v === "number" && !isNaN(v));
+    const values = validRows.map(r => {
+      const value = r[field];
+      // Handle both numbers and numeric strings
+      if (typeof value === 'number' && !isNaN(value)) return value;
+      if (typeof value === 'string' && value !== null && value !== '') {
+        const parsed = parseFloat(value);
+        return !isNaN(parsed) ? parsed : null;
+      }
+      return null;
+    }).filter(v => v !== null);
+    
     avgRow[field] = values.length
       ? +(values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(3)
       : null;
   });
 
   return avgRow;
+}
+
+// Add this new function to calculate averages across ALL candidates
+function calculateCombinedAverages(allResults) {
+  const numericFields = [
+    "Productivity_CSD",
+    "Productivity_USD",
+    "RRN",
+    "PRN",
+    "ARN",
+    "XLR",
+    "XRR",
+    "XSR",
+    "XWR",
+    "XTR",
+    "XPR",
+    "XRVSR",
+    "XPVSR",
+    "XAVSR",
+    "XEP",
+    "XCP",
+    "XBP",
+    "MSIP",
+    "deltaRRN",
+    "deltaPRN",
+    "deltaARN",
+    "GEQ",
+  ];
+
+  // Collect all valid rows from ALL candidates
+  const allValidRows = [];
+  
+  for (const candidateId in allResults) {
+    const candidateData = allResults[candidateId];
+    const validRows = candidateData.results.filter(r => r.ppId > 0);
+    allValidRows.push(...validRows);
+  }
+
+  if (allValidRows.length === 0) return null;
+
+  const combinedAvgRow = { ppId: "Combined Average" };
+
+  numericFields.forEach(field => {
+    const values = allValidRows.map(r => {
+      const value = r[field];
+      if (typeof value === 'number' && !isNaN(value)) return value;
+      if (typeof value === 'string' && value !== null && value !== '') {
+        const parsed = parseFloat(value);
+        return !isNaN(parsed) ? parsed : null;
+      }
+      return null;
+    }).filter(v => v !== null);
+    
+    combinedAvgRow[field] = values.length
+      ? +(values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(3)
+      : null;
+  });
+
+  return combinedAvgRow;
 }
 
 // ---------------------------------------------------------------
@@ -2755,7 +2825,17 @@ function calculateStdDevs(results) {
   const stdRow = { ppId: "StdDev" };
 
   numericFields.forEach(field => {
-    const values = validRows.map(r => r[field]).filter(v => typeof v === "number" && !isNaN(v));
+    const values = validRows.map(r => {
+      const value = r[field];
+      // Handle both numbers and numeric strings
+      if (typeof value === 'number' && !isNaN(value)) return value;
+      if (typeof value === 'string' && value !== null && value !== '') {
+        const parsed = parseFloat(value);
+        return !isNaN(parsed) ? parsed : null;
+      }
+      return null;
+    }).filter(v => v !== null);
+    
     stdRow[field] =
       values.length > 1
         ? +CalculateStandardDevTS(values, false)
@@ -2812,10 +2892,20 @@ function calculateStdErrors(results, stdDevRow) {
   const stdErrRow = { ppId: "StdErr" };
 
   numericFields.forEach(field => {
-    const stdDev = parseFloat(stdDevRow[field]);
-    stdErrRow[field] = !isNaN(stdDev)
-      ? CalculateStandardError(stdDev, validRows)
-      : null
+    const stdDev = stdDevRow[field];
+    // Handle both numbers and numeric strings for stdDev
+    let stdDevValue;
+    if (typeof stdDev === 'number' && !isNaN(stdDev)) {
+      stdDevValue = stdDev;
+    } else if (typeof stdDev === 'string' && stdDev !== null && stdDev !== '') {
+      stdDevValue = parseFloat(stdDev);
+    } else {
+      stdDevValue = NaN;
+    }
+    
+    stdErrRow[field] = !isNaN(stdDevValue)
+      ? CalculateStandardError(stdDevValue, validRows)
+      : null;
   });
 
   return stdErrRow;
@@ -2853,7 +2943,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
       ?.replace(/^Case\s*\d+[a-zA-Z]?:\s*/, "") // remove "Case 1:", "Case 3b:" etc.
       ?.trim();
 
-    console.log("signature", signature);
+    // console.log("signature", signature);
     const unitStart = new Date(unitStartDate);
     const candidateStart = new Date(candidate.startDate);
 
@@ -3126,8 +3216,8 @@ exports.getPpCompetencyRatios = async (req, res) => {
       if (row.criticalRefDate && row.cumulativeDuration > 0 && row.ppId > 0) {
         const diffUSD = (row.criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
         const diffCSD = (row.criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-        row.Productivity_USD = (row.cumulativeDuration / diffUSD).toFixed(3);
-        row.Productivity_CSD = (row.cumulativeDuration / diffCSD).toFixed(3);
+        row.Productivity_USD = +(row.cumulativeDuration / diffUSD).toFixed(3);
+row.Productivity_CSD = +(row.cumulativeDuration / diffCSD).toFixed(3);
       } else {
         row.Productivity_USD = null;
         row.Productivity_CSD = null;
@@ -3202,7 +3292,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
 
 exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
   try {
-    const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+    const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo, ppId } = req.query;
 
     // 🔹 Parse candidate_id - supports both single and comma-separated multiple IDs
     const candidateIds = candidate_id
@@ -3259,6 +3349,10 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
       // 🔹 Build base where clause for this candidate
       const whereClause = { unitId, candidate_id: candidateId };
+
+      if(ppId) {
+        whereClause.ppId = Number(ppId);
+      }
 
       // 🔹 Add ppId range filters (if provided)
       if (ppIdFrom && ppIdTo) {
@@ -3401,6 +3495,12 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           out.PRN = pr ? +pr.toFixed(3) : null;
           out.ARN = ar ? +ar.toFixed(3) : null;
 
+          console.log("signature ", signature, signatureProfile);
+          console.log("cimo: ", out.XLR, out.XRR, out.XWR, out.XSR);
+          console.log("tp: ", out.XTR, out.XPR);
+          console.log("tm: ", out.XRVSR, out.XPVSR, out.XAVSR);
+          console.log("values of the RN ", out.RRN, out.PRN, out.ARN);
+
           if (ppId > 0) {
             // 🔹 First, check for special case
             const specialGT = CalcGTSpecialCases(out.RRN, out.PRN); // array of [rrGt1, prGt1, rrGt2, prGt2, ...]
@@ -3446,8 +3546,11 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 // Use GetAllGrowthTarget to get all growth targets at once
                 const growthTargets = GetAllGrowthTarget(out.RRN, out.PRN, signature);
                 console.log(out.RRN, out.PRN, signature);
+
+
                 console.log(growthTargets);
                 console.log(GetAllGrowthTarget(out.RRN, out.PRN, signature));
+
 
                 // Assign all growth targets from the array
                 out.RRGT1 = growthTargets[0]?.[0] || null;
@@ -3482,8 +3585,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
                 out.ARGT5 = growthTargets[4]?.[2] || null;
 
                 console.log(out.RRN, out.PRN, out.ARN);
-                console.log(growthTargets);
-                console.log(GetAllGrowthTargetThird(out.RRN, out.PRN, out.ARN));
+                // console.log(growthTargets);
+                // console.log(GetAllGrowthTargetThird(out.RRN, out.PRN, out.ARN));
               } else {
                 out.RRGT1 = null;
                 out.PRGT1 = null;
@@ -3687,6 +3790,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       };
     }
 
+    const combinedAverage = calculateCombinedAverages(allResults);
+
     // 🔹 Return results - combine all candidates into single flat array
     const combinedResults = [];
     const combinedAverages = [];
@@ -3727,12 +3832,21 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
     }
 
-    // Sort combined results by candidate_id first, then ppId
-    combinedResults.sort((a, b) => {
-      // Note: results don't have candidate_id attached, so they maintain their order
-      return 0;
-    });
 
+    // if (combinedAverage) {
+    //   combinedAverages.push({ candidateId: "ALL", ...combinedAverage });
+    // }
+
+    // Sort combined results by candidate_id first, then ppId
+    // combinedResults.sort((a, b) => {
+      // Note: results don't have candidate_id attached, so they maintain their order
+      // return 0;
+    // });
+
+    // if (combinedAverage) {
+    //   combinedAverages.push({ candidateId: "ALL", ...combinedAverage });
+    // }
+    
     res.status(200).json({
       results: combinedResults,
       averages: combinedAverages.length > 0 ? combinedAverages : undefined,
