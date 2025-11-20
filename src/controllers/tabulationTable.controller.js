@@ -3292,7 +3292,7 @@ row.Productivity_CSD = +(row.cumulativeDuration / diffCSD).toFixed(3);
 
 exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
   try {
-    const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+    const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo, ppId } = req.query;
 
     // 🔹 Parse candidate_id - supports both single and comma-separated multiple IDs
     const candidateIds = candidate_id
@@ -3349,6 +3349,10 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
       // 🔹 Build base where clause for this candidate
       const whereClause = { unitId, candidate_id: candidateId };
+
+      if(ppId) {
+        whereClause.ppId = Number(ppId);
+      }
 
       // 🔹 Add ppId range filters (if provided)
       if (ppIdFrom && ppIdTo) {
