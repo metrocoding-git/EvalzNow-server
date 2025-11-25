@@ -67,55 +67,48 @@ function generateRange(start, end, step = 1) {
     };
   }
 
-
-exports.getNormalDistributionData = async (req, res) => {
+  exports.getNormalDistributionData = async (req, res) => {
     try {
-        const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
-    
-        if (!unitId || !candidate_id) {
-            return res.status(400).json({ message: "unitId and candidate_id are required" });
-        }
+      const { candidatePpList, unitId } = req.body;
+  
+      if (!unitId || !Array.isArray(candidatePpList)) {
+        return res.status(400).json({ message: "unitId and candidatePpList required" });
+      }
+  
+      // Build candidate_id string to send to legacy controller
+      const candidateIds = candidatePpList.map(x => x.candidateId).join(",");
 
-        // Create a mock request object with the query parameters
-        const mockReq = {
-            query: {
-                unitId,
-                candidate_id,
-                ppIdFrom: ppIdFrom || null,
-                ppIdTo: ppIdTo || null,
-                criticalRefDateFrom: criticalRefDateFrom || null,
-                criticalRefDateTo: criticalRefDateTo || null
-            }
-        };
+      // Create mock req for existing function
+      const mockReq = { 
+        query: { 
+          unitId,
+          candidate_id: candidateIds
+        } 
+      };
 
-        // Create a mock response object to capture the data
-        let competencyData = null;
-        const mockRes = {
-            status: function(code) {
-                this.statusCode = code;
-                return this;
-            },
-            json: function(data) {
-                competencyData = data;
-                return this;
-            }
-        };
-
-        // Call the function with mock request/response
-        await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-
-        // Check if we got successful data
-        if (!competencyData) {
-            return res.status(500).json({ message: "Failed to fetch competency data" });
-        }
-
-        const results = competencyData.results || [];
-
-        // Utility: collect only valid numbers
-        const collect = (key) =>
-            results
-                .map((r) => Number(r[key]))
-                .filter((v) => !isNaN(v) && v !== null);
+      let competencyData = null;
+  
+      const mockRes = {
+        status(code) { this.statusCode = code; return this; },
+        json(data) { competencyData = data; return this; }
+      };
+  
+      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+      const allResults = competencyData.results || [];
+  
+      // Build lookup for filtering
+      const ppMap = new Map();
+      candidatePpList.forEach(({ candidateId, ppId }) => {
+        ppMap.set(`${candidateId}_${ppId}`, true);
+      });
+  
+      const results = allResults.filter(r =>
+        ppMap.has(`${r.candidateId}_${r.ppId}`)
+      );
+  
+      // Collect values only from filtered results
+      const collect = (k) =>
+        results.map(r => Number(r[k])).filter(v => !isNaN(v));
 
         // --- BUILD ARRAYS ---
 
@@ -160,17 +153,17 @@ exports.getNormalDistributionData = async (req, res) => {
         
         res.status(200).json({
           distributions: {
-              rr: rrDistribution,
-              pr: prDistribution,
-              ar: arDistribution,
+              RR: rrDistribution,
+              PR: prDistribution,
+              AR: arDistribution,
       
               deltaRR: deltaRRDistribution,
               deltaPR: deltaPRDistribution,
               deltaAR: deltaARDistribution,
       
-              xeq: xeqDistribution,
-              xcp: xcpDistribution,
-              xbp: xbpDistribution,
+              XEQ: xeqDistribution,
+              XCP: xcpDistribution,
+              XBP: xbpDistribution,
       
               deltaGEQ: deltaGEQDistribution
           },
