@@ -67,11 +67,10 @@ function generateRange(start, end, step = 1) {
   exports.getExponetialDistributionData = async (req, res) => {
     try {
         const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
-    
+
         if (!unitId || !candidate_id) {
             return res.status(400).json({ message: "unitId and candidate_id are required" });
         }
-  
 
         // Create mock req for existing function
         const mockReq = {
@@ -85,74 +84,94 @@ function generateRange(start, end, step = 1) {
             }
         };
 
-      let competencyData = null;
-  
-      const mockRes = {
-        status: function(code) {
-            this.statusCode = code;
-            return this;
-        },
-        json: function(data) {
-            competencyData = data;
-            return this;
+        let competencyData = null;
+
+        const mockRes = {
+            status: function(code) {
+                this.statusCode = code;
+                return this;
+            },
+            json: function(data) {
+                competencyData = data;
+                return this;
+            }
+        };
+
+        await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+        
+        if (!competencyData || !competencyData.results) {
+            return res.status(404).json({ message: "No competency data found" });
         }
-    };
 
-  
-      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-      const allResults = competencyData.results || [];
-  
-  
-      // Collect values only from filtered results
-      const collect = (key) =>
-        allResults
-          .map(r => Number(r[key]))
-          .filter(v => !isNaN(v));
+        const allResults = competencyData.results;
 
-        // --- BUILD ARRAYS ---
+        // Collect values from the actual field names in your response
+        const collect = (key) =>
+            allResults
+                .map(r => {
+                    const value = r[key];
+                    // Handle null/undefined values and convert to number
+                    return value !== null && value !== undefined ? Number(value) : null;
+                })
+                .filter(v => v !== null && !isNaN(v));
 
-        const rrArray = collect("RRN");
-        const prArray = collect("PRN");
-        const arArray = collect("ARN");
-
-        const xeqArray = collect("XEP");
-        const deltaGEQArray = collect("GEQ"); // if deltaGEQ uses GEQ field
-
-
-        // if (mockRes.statusCode >= 400) {
-        //     return res.status(mockRes.statusCode).json(competencyData);
-        // }
-
-        // // Now you have the competency data, process it for distribution
-        // console.log("Competency data received:", competencyData);
+        // Extract arrays using the correct field names from your response
+        const rrArray = collect("RRN");        // RR values
+        const prArray = collect("PRN");        // PR values  
+        const arArray = collect("ARN");        // AR values (appears to be null in your data)
         
-        // Your distribution logic here using competencyData
-        // For example:
-        const rrDistribution = calculateDistribution({ data: rrArray, step: 0.05 });
-        const prDistribution = calculateDistribution({ data: prArray, step: 0.05 });
-        const arDistribution = calculateDistribution({ data: arArray, step: 0.05 });
+        const xeqArray = collect("XEP");       // XEQ values
+        const deltaGEQArray = collect("GEQ");  // deltaGEQ values
 
-        const xeqDistribution = calculateDistribution({ data: xeqArray, step: 0.05 });        
-        const deltaGEQDistribution = calculateDistribution({ data: deltaGEQArray, step: 0.05 });
+        // Log the extracted arrays for debugging
+        console.log('Extracted arrays:');
+        console.log('RR:', rrArray);
+        console.log('PR:', prArray);
+        console.log('AR:', arArray);
+        console.log('XEQ:', xeqArray);
+        console.log('deltaGEQ:', deltaGEQArray);
 
-        
-        res.status(200).json({
-          distributions: {
-              RR: rrDistribution,
-              PR: prDistribution,
-              AR: arDistribution,
-      
-              XEQ: xeqDistribution,
-              deltaGEQ: deltaGEQDistribution
-          },
-          sourceData: competencyData
-      });
-      
+        // Calculate distributions
+        const rrDistribution = rrArray.length > 0 ? calculateDistribution({ data: rrArray, step: 0.05 }) : null;
+        const prDistribution = prArray.length > 0 ? calculateDistribution({ data: prArray, step: 0.05 }) : null;
+        const arDistribution = arArray.length > 0 ? calculateDistribution({ data: arArray, step: 0.05 }) : null;
+        const xeqDistribution = xeqArray.length > 0 ? calculateDistribution({ data: xeqArray, step: 0.05 }) : null;
+        const deltaGEQDistribution = deltaGEQArray.length > 0 ? calculateDistribution({ data: deltaGEQArray, step: 0.05 }) : null;
+
+        // Prepare response
+        const response = {
+            distributions: {
+                RR: rrDistribution,
+                PR: prDistribution,
+                AR: arDistribution,
+                XEQ: xeqDistribution,
+                deltaGEQ: deltaGEQDistribution
+            },
+            sourceData: {
+                counts: {
+                    totalResults: allResults.length,
+                    RR: rrArray.length,
+                    PR: prArray.length,
+                    AR: arArray.length,
+                    XEQ: xeqArray.length,
+                    deltaGEQ: deltaGEQArray.length
+                },
+                extractedValues: {
+                    RR: rrArray,
+                    PR: prArray,
+                    AR: arArray,
+                    XEQ: xeqArray,
+                    deltaGEQ: deltaGEQArray
+                }
+            }
+        };
+
+        res.status(200).json(response);
 
     } catch(error) {
-        console.error("Error in getUnitDistributionData:", error);
+        console.error("Error in getExponetialDistributionData:", error);
         res.status(500).json({ 
-            message: "Error computing unit distribution", 
+            message: "Error computing exponential distribution", 
             error: error.message 
         });
     }
