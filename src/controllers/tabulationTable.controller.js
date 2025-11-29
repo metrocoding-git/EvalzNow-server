@@ -3003,6 +3003,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
 
         const out = {
           ppId,
+          candidate_id,
           criticalRefDate,
           totalDuration,
           unitType,
@@ -3415,6 +3416,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
           const out = {
             ppId,
+            candidateId,
             criticalRefDate,
             totalDuration,
             XLR: null,
