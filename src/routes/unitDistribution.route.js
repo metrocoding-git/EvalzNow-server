@@ -6,6 +6,8 @@ const unitExponentialDistribution = require('../controllers/unitExponentialDistr
 const chiSquareDistribution = require('../controllers/chiSquareDistribution.controller');
 const unitFDistribution = require('../controllers/unitFDistribution.controller');
 const unitbetaDistribution = require('../controllers/betaDistribution.controller');
+const unitUniformDistribution = require('../controllers/unitUniformDistribution.controller');
+const weibullDistributionCDF = require('../controllers/weibullDistributionCDF.controller');
 
 router.post('/normal-dist', unitDistribution.getNormalDistributionData);
 router.post('/t-dist', unitTDistribution.getTDistributionData);
@@ -13,5 +15,7 @@ router.get('/exponential-dist', unitExponentialDistribution.getExponetialDistrib
 router.get('/chi-dist', chiSquareDistribution.getChiDistributionData);
 router.get('/f-dist', unitFDistribution.getFDistributionData);
 router.get('/beta-dist', unitbetaDistribution.getBetaDistributionData);
+router.get('/uniform-dist', unitUniformDistribution.getUniformDistributionData);
+router.get('/weibull-cdf-dist', weibullDistributionCDF.getWeibullCDFDistributionData);
 
 module.exports = router;
