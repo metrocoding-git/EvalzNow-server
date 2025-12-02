@@ -68,145 +68,123 @@ function generateRange(start, end, step = 1) {
   
   
   
+  // Helper function to extract specific field values from results
+function extractFieldValues(results, fieldName) {
+    return results
+      .map(r => {
+        const value = r[fieldName];
+        // Convert to number if it's not null/undefined
+        return value !== null && value !== undefined ? Number(value) : null;
+      })
+      .filter(v => v !== null && !isNaN(v)); // Remove null/undefined and NaN values
+  }
+  
   exports.getWeibullCDFDistributionData = async (req, res) => {
     try {
-        const { 
-            unitId, 
-            candidate_id, 
-            ppIdFrom, 
-            ppIdTo, 
-            criticalRefDateFrom, 
-            criticalRefDateTo, 
-            beta = 1.5,  
-            key = 'RR'   
-        } = req.query;
-
-        if (!unitId || !candidate_id) {
-            return res.status(400).json({ message: "unitId and candidate_id are required" });
+      const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+  
+      if (!unitId || !candidate_id) {
+        return res.status(400).json({ message: "unitId and candidate_id are required" });
+      }
+  
+      // Prepare mock request for existing controller
+      const mockReq = {
+        query: {
+          unitId,
+          candidate_id,
+          ppIdFrom: ppIdFrom || null,
+          ppIdTo: ppIdTo || null,
+          criticalRefDateFrom: criticalRefDateFrom || null,
+          criticalRefDateTo: criticalRefDateTo || null
         }
-
-        if (!key) {
-            return res.status(400).json({ message: "key parameter is required (RR, PR, AR, XEQ, deltaGEQ, etc.)" });
+      };
+  
+      let competencyData = null;
+  
+      const mockRes = {
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        json(data) {
+          competencyData = data;
+          return this;
         }
-
-        // Step 1: Get competency data
-        const mockReq = {
-            query: {
-                unitId,
-                candidate_id,
-                ppIdFrom: ppIdFrom || null,
-                ppIdTo: ppIdTo || null,
-                criticalRefDateFrom: criticalRefDateFrom || null,
-                criticalRefDateTo: criticalRefDateTo || null
-            }
-        };
-
-        let competencyData = null;
-
-        const mockRes = {
-            status: function(code) {
-                this.statusCode = code;
-                return this;
-            },
-            json: function(data) {
-                competencyData = data;
-                return this;
-            }
-        };
-
-        await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-        
-        if (!competencyData || !competencyData.results) {
-            return res.status(404).json({ message: "No competency data found" });
+      };
+  
+      // Get competency data
+      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+  
+      if (!competencyData || !competencyData.results || competencyData.results.length === 0) {
+        return res.status(404).json({ message: "No competency data found" });
+      }
+  
+      const allResults = competencyData.results;
+      
+      // Extract arrays for each metric
+      const rrArray = extractFieldValues(allResults, "RRN");
+      const prArray = extractFieldValues(allResults, "PRN");
+      const arArray = extractFieldValues(allResults, "ARN");
+      const xepArray = extractFieldValues(allResults, "XEP");
+      const deltaGEQArray = extractFieldValues(allResults, "GEQ"); // Using GEQ field for deltaGEQ
+      
+      // Check if we have any valid data
+      if (rrArray.length === 0 && prArray.length === 0 && arArray.length === 0 && 
+          xepArray.length === 0 && deltaGEQArray.length === 0) {
+        return res.status(404).json({ message: "No valid numeric data found in the results" });
+      }
+      
+      // Calculate distributions for each array
+      const distributions = {};
+      
+      if (rrArray.length > 0) {
+        distributions.RR = calculateDistribution({ data: rrArray, step: 0.05 });
+      }
+      
+      if (prArray.length > 0) {
+        distributions.PR = calculateDistribution({ data: prArray, step: 0.05 });
+      }
+      
+      if (arArray.length > 0) {
+        distributions.AR = calculateDistribution({ data: arArray, step: 0.05 });
+      }
+      
+      if (xepArray.length > 0) {
+        distributions.XEP = calculateDistribution({ data: xepArray, step: 0.05 });
+      }
+      
+      if (deltaGEQArray.length > 0) {
+        distributions.deltaGEQ = calculateDistribution({ data: deltaGEQArray, step: 0.05 });
+      }
+      
+      // Return the response
+      res.status(200).json({
+        distributions,
+        sourceData: {
+          rrArray,
+          prArray,
+          arArray,
+          xepArray,
+          deltaGEQArray,
+          summary: {
+            RRN: { count: rrArray.length, values: rrArray },
+            PRN: { count: prArray.length, values: prArray },
+            ARN: { count: arArray.length, values: arArray },
+            XEP: { count: xepArray.length, values: xepArray },
+            deltaGEQ: { count: deltaGEQArray.length, values: deltaGEQArray }
+          }
         }
-
-        const allResults = competencyData.results;
-
-        // Step 2: Map keys
-        const keyMap = {
-            "RR": "RRN",
-            "PR": "PRN",
-            "AR": "ARN",
-            "XEQ": "XEP",
-            "deltaGEQ": "GEQ",
-            "deltaRR": "deltaRRN",
-            "deltaPR": "deltaPRN",
-            "deltaAR": "deltaARN",
-            "XCP": "XCP",
-            "XBP": "XBP"
-        };
-
-        const fieldName = keyMap[key] || key;
-
-        // Step 3: Extract numeric values
-        const values = allResults
-            .map(r => r[fieldName])
-            .filter(v => v !== null && v !== undefined && !isNaN(Number(v)))
-            .map(Number);
-
-        if (values.length === 0) {
-            return res.status(404).json({ 
-                message: `No valid numeric data found for key: ${key}`,
-                field: fieldName
-            });
-        }
-
-        // Step 4: Calculate η using mean
-        const eta = meanFn(values);
-
-        // Step 5: Compute Weibull Distribution using your helper
-        const weibull = calculateDistribution({
-            data: values,
-            beta: parseFloat(beta),
-            eta: eta,
-            step: 0.02,
-            end: 1.0
-        });
-
-        // Step 6: Compute statistics
-        const minValue = Math.min(...values);
-        const maxValue = Math.max(...values);
-        const avgValue = meanFn(values);
-        const variance = values.length > 1
-            ? values.reduce((sum, v) => sum + Math.pow(v - avgValue, 2), 0) / values.length
-            : 0;
-
-        // Step 7: Prepare clean response
-        res.status(200).json({
-            key,
-            parameters: {
-                beta: parseFloat(beta),
-                eta,
-                step: weibull.params.step,
-                end: weibull.params.end,
-                t_eta: eta,
-                t_0_700: 0.700
-            },
-            statistics: {
-                mean: avgValue,
-                variance,
-                min: minValue,
-                max: maxValue,
-                count: values.length
-            },
-            distribution: weibull.table.map(row => ({
-                t: row.t,
-                CDF: row.F,
-                Reliability: row.R
-            })),
-            rawValues: values,
-            candidates: {
-                count: allResults.length,
-                candidateIds: [...new Set(allResults.map(r => r.candidateId))],
-                ppIds: [...new Set(allResults.map(r => r.ppId))]
-            }
-        });
-
+      });
+  
     } catch (error) {
-        console.error("Error in getWeibullCDFDistributionData:", error);
-        res.status(500).json({ 
-            message: "Error computing Weibull CDF distribution", 
-            error: error.message
-        });
+      console.error("Error in getWeibullCDFDistributionData:", error);
+      res.status(500).json({
+        message: "Error computing Weibull distribution",
+        error: error.message
+      });
     }
-};
+  };
+
+  
+  
+  
