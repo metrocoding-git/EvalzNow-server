@@ -125,6 +125,8 @@ function extractFieldValues(results, fieldName) {
       const arArray = extractFieldValues(allResults, "ARN");
       const xepArray = extractFieldValues(allResults, "XEP");
       const deltaGEQArray = extractFieldValues(allResults, "GEQ"); // Using GEQ field for deltaGEQ
+
+      const beta = req.query.beta ? Number(req.query.beta) : null;
       
       // Check if we have any valid data
       if (rrArray.length === 0 && prArray.length === 0 && arArray.length === 0 && 

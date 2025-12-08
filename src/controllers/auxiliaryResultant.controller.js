@@ -1,5 +1,6 @@
 const { getInsertScoresByUnitAndCandidate } = require('./insertScore.controller');
 const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.controller');
+const { getUnitRostersByUnitIdAndCandidateId } = require('./unitRoster.controller');
 
 exports.getAuxiliaryGraphData = async (req, res) => {
     try {
@@ -59,6 +60,17 @@ exports.getAuxiliaryGraphData = async (req, res) => {
 
         const competencyResults = competencyData.results;
 
+
+        const mockReq3 = { params: { unitId, candidateId: candidate_id } };
+        let rosterData = null;
+
+        const mockRes3 = {
+            status(code) { this.statusCode = code; return this; },
+            json(data) { rosterData = data; return this; }
+        };
+
+        await getUnitRostersByUnitIdAndCandidateId(mockReq3, mockRes3);
+
         // ----------------------------------------------------
         // FILTER ONLY POSITIVE PPIDs in InsertScores
         // ----------------------------------------------------
@@ -69,6 +81,7 @@ exports.getAuxiliaryGraphData = async (req, res) => {
                 unitId,
                 candidate_id,
                 tenureData: [],
+                rosterData,
                 message: "No positive ppId found"
             });
         }
@@ -112,7 +125,9 @@ exports.getAuxiliaryGraphData = async (req, res) => {
                 usdTenureDays: dayDiff(top.criticalRefDate, top.unit.unitStartDate),
 
                 // Attach competency data if exists
-                duration: competencyMatch.cumulativeDuration || null
+                duration: competencyMatch.cumulativeDuration || null,
+                Productivity_CSD: competencyMatch ? competencyMatch.Productivity_CSD : null,
+                Productivity_USD: competencyMatch ? competencyMatch.Productivity_USD : null,
             };
         });
 
@@ -122,6 +137,7 @@ exports.getAuxiliaryGraphData = async (req, res) => {
         return res.status(200).json({
             unitId,
             candidate_id,
+            rosterData,
             results: finalResponse
         });
 
