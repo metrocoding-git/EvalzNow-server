@@ -28,6 +28,8 @@ db.ProjectionPoint = require("./projectionPoints.model")(sequelize, Sequelize);
 db.CandidateMarks = require("./candidateMark.model")(sequelize, Sequelize);
 db.CandidateNeedAssessment = require("./candidateNeedAssessment.model")(sequelize, Sequelize);
 db.UnitImprovement = require("./unitImprovement.model")(sequelize, Sequelize);
+db.LeaderMarks = require("./leaderMark.model")(sequelize, Sequelize);
+
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -439,6 +441,57 @@ db.UnitImprovement.belongsTo(db.Unit, {
   foreignKey: "unitId",
   as: "unit",
 });
+
+
+// ================== LeaderMarks Associations ==================
+if (db.LeaderMarks) {
+
+  // LeaderMarks ↔ Candidate
+  db.Candidate.hasMany(db.LeaderMarks, {
+    foreignKey: "candidateId",
+    as: "leaderMarks",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  db.LeaderMarks.belongsTo(db.Candidate, {
+    foreignKey: "candidateId",
+    as: "candidate",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  // LeaderMarks ↔ Unit
+  db.Unit.hasMany(db.LeaderMarks, {
+    foreignKey: "unitId",
+    as: "leaderMarks",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  db.LeaderMarks.belongsTo(db.Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  // LeaderMarks ↔ StaffLookup (leader reference)
+  db.StaffLookup.hasMany(db.LeaderMarks, {
+    foreignKey: "staffLookupId",
+    as: "leaderMarks",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  db.LeaderMarks.belongsTo(db.StaffLookup, {
+    foreignKey: "staffLookupId",
+    as: "leaderLookup",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+}
+
 
 
 // Export the db object

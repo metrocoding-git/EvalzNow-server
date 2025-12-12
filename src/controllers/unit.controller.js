@@ -79,7 +79,7 @@ exports.getUnitById = async (req, res) => {
       {
         model: StaffLookup,
         as: "staffAssignments",
-        attributes: ['roleType'],
+        attributes: ['id', 'roleType'],
         include: [
           {
             model: db.Staff,
