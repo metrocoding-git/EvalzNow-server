@@ -6,8 +6,11 @@ router.get('/unit/:unitId/candidate/:candidate_id', auxiliaryResultant.getAuxili
 router.get('/marks/:unitId/:candidate_id', auxiliaryResultant.getCandidateMarks);
 router.get('/assessment/:unitId/:candidate_id', auxiliaryResultant.getCandidateNeedAssessments);
 router.get('/lesson/:unitId/:candidate_id', auxiliaryResultant.getLessonImprovements);
+router.get('/leader/:unitId/:candidate_id', auxiliaryResultant.getLeaderMarks);
+router.put('/lesson/:id', auxiliaryResultant.updateLessonImprovement);
 router.post('/marks', auxiliaryResultant.createCandidateMarks);
 router.post('/assessment', auxiliaryResultant.createCandidateNeedAssessment);
 router.post('/lesson', auxiliaryResultant.createLessonImprovement);
+router.post('/leader', auxiliaryResultant.createLeaderMarks);
 
 module.exports = router;

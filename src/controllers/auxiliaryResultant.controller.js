@@ -501,44 +501,315 @@ exports.getLessonImprovements = async (req, res) => {
 
 exports.createLessonImprovement = async (req, res) => {
   try {
-    const { unitId, candidateId, benchmarkIds, bIds, lesson } = req.body;
+    const { unitId, candidateId, candidateIds, benchmarkIds, bIds, lesson } = req.body;
 
-    // Validate required fields
-    if (!unitId || !candidateId || !Array.isArray(benchmarkIds) || !Array.isArray(bIds)) {
+    // Accept both single candidateId and array candidateIds
+    let candidatesArray = [];
+
+    if (Array.isArray(candidateIds)) {
+      candidatesArray = candidateIds;
+    } else if (Array.isArray(candidateId)) {
+      candidatesArray = candidateId;
+    } else if (candidateId) {
+      candidatesArray = [candidateId];
+    }
+
+    // Validate
+    if (!unitId || candidatesArray.length === 0 || !lesson) {
       return res.status(400).json({
-        message: "unitId, candidateId, bIds and benchmarkIds (as array) are required"
+        message: "unitId, candidateId(s), and lesson are required"
       });
     }
 
-    // Create candidate need assessment
-    const newAssessment = await UnitImprovement.create({
-      unitId,
-      candidateId,
-      benchmarkIds,
-      bIds,
-      lesson: lesson 
+    // Normalize benchmarkIds and bIds
+    const normalizedBenchmarkIds = benchmarkIds || [];
+    const normalizedBIds = bIds || [];
+
+    // Create all improvements in parallel
+    const createdEntries = await Promise.all(
+      candidatesArray.map(async (cid) => {
+        const entry = await UnitImprovement.create({
+          unitId,
+          candidateId: cid,
+          benchmarkIds: normalizedBenchmarkIds,
+          bIds: normalizedBIds,
+          lesson
+        });
+
+        // fetch with associations
+        return await db.UnitImprovement.findOne({
+          where: { id: entry.id },
+          include: [
+            {
+              model: db.Candidate,
+              as: "candidate",
+              attributes: ["id", "firstName", "lastName"]
+            },
+            {
+              model: db.Unit,
+              as: "unit",
+              attributes: ["id", "unitName"]
+            }
+          ]
+        });
+      })
+    );
+
+    return res.status(201).json({
+      success: true,
+      count: createdEntries.length,
+      message:
+        createdEntries.length > 1
+          ? "Unit Improvements created for multiple candidates"
+          : "Candidate Unit Improvement created successfully",
+      data: createdEntries
     });
 
-    // Fetch the created item with associations
-    const fullData = await db.UnitImprovement.findOne({
-      where: { id: newAssessment.id },
+  } catch (error) {
+    console.error("Error in unit Improvement:", error);
+    return res.status(500).json({
+      message: "Error creating candidate need assessment",
+      error: error.message
+    });
+  }
+};
+
+
+
+exports.updateLessonImprovement = async (req, res) => {
+  try {
+    const { id } = req.params;     // improvement record ID
+    const { lesson, benchmarkIds, bIds } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ message: "Improvement ID is required" });
+    }
+
+    // Fetch existing record
+    const improvement = await UnitImprovement.findByPk(id);
+
+    if (!improvement) {
+      return res.status(404).json({ message: "Unit improvement not found" });
+    }
+
+    // Parse arrays safely
+    const parsedBenchmarkIds = Array.isArray(benchmarkIds)
+      ? benchmarkIds
+      : benchmarkIds
+      ? JSON.parse(benchmarkIds)
+      : improvement.benchmarkIds;
+
+    const parsedBIds = Array.isArray(bIds)
+      ? bIds
+      : bIds
+      ? JSON.parse(bIds)
+      : improvement.bIds;
+
+    // Update fields
+    improvement.lesson = lesson ?? improvement.lesson;
+    improvement.benchmarkIds = parsedBenchmarkIds;
+    improvement.bIds = parsedBIds;
+
+    await improvement.save();
+
+    // Fetch updated record with relationships
+    const fullData = await UnitImprovement.findOne({
+      where: { id: improvement.id },
       include: [
         { model: db.Candidate, as: "candidate", attributes: ["id", "firstName", "lastName"] },
         { model: db.Unit, as: "unit", attributes: ["id", "unitName"] }
       ]
     });
 
-    return res.status(201).json({
+    return res.status(200).json({
       success: true,
-      message: "Candidate unit Improvement created successfully",
+      message: "Unit improvement updated successfully",
       data: fullData
     });
 
   } catch (error) {
-    console.error("Error in  unit Improvement:", error);
+    console.error("Error updating unit improvement:", error);
     return res.status(500).json({
-      message: "Error creating candidate need assessment",
+      message: "Error updating unit improvement",
       error: error.message
     });
   }
-}
+};
+
+exports.createLeaderMarks = async (req, res) => {
+  try {
+    let {
+      unitId,
+      candidateId, // can be single ID or array of IDs
+      staffLookupId,
+      impactType,
+      concernIdentified,
+      identityDate,
+      concernResolved,
+      resolutionDate
+    } = req.body;
+
+    // ============================
+    // 1. Required fields
+    // ============================
+    if (!unitId || !candidateId || !staffLookupId || !impactType || !concernIdentified || !identityDate) {
+      return res.status(400).json({
+        message: "unitId, candidateId, staffLookupId, impactType, concernIdentified, and identityDate are required"
+      });
+    }
+
+    // Ensure candidateId is an array
+    const candidateIds = Array.isArray(candidateId) ? candidateId : [candidateId];
+
+    // Validate impact type
+    if (!["Positive", "Negative"].includes(impactType)) {
+      return res.status(400).json({ message: "impactType must be 'Positive' or 'Negative'" });
+    }
+
+    // ============================
+    // 2. Loop through each candidate and create marks
+    // ============================
+    const createdMarks = [];
+
+    for (const id of candidateIds) {
+      // Auto-generate next entry number for this candidate
+      const lastEntry = await db.LeaderMarks.findOne({
+        where: { unitId, candidateId: id },
+        order: [["entryNumber", "DESC"]]
+      });
+
+      const nextEntryNumber = lastEntry ? lastEntry.entryNumber + 1 : 1;
+
+      const newMark = await db.LeaderMarks.create({
+        unitId,
+        candidateId: id,
+        staffLookupId,
+        entryNumber: nextEntryNumber,
+        impactType,
+        concernIdentified,
+        identityDate,
+        concernResolved,
+        resolutionDate: resolutionDate || null
+      });
+
+      // Fetch full relational data
+      const fullData = await db.LeaderMarks.findOne({
+        where: { id: newMark.id },
+        include: [
+          {
+            model: db.Candidate,
+            as: "candidate",
+            attributes: ["id", "firstName", "lastName"]
+          },
+          {
+            model: db.Unit,
+            as: "unit",
+            attributes: ["id", "unitName"]
+          },
+          {
+            model: db.StaffLookup,
+            as: "leaderLookup",
+            include: [
+              {
+                model: db.Staff,
+                as: "staff",
+                attributes: ["id", "firstName", "lastName", "emailAddress", "jobTitle"]
+              }
+            ]
+          }
+        ]
+      });
+
+      createdMarks.push(fullData);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Leader mark(s) created successfully",
+      count: createdMarks.length,
+      data: createdMarks
+    });
+
+  } catch (error) {
+    console.error("❌ Error in createLeaderMarks:", error);
+    return res.status(500).json({
+      message: "Error creating leader mark",
+      error: error.message
+    });
+  }
+};
+
+
+
+exports.getLeaderMarks = async (req, res) => {
+  try {
+    const { unitId, candidate_id } = req.params;
+
+    if (!unitId || !candidate_id) {
+      return res.status(400).json({
+        message: "unitId and candidate_id are required"
+      });
+    }
+
+    const marks = await db.LeaderMarks.findAll({
+      where: {
+        unitId: unitId,
+        candidateId: candidate_id
+      },
+      order: [["entryNumber", "ASC"]],
+      include: [
+        {
+          model: db.Candidate,
+          as: "candidate",
+          attributes: ["id", "firstName", "lastName"]
+        },
+        {
+          model: db.Unit,
+          as: "unit",
+          attributes: ["id", "unitName"]
+        },
+        {
+          model: db.StaffLookup,
+          as: "leaderLookup",
+          attributes: ["id", "roleType"],
+          include: [
+            {
+              model: db.Staff,
+              as: "staff",
+              attributes: ["id", "firstName", "lastName", "emailAddress", "jobTitle"]
+            }
+          ]
+        }
+      ]
+    });
+
+    // ======================================================
+    // Flatten the staff name into each record
+    // ======================================================
+    const formatted = marks.map((item) => {
+      const staff = item.leaderLookup?.staff;
+
+      return {
+        ...item.toJSON(),
+        staffFirstName: staff?.firstName || null,
+        staffLastName: staff?.lastName || null,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: formatted.length,
+      data: formatted
+    });
+
+  } catch (error) {
+    console.error("Error in getLeaderMarks:", error);
+
+    return res.status(500).json({
+      message: "Error computing leader marks",
+      error: error.message
+    });
+  }
+};
+
+
