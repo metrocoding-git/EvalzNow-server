@@ -68,103 +68,123 @@ exports.getInsertScoresByUnitId = async (req, res) => {
 // POST create a new Insert Score
 exports.createInsertScore = async (req, res) => {
   try {
-    let {
-      unitId,
-      assessmentBlockId,
-      candidate_id,
-      ppId,
-      durationHrs,
-      criticalRefDate,
-      remarks,
-      workflowStage,
-      assessmentType,
-      scheduleImpact,
-      engageLevel,
-      competency,
-      attainedScore,
-      maxScore,
-      ...rest
-    } = req.body;
+    const payload = Array.isArray(req.body) ? req.body : [req.body];
+    const results = [];
 
-    if (!assessmentBlockId) return res.status(400).json({ message: 'assessmentBlockId is required' });
-    if (!unitId) return res.status(400).json({ message: 'unitId is required' });
-    if (!candidate_id) return res.status(400).json({ message: 'candidateId is required' });
+    for (const item of payload) {
+      let {
+        unitId,
+        assessmentBlockId,
+        candidate_id,
+        ppId,
+        durationHrs,
+        criticalRefDate,
+        remarks,
+        workflowStage,
+        assessmentType,
+        scheduleImpact,
+        engageLevel,
+        competency,
+        attainedScore,
+        maxScore,
+        ...rest
+      } = item;
 
-    const blockExists = await AssessmentBlockManager.findByPk(assessmentBlockId);
-    if (!blockExists) return res.status(400).json({ message: 'AssessmentBlockManager not found' });
+      if (!assessmentBlockId)
+        return res.status(400).json({ message: "assessmentBlockId is required" });
+      if (!unitId)
+        return res.status(400).json({ message: "unitId is required" });
+      if (!candidate_id)
+        return res.status(400).json({ message: "candidateId is required" });
 
-    // Fetch Unit to get environment and scoringSystem
-    const unit = await Unit.findByPk(unitId);
-    if (!unit) return res.status(400).json({ message: 'Unit not found' });
+      const blockExists = await AssessmentBlockManager.findByPk(assessmentBlockId);
+      if (!blockExists)
+        return res.status(400).json({ message: "AssessmentBlockManager not found" });
 
-    // Calculate attainedScore and maxScore if Workforce
-    if (unit.environment === "Workforce") {
-      let total = 0;
-      let filledCount = 0;
-      const maxAllowed = unit.scoringSystem === "3-Point" ? 3 : 5;
+      const unit = await Unit.findByPk(unitId);
+      if (!unit)
+        return res.status(400).json({ message: "Unit not found" });
 
-      for (let i = 1; i <= 20; i++) {
-        const mcVal = rest[`mc${i}`];
-        if (mcVal !== null && mcVal !== undefined && mcVal !== "") {
-          total += parseFloat(mcVal);
-          filledCount++;
+      // AUTO SCORE (workforce)
+      if (unit.environment === "Workforce") {
+        let total = 0;
+        let filledCount = 0;
+        const maxAllowed = unit.scoringSystem === "3-Point" ? 3 : 5;
+
+        for (let i = 1; i <= 20; i++) {
+          const mcVal = rest[`mc${i}`];
+          if (mcVal !== null && mcVal !== undefined && mcVal !== "") {
+            total += parseFloat(mcVal);
+            filledCount++;
+          }
+          const ccVal = rest[`cc${i}`];
+          if (ccVal !== null && ccVal !== undefined && ccVal !== "") {
+            total += parseFloat(ccVal);
+            filledCount++;
+          }
         }
-        const ccVal = rest[`cc${i}`];
-        if (ccVal !== null && ccVal !== undefined && ccVal !== "") {
-          total += parseFloat(ccVal);
-          filledCount++;
-        }
+
+        attainedScore = total;
+        maxScore = filledCount * maxAllowed;
       }
 
-      attainedScore = total;
-      maxScore = filledCount * maxAllowed;
+      // AUTOGENERATE subPpId
+      let subPpId;
+      const existingScores = await InsertScore.findAll({
+        where: { unitId, candidate_id, ppId },
+        attributes: ["subPpId"],
+      });
+
+      if (existingScores.length === 0)
+        subPpId = ppId > 0 ? 1 : -1;
+      else
+        subPpId =
+          ppId > 0
+            ? Math.max(...existingScores.map((s) => s.subPpId)) + 1
+            : Math.min(...existingScores.map((s) => s.subPpId)) - 1;
+
+      // Create
+      const newScore = await InsertScore.create({
+        unitId,
+        assessmentBlockId,
+        candidate_id,
+        ppId,
+        subPpId,
+        durationHrs,
+        criticalRefDate,
+        remarks,
+        workflowStage,
+        assessmentType,
+        scheduleImpact,
+        engageLevel,
+        competency,
+        attainedScore,
+        maxScore,
+        ...rest,
+      });
+
+      const scoreWithRelations = await InsertScore.findOne({
+        where: { id: newScore.id },
+        include: [
+          { model: AssessmentBlockManager, as: "assessmentBlock" },
+          { model: Unit, as: "unit" },
+          { model: Candidate, as: "candidate" },
+        ],
+      });
+
+      results.push(scoreWithRelations);
     }
 
-    // Auto-generate subPpId
-    let subPpId;
-    const existingScores = await InsertScore.findAll({
-      where: { unitId, candidate_id, ppId },
-      attributes: ['subPpId']
-    });
-
-    if (existingScores.length === 0) subPpId = ppId > 0 ? 1 : -1;
-    else subPpId = ppId > 0 ? Math.max(...existingScores.map(s => s.subPpId)) + 1 : Math.min(...existingScores.map(s => s.subPpId)) - 1;
-
-    const newScore = await InsertScore.create({
-      unitId,
-      assessmentBlockId,
-      candidate_id,
-      ppId,
-      subPpId,
-      durationHrs,
-      criticalRefDate,
-      remarks,
-      workflowStage,
-      assessmentType,
-      scheduleImpact,
-      engageLevel,
-      competency,
-      attainedScore,
-      maxScore,
-      ...rest,
-    });
-
-    const scoreWithRelations = await InsertScore.findOne({
-      where: { id: newScore.id },
-      include: [
-        { model: AssessmentBlockManager, as: 'assessmentBlock' },
-        { model: Unit, as: 'unit' },
-        { model: Candidate, as: 'candidate' }
-      ]
-    });
-
-    res.status(201).json(scoreWithRelations);
-
+    res.status(201).json(results);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error creating insert score', error: error.message });
+    res.status(500).json({
+      message: "Error creating insert score",
+      error: error.message,
+    });
   }
 };
+
 
 
 

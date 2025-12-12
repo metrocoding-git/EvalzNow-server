@@ -25,6 +25,11 @@ db.Account = require("./account.model")(sequelize, Sequelize);
 db.StaffLookup = require("./staffLookUp.model")(sequelize, Sequelize);
 db.ProjectionSession = require("./projectionSession.model")(sequelize, Sequelize);
 db.ProjectionPoint = require("./projectionPoints.model")(sequelize, Sequelize);
+db.CandidateMarks = require("./candidateMark.model")(sequelize, Sequelize);
+db.CandidateNeedAssessment = require("./candidateNeedAssessment.model")(sequelize, Sequelize);
+db.UnitImprovement = require("./unitImprovement.model")(sequelize, Sequelize);
+db.LeaderMarks = require("./leaderMark.model")(sequelize, Sequelize);
+
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -350,6 +355,140 @@ if (db.Unit && db.Staff && db.StaffLookup) {
     as: "staff",
     onDelete: "CASCADE",
     onUpdate: "CASCADE",
+  });
+}
+
+// Candidate ↔ CandidateMarks
+db.Candidate.hasMany(db.CandidateMarks, {
+  foreignKey: "candidateId",
+  as: "marks",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE"
+});
+
+db.CandidateMarks.belongsTo(db.Candidate, {
+  foreignKey: "candidateId",
+  as: "candidate",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE"
+});
+
+// Unit ↔ CandidateMarks
+db.Unit.hasMany(db.CandidateMarks, {
+  foreignKey: "unitId",
+  as: "candidateMarks",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE"
+});
+
+db.CandidateMarks.belongsTo(db.Unit, {
+  foreignKey: "unitId",
+  as: "unit",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE"
+});
+
+
+// Candidate ↔ CandidateNeedAssessment
+db.Candidate.hasMany(db.CandidateNeedAssessment, {
+  foreignKey: "candidateId",
+  as: "needAssessments",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE"
+});
+
+db.CandidateNeedAssessment.belongsTo(db.Candidate, {
+  foreignKey: "candidateId",
+  as: "candidate",
+});
+
+// Unit ↔ CandidateNeedAssessment
+db.Unit.hasMany(db.CandidateNeedAssessment, {
+  foreignKey: "unitId",
+  as: "needAssessments",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE"
+});
+
+db.CandidateNeedAssessment.belongsTo(db.Unit, {
+  foreignKey: "unitId",
+  as: "unit",
+});
+
+
+// Candidate ↔ unitImprovement
+db.Candidate.hasMany(db.UnitImprovement, {
+  foreignKey: "candidateId",
+  as: "lessons",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE"
+});
+
+db.UnitImprovement.belongsTo(db.Candidate, {
+  foreignKey: "candidateId",
+  as: "candidate",
+});
+
+// Unit ↔ UnitImprovement
+db.Unit.hasMany(db.UnitImprovement, {
+  foreignKey: "unitId",
+  as: "lessons",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE"
+});
+
+db.UnitImprovement.belongsTo(db.Unit, {
+  foreignKey: "unitId",
+  as: "unit",
+});
+
+
+// ================== LeaderMarks Associations ==================
+if (db.LeaderMarks) {
+
+  // LeaderMarks ↔ Candidate
+  db.Candidate.hasMany(db.LeaderMarks, {
+    foreignKey: "candidateId",
+    as: "leaderMarks",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  db.LeaderMarks.belongsTo(db.Candidate, {
+    foreignKey: "candidateId",
+    as: "candidate",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  // LeaderMarks ↔ Unit
+  db.Unit.hasMany(db.LeaderMarks, {
+    foreignKey: "unitId",
+    as: "leaderMarks",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  db.LeaderMarks.belongsTo(db.Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  // LeaderMarks ↔ StaffLookup (leader reference)
+  db.StaffLookup.hasMany(db.LeaderMarks, {
+    foreignKey: "staffLookupId",
+    as: "leaderMarks",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
+  });
+
+  db.LeaderMarks.belongsTo(db.StaffLookup, {
+    foreignKey: "staffLookupId",
+    as: "leaderLookup",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE"
   });
 }
 
