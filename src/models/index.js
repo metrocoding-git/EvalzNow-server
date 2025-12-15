@@ -29,7 +29,7 @@ db.CandidateMarks = require("./candidateMark.model")(sequelize, Sequelize);
 db.CandidateNeedAssessment = require("./candidateNeedAssessment.model")(sequelize, Sequelize);
 db.UnitImprovement = require("./unitImprovement.model")(sequelize, Sequelize);
 db.LeaderMarks = require("./leaderMark.model")(sequelize, Sequelize);
-
+db.AssessmentChain = require("./assessmentChain.model")(sequelize, Sequelize);
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -491,6 +491,99 @@ if (db.LeaderMarks) {
     onUpdate: "CASCADE"
   });
 }
+
+
+// ================== AssessmentChain Associations ==================
+if (
+  db.AssessmentChain &&
+  db.Unit &&
+  db.Candidate &&
+  db.AssessmentBlockManager
+) {
+
+  // 🔹 Unit ↔ AssessmentChain
+  db.Unit.hasMany(db.AssessmentChain, {
+    foreignKey: "unitId",
+    as: "assessmentChains",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  db.AssessmentChain.belongsTo(db.Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  // 🔹 Candidate ↔ AssessmentChain
+  db.Candidate.hasMany(db.AssessmentChain, {
+    foreignKey: "candidateId",
+    as: "assessmentChains",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  db.AssessmentChain.belongsTo(db.Candidate, {
+    foreignKey: "candidateId",
+    as: "candidate",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  // 🔹 AssessmentBlockManager ↔ AssessmentChain (5 selections)
+
+  db.AssessmentBlockManager.hasMany(db.AssessmentChain, {
+    foreignKey: "selection1",
+    as: "usedAsBlock1",
+  });
+
+  db.AssessmentBlockManager.hasMany(db.AssessmentChain, {
+    foreignKey: "selection2",
+    as: "usedAsBlock2",
+  });
+
+  db.AssessmentBlockManager.hasMany(db.AssessmentChain, {
+    foreignKey: "selection3",
+    as: "usedAsBlock3",
+  });
+
+  db.AssessmentBlockManager.hasMany(db.AssessmentChain, {
+    foreignKey: "selection4",
+    as: "usedAsBlock4",
+  });
+
+  db.AssessmentBlockManager.hasMany(db.AssessmentChain, {
+    foreignKey: "selection5",
+    as: "usedAsBlock5",
+  });
+
+  db.AssessmentChain.belongsTo(db.AssessmentBlockManager, {
+    foreignKey: "selection1",
+    as: "block1",
+  });
+
+  db.AssessmentChain.belongsTo(db.AssessmentBlockManager, {
+    foreignKey: "selection2",
+    as: "block2",
+  });
+
+  db.AssessmentChain.belongsTo(db.AssessmentBlockManager, {
+    foreignKey: "selection3",
+    as: "block3",
+  });
+
+  db.AssessmentChain.belongsTo(db.AssessmentBlockManager, {
+    foreignKey: "selection4",
+    as: "block4",
+  });
+
+  db.AssessmentChain.belongsTo(db.AssessmentBlockManager, {
+    foreignKey: "selection5",
+    as: "block5",
+  });
+}
+
 
 
 
