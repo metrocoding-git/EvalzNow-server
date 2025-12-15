@@ -6,6 +6,38 @@ const { Op, Sequelize } = require("sequelize");
 const CandidateMarks = db.CandidateMarks;
 const CandidateNeedAssessment = db.CandidateNeedAssessment;
 const UnitImprovement = db.UnitImprovement;
+const AssessmentChain = db.AssessmentChain;
+const Unit = db.Unit;
+const Candidate = db.Candidate;
+const AssessmentBlockManager = db.AssessmentBlockManager;
+
+
+/// <summary>
+/// Method to Calculate the cumulative area/effort under the curve for Productivity Rates - trapezoidal riemman sums [Calculus]
+/// </summary>
+/// <param name="xArray">array data - covers the range of Performance Point IDs (+PP ID only)</param>
+/// <param name="yArray">array data - represents the productivity rates for each +PP ID.</param>
+/// <param name="subrowCount">array data - represents the total number of sub PP ID rows in the master PP ID</param>
+/// <returns>The area under the curve represents the Effort for the Butler Utility</returns>
+/// <returns>This function can be used for the candidate start date (CSD) and the unit start date (USD)</returns>
+
+function effortBU(xArray, yArray, subrowCount) {
+  var areasub = 0;
+  var area = 0;
+
+  for (var i = 0; i < xArray.length; i++) {
+    if (i <= xArray.length - 2 && yArray[i] != 0 && yArray[i + 1] != 0) {
+      areasub +=
+        (yArray[i] * subrowCount[i] + yArray[i + 1] * subrowCount[i + 1]) / 2;
+    } else {
+      continue;
+    }
+  }
+
+  area = areasub / 10;
+  return parseFloat(area).toFixed(3);
+}
+
 
 exports.getAuxiliaryGraphData = async (req, res) => {
     try {
@@ -813,3 +845,326 @@ exports.getLeaderMarks = async (req, res) => {
 };
 
 
+exports.getEffortBu = async (req, res) => {
+  try {
+    const { unitId, candidate_id } = req.params;
+
+    if (!unitId || !candidate_id) {
+      return res.status(400).json({
+        message: "unitId and candidate_id are required"
+      });
+    }
+
+    // ----------------------------------------
+    // 1) FETCH INSERT SCORES
+    // ----------------------------------------
+    let insertScores = [];
+    const mockReq1 = { params: { unitId, candidate_id } };
+
+    const mockRes1 = {
+      status(code) { this.statusCode = code; return this; },
+      json(data) { insertScores = data; return this; }
+    };
+
+    await getInsertScoresByUnitAndCandidate(mockReq1, mockRes1);
+
+    // Only positive ppIds
+    const positive = insertScores.filter(r => r.ppId > 0);
+
+    if (!positive.length) {
+      return res.status(200).json({
+        message: "No positive ppId records found",
+        results: null
+      });
+    }
+
+    // ----------------------------------------
+    // 2) BUILD subrowCount per ppId
+    // ----------------------------------------
+    const ppCountMap = {};
+    positive.forEach(r => {
+      ppCountMap[r.ppId] = (ppCountMap[r.ppId] || 0) + 1;
+    });
+
+    // ----------------------------------------
+    // 3) FETCH AUXILIARY GRAPH DATA
+    // ----------------------------------------
+    let auxData = null;
+    const mockReq2 = { params: { unitId, candidate_id } };
+
+    const mockRes2 = {
+      status(code) { this.statusCode = code; return this; },
+      json(data) { auxData = data; return this; }
+    };
+
+    await exports.getAuxiliaryGraphData(mockReq2, mockRes2);
+
+    if (!auxData || !auxData.results?.length) {
+      return res.status(404).json({
+        message: "No auxiliary graph data found"
+      });
+    }
+
+    // ----------------------------------------
+    // 4) EXTRACT ARRAYS (sorted by ppId)
+    // ----------------------------------------
+    const sorted = auxData.results
+      .filter(r => r.ppId > 0)
+      .sort((a, b) => a.ppId - b.ppId);
+
+    const xArray = sorted.map(r => r.ppId);
+    const yArrayCSD = sorted.map(r => r.Productivity_CSD || 0);
+    const yArrayUSD = sorted.map(r => r.Productivity_USD || 0);
+    const subrowCount = sorted.map(r => ppCountMap[r.ppId] || 0);
+
+    // ----------------------------------------
+    // 5) CALCULATE EFFORT BU
+    // ----------------------------------------
+    const effortCSD = effortBU(xArray, yArrayCSD, subrowCount);
+    const effortUSD = effortBU(xArray, yArrayUSD, subrowCount);
+
+    // ----------------------------------------
+    // 6) RESPONSE
+    // ----------------------------------------
+    return res.status(200).json({
+      unitId,
+      candidate_id,
+      inputArrays: {
+        xArray,
+        yArrayCSD,
+        yArrayUSD,
+        subrowCount
+      },
+      data: {
+        CSD: effortCSD,
+        USD: effortUSD
+      }
+    });
+
+  } catch (error) {
+    console.error("Error in getEffortBu:", error);
+
+    return res.status(500).json({
+      message: "Error computing Effort BU",
+      error: error.message
+    });
+  }
+};
+
+
+exports.createAssessmentChain = async (req, res) => {
+  try {
+    const {
+      unitId,
+      candidateId,
+      selection1,
+      selection2,
+      selection3,
+      selection4,
+      selection5
+    } = req.body;
+
+    // ----------------------------
+    // 1️⃣ Validate required fields
+    // ----------------------------
+    if (!unitId || !candidateId || !selection1) {
+      return res.status(400).json({
+        message: "unitId, candidateId, and selection1 are required"
+      });
+    }
+
+    // ----------------------------
+    // 2️⃣ Check if Unit exists
+    // ----------------------------
+    const unitExists = await Unit.findByPk(unitId);
+    if (!unitExists) {
+      return res.status(404).json({ message: "Unit not found" });
+    }
+
+    // ----------------------------
+    // 3️⃣ Check if Candidate exists
+    // ----------------------------
+    const candidateExists = await Candidate.findByPk(candidateId);
+    if (!candidateExists) {
+      return res.status(404).json({ message: "Candidate not found" });
+    }
+
+    // ----------------------------
+    // 4️⃣ Check if selection1 exists
+    // ----------------------------
+    const block1Exists = await AssessmentBlockManager.findByPk(selection1);
+    if (!block1Exists) {
+      return res.status(404).json({ message: "selection1 block not found" });
+    }
+
+    // Optional selections validation
+    const optionalSelections = { selection2, selection3, selection4, selection5 };
+    for (const [key, val] of Object.entries(optionalSelections)) {
+      if (val) {
+        const blockExists = await AssessmentBlockManager.findByPk(val);
+        if (!blockExists) {
+          return res.status(404).json({ message: `${key} block not found` });
+        }
+      }
+    }
+
+    // ----------------------------
+    // 5️⃣ Create AssessmentChain
+    // ----------------------------
+    const newChain = await AssessmentChain.create({
+      unitId,
+      candidateId,
+      selection1,
+      selection2: selection2 || null,
+      selection3: selection3 || null,
+      selection4: selection4 || null,
+      selection5: selection5 || null
+    });
+
+    // ----------------------------
+    // 6️⃣ Fetch created chain with associations
+    // ----------------------------
+    const fullChain = await AssessmentChain.findOne({
+      where: { id: newChain.id },
+      include: [
+        { model: Unit, as: 'unit', attributes: ['id', 'unitName'] },
+        { model: Candidate, as: 'candidate', attributes: ['id', 'firstName', 'lastName'] },
+        { model: AssessmentBlockManager, as: 'block1' },
+        { model: AssessmentBlockManager, as: 'block2' },
+        { model: AssessmentBlockManager, as: 'block3' },
+        { model: AssessmentBlockManager, as: 'block4' },
+        { model: AssessmentBlockManager, as: 'block5' },
+      ]
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "AssessmentChain created successfully",
+      data: fullChain
+    });
+
+  } catch (error) {
+    console.error("Error in createAssessmentChain:", error);
+    return res.status(500).json({
+      message: "Error creating AssessmentChain",
+      error: error.message
+    });
+  }
+};
+
+
+exports.getAssessmentChainData = async (req, res) => {
+  try {
+    const { unitId, candidateId } = req.params;
+
+    if (!unitId || !candidateId) {
+      return res.status(400).json({ message: "unitId and candidateId are required" });
+    }
+
+    // 1️⃣ Fetch all chains for candidate & unit
+    const chains = await AssessmentChain.findAll({
+      where: { unitId, candidateId },
+      include: [
+        { model: Unit, as: "unit", attributes: ["id", "unitName"] },
+        { model: Candidate, as: "candidate", attributes: ["id", "firstName", "lastName"] },
+        { model: AssessmentBlockManager, as: "block1" },
+        { model: AssessmentBlockManager, as: "block2" },
+        { model: AssessmentBlockManager, as: "block3" },
+        { model: AssessmentBlockManager, as: "block4" },
+        { model: AssessmentBlockManager, as: "block5" },
+      ],
+      order: [["createdAt", "ASC"]]
+    });
+
+    // 2️⃣ Fetch tabulation data for all selections
+    const allPpIds = [];
+    chains.forEach(chain => {
+      for (let i = 1; i <= 5; i++) {
+        const block = chain[`block${i}`];
+        if (block && block.ppId) allPpIds.push(block.ppId);
+      }
+    });
+
+    // Call existing tabulation controller logic
+    const mockReq = { query: { unitId, candidate_id: candidateId } };
+    let tabData = null;
+    const mockRes = {
+      status() { return this; },
+      json(data) { tabData = data; return this; }
+    };
+    await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+
+    if (!tabData || !tabData.results) {
+      return res.status(404).json({ message: "No tabulation data found" });
+    }
+    const competencyResults = tabData.results;
+
+    // Helper to fetch candidateNeedAssessment for ppId
+    const getBenchmarkIds = async (unitId, candidateId, ppId) => {
+      const assessments = await CandidateNeedAssessment.findAll({
+        where: { unitId, candidateId, ppId }
+      });
+      return assessments.map(a => a.benchmarkIds).flat();
+    };
+
+    // 3️⃣ Build response
+    const response = [];
+
+    for (const chain of chains) {
+      const selections = [];
+
+      for (let i = 1; i <= 5; i++) {
+        const block = chain[`block${i}`];
+        if (!block) continue;
+
+        const ppId = block.ppId;
+
+        // Get competency info for this ppId
+        const comp = competencyResults.find(c => String(c.ppId) === String(ppId) && String(c.candidateId) === String(candidateId)) || {};
+
+        const RRN = comp.RRN || null;
+        const PRN = comp.PRN || null;
+        const ARN = comp.ARN || null;
+        const criticalRefDate = comp.criticalRefDate || null;
+
+        // Get benchmark ids
+        const benchmarkIds = await getBenchmarkIds(unitId, candidateId, ppId);
+
+        // Determine action status
+        let actionStatus = "Open";
+        if (benchmarkIds.length === 5) actionStatus = "Closed";
+        else if (benchmarkIds.length > 0 && benchmarkIds.length < 5) actionStatus = "Pending";
+
+        selections.push({
+          selectionNumber: i,
+          ppId,
+          RRN,
+          PRN,
+          ARN,
+          criticalRefDate,
+          benchmarkIds,
+          actionStatus
+        });
+      }
+
+      response.push({
+        chainId: chain.id,
+        unitId: chain.unitId,
+        candidateId: chain.candidateId,
+        selections
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      results: response
+    });
+
+  } catch (error) {
+    console.error("Error in getAssessmentChainData:", error);
+    return res.status(500).json({
+      message: "Error fetching assessment chain data",
+      error: error.message
+    });
+  }
+};
