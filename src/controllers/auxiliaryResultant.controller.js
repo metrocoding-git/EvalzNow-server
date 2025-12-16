@@ -38,106 +38,147 @@ function effortBU(xArray, yArray, subrowCount) {
   return parseFloat(area).toFixed(3);
 }
 
-
 exports.getAuxiliaryGraphData = async (req, res) => {
-    try {
-        const { unitId, candidate_id } = req.params;
+  try {
+      const { unitId, candidate_id } = req.params;
+      const { ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query || {}; // Add query parameters
 
-        // Convert "66,67,82" → ["66","67","82"]
-        const candidateList = candidate_id.split(",").map(id => id.trim());
+      // Convert "66,67,82" → ["66","67","82"]
+      const candidateList = candidate_id.split(",").map(id => id.trim());
 
+      if (!unitId || !candidate_id) {
+          return res.status(400).json({ message: "unitId and candidate_id are required" });
+      }
 
-        if (!unitId || !candidate_id) {
-            return res.status(400).json({ message: "unitId and candidate_id are required" });
-        }
+      // ----------------------------------------------------
+      // 1) CALL EXISTING INSERT SCORE CONTROLLER
+      // ----------------------------------------------------
+      let insertScoresAll = [];
 
-        // ----------------------------------------------------
-        // 1) CALL EXISTING INSERT SCORE CONTROLLER
-        // ----------------------------------------------------
-        let insertScoresAll = [];
+      for (const cid of candidateList) {
+          const mockReq1 = { params: { unitId, candidate_id: cid } };
+          let oneInsertScore = null;
 
-        for (const cid of candidateList) {
-            const mockReq1 = { params: { unitId, candidate_id: cid } };
-            let oneInsertScore = null;
+          const mockRes1 = {
+              status(code) { this.statusCode = code; return this; },
+              json(data) { oneInsertScore = data; return this; }
+          };
 
-            const mockRes1 = {
-                status(code) { this.statusCode = code; return this; },
-                json(data) { oneInsertScore = data; return this; }
-            };
+          await getInsertScoresByUnitAndCandidate(mockReq1, mockRes1);
 
-            await getInsertScoresByUnitAndCandidate(mockReq1, mockRes1);
+          if (Array.isArray(oneInsertScore)) {
+              // Apply filtering to insert scores
+              let filteredScores = oneInsertScore;
+              
+              // Filter by ppId range
+              if (ppIdFrom || ppIdTo) {
+                  filteredScores = filteredScores.filter(score => {
+                      const ppId = score.ppId;
+                      let passes = true;
+                      
+                      if (ppIdFrom && ppId < Number(ppIdFrom)) passes = false;
+                      if (ppIdTo && ppId > Number(ppIdTo)) passes = false;
+                      
+                      return passes;
+                  });
+              }
+              
+              // Filter by criticalRefDate range
+              if (criticalRefDateFrom || criticalRefDateTo) {
+                  filteredScores = filteredScores.filter(score => {
+                      const refDate = new Date(score.criticalRefDate);
+                      let passes = true;
+                      
+                      if (criticalRefDateFrom && refDate < new Date(criticalRefDateFrom)) passes = false;
+                      if (criticalRefDateTo && refDate > new Date(criticalRefDateTo)) passes = false;
+                      
+                      return passes;
+                  });
+              }
+              
+              insertScoresAll.push(...filteredScores);
+          }
+      }
 
-            if (Array.isArray(oneInsertScore)) {
-                insertScoresAll.push(...oneInsertScore);  // merge
-            }
-        }
+      // ----------------------------------------------------
+      // 2) NOW CALL COMPETENCY RATIO CONTROLLER WITH FILTERS
+      // ----------------------------------------------------
+      const mockReq2 = {
+          query: { 
+              unitId, 
+              candidate_id,
+              ppIdFrom,      // Pass filters
+              ppIdTo,        // Pass filters
+              criticalRefDateFrom,  // Pass filters
+              criticalRefDateTo     // Pass filters
+          }
+      };
+      let competencyData = null;
 
+      const mockRes2 = {
+          status(code) {
+              this.statusCode = code;
+              return this;
+          },
+          json(data) {
+              competencyData = data;
+              return this;
+          }
+      };
 
-        // ----------------------------------------------------
-        // 2) NOW CALL COMPETENCY RATIO CONTROLLER
-        // ----------------------------------------------------
-        const mockReq2 = {
-            query: { unitId, candidate_id }
-        };
-        let competencyData = null;
+      await getPpCompetencyRatioMultipleCandidate(mockReq2, mockRes2);
 
-        const mockRes2 = {
-            status(code) {
-                this.statusCode = code;
-                return this;
-            },
-            json(data) {
-                competencyData = data;
-                return this;
-            }
-        };
+      if (!competencyData || !competencyData.results) {
+          return res.status(404).json({ message: "No competency ratio data found" });
+      }
 
-        await getPpCompetencyRatioMultipleCandidate(mockReq2, mockRes2);
+      const competencyResults = competencyData.results;
 
-        if (!competencyData || !competencyData.results) {
-            return res.status(404).json({ message: "No competency ratio data found" });
-        }
+      // ----------------------------------------------------
+      // 3) CALL ROSTER CONTROLLER
+      // ----------------------------------------------------
+      let rostersAll = [];
 
-        const competencyResults = competencyData.results;
+      for (const cid of candidateList) {
+          const mockReq3 = { params: { unitId, candidateId: cid } };
+          let rosterData = null;
 
+          const mockRes3 = {
+              status(code) { this.statusCode = code; return this; },
+              json(data) { rosterData = data; return this; }
+          };
 
-        let rostersAll = [];
+          await getUnitRostersByUnitIdAndCandidateId(mockReq3, mockRes3);
 
-        for (const cid of candidateList) {
-            const mockReq3 = { params: { unitId, candidateId: cid } };
-            let rosterData = null;
+          if (Array.isArray(rosterData)) {
+              rostersAll.push(...rosterData);
+          }
+      }
 
-            const mockRes3 = {
-                status(code) { this.statusCode = code; return this; },
-                json(data) { rosterData = data; return this; }
-            };
+      // ----------------------------------------------------
+      // FILTER ONLY POSITIVE PPIDs in InsertScores
+      // ----------------------------------------------------
+      const positiveRecords = insertScoresAll.filter(r => r.ppId > 0);
 
-            await getUnitRostersByUnitIdAndCandidateId(mockReq3, mockRes3);
+      if (positiveRecords.length === 0) {
+          return res.status(200).json({
+              unitId,
+              candidate_id,
+              rosterData: rostersAll,
+              results: [],
+              filters: {
+                  ppIdFrom: ppIdFrom || null,
+                  ppIdTo: ppIdTo || null,
+                  criticalRefDateFrom: criticalRefDateFrom || null,
+                  criticalRefDateTo: criticalRefDateTo || null
+              },
+              message: "No positive ppId found matching filters"
+          });
+      }
 
-            if (Array.isArray(rosterData)) {
-                rostersAll.push(...rosterData);
-            }
-        }
-
-
-        // ----------------------------------------------------
-        // FILTER ONLY POSITIVE PPIDs in InsertScores
-        // ----------------------------------------------------
-        const positiveRecords = insertScoresAll.filter(r => r.ppId > 0);
-
-
-        if (positiveRecords.length === 0) {
-            return res.status(200).json({
-                unitId,
-                candidate_id,
-                tenureData: [],
-                message: "No positive ppId found"
-            });
-        }
-
-        // Day difference helper
-        const dayDiff = (a, b) =>
-            Math.ceil((new Date(a) - new Date(b)) / (1000 * 60 * 60 * 24));
+      // Day difference helper
+      const dayDiff = (a, b) =>
+          Math.ceil((new Date(a) - new Date(b)) / (1000 * 60 * 60 * 24));
 
       // -------------------------------
       // Helper: tolerant candidate id getter
@@ -150,133 +191,138 @@ exports.getAuxiliaryGraphData = async (req, res) => {
           // last resort: check nested candidate object with different casing
           if (rec.candidate && (rec.candidateId != null)) return String(rec.candidate.candidateId);
           return undefined;
-        };
-        
-        // -------------------------------
-        // Group insert scores by candidate + ppId (robust)
-        // -------------------------------
-        const groupByCandidateAndPp = {};
-        
-        positiveRecords.forEach(rec => {
+      };
+      
+      // -------------------------------
+      // Group insert scores by candidate + ppId (robust)
+      // -------------------------------
+      const groupByCandidateAndPp = {};
+      
+      positiveRecords.forEach(rec => {
           const candId = getCandidateIdFromInsertRecord(rec);
           if (!candId) {
-            console.warn('InsertScore record missing candidate id:', rec);
-            return; // skip or you could still group by ppId-only
+              console.warn('InsertScore record missing candidate id:', rec);
+              return; // skip or you could still group by ppId-only
           }
           const key = `${candId}_${String(rec.ppId)}`;
           if (!groupByCandidateAndPp[key]) groupByCandidateAndPp[key] = [];
           groupByCandidateAndPp[key].push(rec);
-        });
-        
-        // --- build fast lookup for competency results ---
-        // create keys with candidateId_ppId and also store by ppId alone (array) for fallback
-        const compMap = new Map();
-        const compByPpId = new Map();
-        
-        competencyResults.forEach(c => {
+      });
+      
+      // --- build fast lookup for competency results ---
+      // create keys with candidateId_ppId and also store by ppId alone (array) for fallback
+      const compMap = new Map();
+      const compByPpId = new Map();
+      
+      competencyResults.forEach(c => {
           // competency results use candidateId property (based on your controller) — normalize to string
           const candKey = `${String(c.candidateId)}_${String(c.ppId)}`;
           compMap.set(candKey, c);
-        
+      
           const ppKey = String(c.ppId);
           if (!compByPpId.has(ppKey)) compByPpId.set(ppKey, []);
           compByPpId.get(ppKey).push(c);
-        });
-        
-        // helper to try multiple possible field names
-        const pickField = (obj, candidates) => {
+      });
+      
+      // helper to try multiple possible field names
+      const pickField = (obj, candidates) => {
           if (!obj) return null;
           for (const key of candidates) {
-            if (Object.prototype.hasOwnProperty.call(obj, key) && obj[key] != null) return obj[key];
+              if (Object.prototype.hasOwnProperty.call(obj, key) && obj[key] != null) return obj[key];
           }
           return null;
-        };
-        
-        // -------------------------------
-        // Build finalResponse from grouped records
-        // -------------------------------
-        const finalResponse = Object.keys(groupByCandidateAndPp).map(groupKey => {
+      };
+      
+      // -------------------------------
+      // Build finalResponse from grouped records
+      // -------------------------------
+      const finalResponse = Object.keys(groupByCandidateAndPp).map(groupKey => {
           const records = groupByCandidateAndPp[groupKey];
-        
+      
           // latest insert-score record (by criticalRefDate)
           records.sort((a, b) => new Date(b.criticalRefDate) - new Date(a.criticalRefDate));
           const top = records[0];
-        
+      
           // get candId robustly (string)
           const candId = getCandidateIdFromInsertRecord(top);
           const ppId = top.ppId;
-        
+      
           // Try direct candidate+pp lookup in competency results
           const compKey = `${String(candId)}_${String(ppId)}`;
           let competencyMatch = compMap.get(compKey);
-        
+      
           // fallback: any entry for this ppId
           if (!competencyMatch) {
-            const arr = compByPpId.get(String(ppId));
-            if (Array.isArray(arr) && arr.length > 0) {
-              // prefer exact candidate match if present
-              competencyMatch = arr.find(c => String(c.candidateId) === String(candId)) || arr[0];
-            }
+              const arr = compByPpId.get(String(ppId));
+              if (Array.isArray(arr) && arr.length > 0) {
+                  // prefer exact candidate match if present
+                  competencyMatch = arr.find(c => String(c.candidateId) === String(candId)) || arr[0];
+              }
           }
-        
+      
           if (!competencyMatch) {
-            console.warn(`No competency match for candidate ${candId} ppId ${ppId}`, {
-              availableForPpId: compByPpId.get(String(ppId)) || []
-            });
+              console.warn(`No competency match for candidate ${candId} ppId ${ppId}`, {
+                  availableForPpId: compByPpId.get(String(ppId)) || []
+              });
           }
-        
+      
           // tolerant fields
           const duration = pickField(competencyMatch, [
-            'cumulativeDuration', 'cumulative_duration', 'cumulativeDurationHrs', 'duration', 'cumulative_time'
+              'cumulativeDuration', 'cumulative_duration', 'cumulativeDurationHrs', 'duration', 'cumulative_time'
           ]);
-        
+      
           const productivityCsd = pickField(competencyMatch, [
-            'Productivity_CSD', 'productivity_csd', 'productivityCsd', 'ProductivityCSD'
+              'Productivity_CSD', 'productivity_csd', 'productivityCsd', 'ProductivityCSD'
           ]);
-        
+      
           const productivityUsd = pickField(competencyMatch, [
-            'Productivity_USD', 'productivity_usd', 'productivityUsd', 'ProductivityUSD'
+              'Productivity_USD', 'productivity_usd', 'productivityUsd', 'ProductivityUSD'
           ]);
-        
+      
           // compute tenure days using nested candidate/unit objects if present
           const candidateStart = (top.candidate && top.candidate.startDate) ? top.candidate.startDate : null;
           const unitStart = (top.unit && top.unit.unitStartDate) ? top.unit.unitStartDate : null;
-        
+      
           return {
-            candidateId: candId != null ? (isNaN(Number(candId)) ? candId : Number(candId)) : null,
-            ppId: Number(ppId),
-            subPpId: top.subPpId,
-            criticalRefDate: top.criticalRefDate,
-            engageLevel: top.engageLevel,
-        
-            csdTenureDays: candidateStart ? dayDiff(top.criticalRefDate, candidateStart) : null,
-            usdTenureDays: unitStart ? dayDiff(top.criticalRefDate, unitStart) : null,
-        
-            duration: duration != null ? Number(duration) : null,
-            Productivity_CSD: productivityCsd != null ? Number(productivityCsd) : null,
-            Productivity_USD: productivityUsd != null ? Number(productivityUsd) : null
+              candidateId: candId != null ? (isNaN(Number(candId)) ? candId : Number(candId)) : null,
+              ppId: Number(ppId),
+              subPpId: top.subPpId,
+              criticalRefDate: top.criticalRefDate,
+              engageLevel: top.engageLevel,
+      
+              csdTenureDays: candidateStart ? dayDiff(top.criticalRefDate, candidateStart) : null,
+              usdTenureDays: unitStart ? dayDiff(top.criticalRefDate, unitStart) : null,
+      
+              duration: duration != null ? Number(duration) : null,
+              Productivity_CSD: productivityCsd != null ? Number(productivityCsd) : null,
+              Productivity_USD: productivityUsd != null ? Number(productivityUsd) : null
           };
-        });
-  
+      });
 
-        // ----------------------------------------------------
-        // FINAL OUTPUT
-        // ----------------------------------------------------
-        return res.status(200).json({
-            unitId,
-            candidate_id,
-            rosterData: rostersAll,
-            results: finalResponse
-        });
+      // ----------------------------------------------------
+      // FINAL OUTPUT
+      // ----------------------------------------------------
+      return res.status(200).json({
+          unitId,
+          candidate_id,
+          rosterData: rostersAll,
+          results: finalResponse,
+          filters: {
+              ppIdFrom: ppIdFrom || null,
+              ppIdTo: ppIdTo || null,
+              criticalRefDateFrom: criticalRefDateFrom || null,
+              criticalRefDateTo: criticalRefDateTo || null
+          }
+      });
 
-    } catch (error) {
-        console.error("Error in getAuxiliaryGraphData:", error);
+  } catch (error) {
+      console.error("Error in getAuxiliaryGraphData:", error);
 
-        return res.status(500).json({
-            message: "Error computing auxiliary graph data",
-            error: error.message
-        });
-    }
+      return res.status(500).json({
+          message: "Error computing auxiliary graph data",
+          error: error.message
+      });
+  }
 };
 
 exports.getCandidateMarks = async (req, res) => {
@@ -890,7 +936,9 @@ exports.getEffortBu = async (req, res) => {
     // 3) FETCH AUXILIARY GRAPH DATA
     // ----------------------------------------
     let auxData = null;
-    const mockReq2 = { params: { unitId, candidate_id } };
+    const mockReq2 = { 
+      params: { unitId, candidate_id },
+      query: req.query || {}   };
 
     const mockRes2 = {
       status(code) { this.statusCode = code; return this; },
@@ -1168,3 +1216,148 @@ exports.getAssessmentChainData = async (req, res) => {
     });
   }
 };
+
+exports.getNeedAssessmentStatusSummary = async (req, res) => {
+  try {
+    const { unitId, candidate_id } = req.params;
+
+    if (!unitId || !candidate_id) {
+      return res.status(400).json({
+        message: "unitId and candidate_id are required"
+      });
+    }
+
+    // ----------------------------------------
+    // Parse candidates
+    // ----------------------------------------
+    const candidateIds = candidate_id
+      .split(",")
+      .map(id => Number(id.trim()))
+      .filter(Boolean);
+
+    if (!candidateIds.length) {
+      return res.status(400).json({
+        message: "No valid candidateIds provided"
+      });
+    }
+
+    // ----------------------------------------
+    // 1️⃣ CALL COMPETENCY CONTROLLER
+    // ----------------------------------------
+    let competencyData = null;
+
+    const mockReq = {
+      query: {
+        unitId,
+        candidate_id
+      }
+    };
+
+    const mockRes = {
+      status(code) { this.statusCode = code; return this; },
+      json(data) { competencyData = data; return this; }
+    };
+
+    await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+
+    if (!competencyData || !Array.isArray(competencyData.results)) {
+      return res.status(404).json({
+        message: "No competency data found"
+      });
+    }
+
+    // ----------------------------------------
+    // 2️⃣ Extract unique candidateId + ppId pairs
+    // ----------------------------------------
+    const ppKeys = competencyData.results.map(r => ({
+        candidateId: Number(r.candidateId),
+        ppId: Number(r.ppId)
+      }));
+
+    // ----------------------------------------
+    // 3️⃣ Fetch Need Assessments
+    // ----------------------------------------
+    const needAssessments = await CandidateNeedAssessment.findAll({
+      where: {
+        unitId,
+        candidateId: {
+          [Op.in]: candidateIds
+        }
+      },
+      attributes: ["candidateId", "ppId", "benchmarkIds"]
+    });
+
+    // ----------------------------------------
+    // 4️⃣ Build lookup map: candidateId_ppId
+    // ----------------------------------------
+    const assessmentMap = new Map();
+
+    needAssessments.forEach(row => {
+      const key = `${row.candidateId}_${row.ppId}`;
+      assessmentMap.set(key, row);
+    });
+
+    // ----------------------------------------
+    // 5️⃣ Status counters
+    // ----------------------------------------
+    const statusCounts = {
+      Open: 0,
+      Pending: 0,
+      Closed: 0
+    };
+
+    // ----------------------------------------
+    // 6️⃣ Determine status PER ppId
+    // ----------------------------------------
+    ppKeys.forEach(({ candidateId, ppId }) => {
+      const key = `${candidateId}_${ppId}`;
+      const assessment = assessmentMap.get(key);
+
+      // 🚨 NO ROW = OPEN
+      if (!assessment) {
+        statusCounts.Open += 1;
+        return;
+      }
+
+      let benchmarks = [];
+
+      if (Array.isArray(assessment.benchmarkIds)) {
+        benchmarks = assessment.benchmarkIds;
+      } else if (typeof assessment.benchmarkIds === "string") {
+        try {
+          benchmarks = JSON.parse(assessment.benchmarkIds);
+        } catch {
+          benchmarks = [];
+        }
+      }
+
+      const count = benchmarks.length;
+
+      if (count === 0) {
+        statusCounts.Open += 1;
+      } else if (count < 5) {
+        statusCounts.Pending += 1;
+      } else {
+        statusCounts.Closed += 1;
+      }
+    });
+
+    // ----------------------------------------
+    // RESPONSE
+    // ----------------------------------------
+    return res.status(200).json({
+      unitId,
+      candidates: candidateIds,
+      statusCounts
+    });
+
+  } catch (error) {
+    console.error("Error in getNeedAssessmentStatusSummary:", error);
+
+    return res.status(500).json({
+      message: "Error computing need assessment status summary",
+      error: error.message
+    });
+  }
+};
+
