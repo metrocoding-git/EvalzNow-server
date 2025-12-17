@@ -530,6 +530,118 @@ exports.createCandidateNeedAssessment = async (req, res) => {
   }
 }
 
+exports.updateCandidateNeedAssessment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { benchmarkIds, bIds, observation } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        message: "Assessment id is required"
+      });
+    }
+
+    // Validate arrays if provided
+    if (
+      (benchmarkIds !== undefined && !Array.isArray(benchmarkIds)) ||
+      (bIds !== undefined && !Array.isArray(bIds))
+    ) {
+      return res.status(400).json({
+        message: "benchmarkIds and bIds must be arrays"
+      });
+    }
+
+    const assessment = await db.CandidateNeedAssessment.findByPk(id);
+
+    if (!assessment) {
+      return res.status(404).json({
+        message: "Candidate need assessment not found"
+      });
+    }
+
+    // Update ONLY allowed fields
+    await assessment.update({
+      benchmarkIds:
+        benchmarkIds !== undefined
+          ? benchmarkIds
+          : assessment.benchmarkIds,
+
+      bIds:
+        bIds !== undefined
+          ? bIds
+          : assessment.bIds,
+
+      observation:
+        observation !== undefined
+          ? observation
+          : assessment.observation
+    });
+
+    // Fetch updated record with relations
+    const updatedData = await db.CandidateNeedAssessment.findByPk(id, {
+      include: [
+        {
+          model: db.Candidate,
+          as: "candidate",
+          attributes: ["id", "firstName", "lastName"]
+        },
+        {
+          model: db.Unit,
+          as: "unit",
+          attributes: ["id", "unitName"]
+        }
+      ]
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Candidate need assessment updated successfully",
+      data: updatedData
+    });
+
+  } catch (error) {
+    console.error("Error in updateCandidateNeedAssessment:", error);
+    return res.status(500).json({
+      message: "Error updating candidate need assessment",
+      error: error.message
+    });
+  }
+};
+
+exports.deleteCandidateNeedAssessment = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        message: "Assessment id is required"
+      });
+    }
+
+    const assessment = await db.CandidateNeedAssessment.findByPk(id);
+
+    if (!assessment) {
+      return res.status(404).json({
+        message: "Candidate need assessment not found"
+      });
+    }
+
+    await assessment.destroy();
+
+    return res.status(200).json({
+      success: true,
+      message: "Candidate need assessment deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Error in deleteCandidateNeedAssessment:", error);
+
+    return res.status(500).json({
+      message: "Error deleting candidate need assessment",
+      error: error.message
+    });
+  }
+};
 
 exports.getLessonImprovements = async (req, res) => {
   try {
@@ -709,6 +821,47 @@ exports.updateLessonImprovement = async (req, res) => {
     console.error("Error updating unit improvement:", error);
     return res.status(500).json({
       message: "Error updating unit improvement",
+      error: error.message
+    });
+  }
+};
+
+// Delete a unit improvement entry
+exports.deleteUnitImprovement = async (req, res) => {
+  try {
+    const { id } = req.params; // unit improvement record ID
+
+    if (!id) {
+      return res.status(400).json({
+        message: "Unit improvement ID is required"
+      });
+    }
+
+    // Find the unit improvement record
+    const unitImprovement = await UnitImprovement.findOne({
+      where: { id }
+    });
+
+    if (!unitImprovement) {
+      return res.status(404).json({
+        message: "Unit improvement record not found"
+      });
+    }
+
+    // Delete the record
+    await UnitImprovement.destroy({
+      where: { id }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Unit improvement deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Error in deleteUnitImprovement:", error);
+    return res.status(500).json({
+      message: "Error deleting unit improvement",
       error: error.message
     });
   }

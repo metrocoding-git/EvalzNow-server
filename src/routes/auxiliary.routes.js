@@ -16,5 +16,8 @@ router.post('/assessment', auxiliaryResultant.createCandidateNeedAssessment);
 router.post('/lesson', auxiliaryResultant.createLessonImprovement);
 router.post('/leader', auxiliaryResultant.createLeaderMarks);
 router.post('/chain', auxiliaryResultant.createAssessmentChain);
+router.put('/assessment/:id', auxiliaryResultant.updateCandidateNeedAssessment);
+router.delete('/assessment/:id', auxiliaryResultant.deleteCandidateNeedAssessment);
+router.delete('/lesson/:id', auxiliaryResultant.deleteUnitImprovement);
 
 module.exports = router;
