@@ -30,6 +30,53 @@ db.CandidateNeedAssessment = require("./candidateNeedAssessment.model")(sequeliz
 db.UnitImprovement = require("./unitImprovement.model")(sequelize, Sequelize);
 db.LeaderMarks = require("./leaderMark.model")(sequelize, Sequelize);
 db.AssessmentChain = require("./assessmentChain.model")(sequelize, Sequelize);
+db.NeuroScienceSession = require("./neuroScienceSession.model")(sequelize, Sequelize);
+db.NeuroScienceResponse = require("./neuroScienceResponse.model")(sequelize, Sequelize);
+
+
+
+
+if (db.NeuroScienceSession && db.Unit && db.Candidate && db.AssessmentBlockManager) {
+
+  //  Unit
+  db.NeuroScienceSession.belongsTo(db.Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  //  Candidate
+  db.NeuroScienceSession.belongsTo(db.Candidate, {
+    foreignKey: "candidateId",
+    as: "candidate",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+
+  //  Assessment Block
+  db.NeuroScienceSession.belongsTo(db.AssessmentBlockManager, {
+    foreignKey: "assessmentBlockId",
+    as: "assessmentBlock",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+  });
+}
+
+// NeuroScienceSession ↔ NeuroScienceResponse
+if (db.NeuroScienceSession && db.NeuroScienceResponse) {
+  db.NeuroScienceSession.hasMany(db.NeuroScienceResponse, {
+    foreignKey: "sessionId",
+    as: "responses",
+    onDelete: "CASCADE",
+  });
+  db.NeuroScienceResponse.belongsTo(db.NeuroScienceSession, {
+    foreignKey: "sessionId",
+    as: "session",
+    onDelete: "CASCADE",
+  });
+}
+
 
 // Define associations
 if (db.Client && db.CompanySize) {
@@ -583,8 +630,6 @@ if (
     as: "block5",
   });
 }
-
-
 
 
 // Export the db object
