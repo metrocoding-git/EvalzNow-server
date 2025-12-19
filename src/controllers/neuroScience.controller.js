@@ -132,13 +132,14 @@ const rows = [
   exports.getNeuroScienceRmsValues = async (req, res) => {
     try {
       const { unitId, candidateId } = req.params;
+      const { ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
   
       if (!unitId || !candidateId) {
         return res.status(400).json({ message: "unitId and candidateId are required" });
       }
   
       // 1️⃣ Fetch RMS values
-      const tabulationReq = { query: { unitId, candidate_id: candidateId } };
+      const tabulationReq = { query: { unitId, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo, candidate_id: candidateId } };
       let capturedResponse;
       const tabulationRes = { status: () => ({ json: data => (capturedResponse = data) }) };
       await getPpCompetencyRatioMultipleCandidate(tabulationReq, tabulationRes);
@@ -234,7 +235,185 @@ const rows = [
     }
   };
   
+  exports.updateNeuroScience = async (req, res) => {
+    const transaction = await db.sequelize.transaction();
+    
+    try {
+        const { sessionId } = req.params;
+        const { responses } = req.body;
 
+        // 🛑 Validation
+        if (!sessionId) {
+            await transaction.rollback();
+            return res.status(400).json({
+                message: "sessionId is required in URL parameters",
+            });
+        }
+
+        if (!Array.isArray(responses)) {
+            await transaction.rollback();
+            return res.status(400).json({
+                message: "responses must be an array",
+            });
+        }
+
+        // ✅ Step 1: Find the existing session
+        const existingSession = await NeuroScienceSession.findByPk(sessionId, {
+            include: [
+                {
+                    model: NeuroScienceResponse,
+                    as: "responses",
+                },
+            ],
+            transaction,
+        });
+
+        if (!existingSession) {
+            await transaction.rollback();
+            return res.status(404).json({
+                message: "NeuroScience session not found",
+            });
+        }
+
+        // ✅ Step 2: Validate that responses belong to this session
+        // and prepare for update
+        const responseUpdates = [];
+        const responseIdsToKeep = [];
+
+        for (const response of responses) {
+            // Each response should have id for update, or will be created if not present
+            if (response.id) {
+                // Check if this response belongs to the session
+                const existingResponse = existingSession.responses.find(
+                    (r) => r.id === response.id
+                );
+                
+                if (!existingResponse) {
+                    await transaction.rollback();
+                    return res.status(400).json({
+                        message: `Response with id ${response.id} does not belong to session ${sessionId}`,
+                    });
+                }
+
+                responseUpdates.push({
+                    id: response.id,
+                    lobe: response.lobe,
+                    functionName: response.functionName,
+                    value: response.value,
+                });
+                responseIdsToKeep.push(response.id);
+            } else {
+                // This is a new response to be created
+                responseUpdates.push({
+                    sessionId: sessionId,
+                    lobe: response.lobe,
+                    functionName: response.functionName,
+                    value: response.value,
+                });
+            }
+        }
+
+        // ✅ Step 3: Delete responses that are not in the update list
+        // (if you want to allow deletion by omission)
+        const existingResponseIds = existingSession.responses.map(r => r.id);
+        const responseIdsToDelete = existingResponseIds.filter(
+            id => !responseIdsToKeep.includes(id)
+        );
+
+        if (responseIdsToDelete.length > 0) {
+            await NeuroScienceResponse.destroy({
+                where: {
+                    id: responseIdsToDelete,
+                    sessionId: sessionId,
+                },
+                transaction,
+            });
+        }
+
+        // ✅ Step 4: Bulk upsert responses
+        // Separate updates and creates
+        const updates = responseUpdates.filter(r => r.id);
+        const creates = responseUpdates.filter(r => !r.id);
+
+        // Update existing responses
+        for (const update of updates) {
+            await NeuroScienceResponse.update(
+                {
+                    lobe: update.lobe,
+                    functionName: update.functionName,
+                    value: update.value,
+                },
+                {
+                    where: {
+                        id: update.id,
+                        sessionId: sessionId,
+                    },
+                    transaction,
+                }
+            );
+        }
+
+        // Create new responses
+        if (creates.length > 0) {
+            await NeuroScienceResponse.bulkCreate(creates, {
+                transaction,
+            });
+        }
+
+        // ✅ Step 5: Commit transaction
+        await transaction.commit();
+
+        // ✅ Step 6: Fetch updated session with responses
+        const updatedSession = await NeuroScienceSession.findByPk(sessionId, {
+            include: [
+                {
+                    model: NeuroScienceResponse,
+                    as: "responses",
+                },
+                {
+                    model: db.Unit,
+                    as: "unit",
+                },
+                {
+                    model: db.Candidate,
+                    as: "candidate",
+                },
+                {
+                    model: db.AssessmentBlockManager,
+                    as: "assessmentBlock",
+                },
+            ],
+        });
+
+        return res.status(200).json({
+            message: "NeuroScience session updated successfully",
+            session: updatedSession,
+        });
+
+    } catch (error) {
+        if (!transaction.finished) {
+            await transaction.rollback();
+        }
+
+        console.error("Error updating NeuroScience session:", error);
+
+        // Handle Sequelize validation errors
+        if (error.name === 'SequelizeValidationError') {
+            return res.status(400).json({
+                message: "Validation error",
+                errors: error.errors.map(err => ({
+                    field: err.path,
+                    message: err.message,
+                })),
+            });
+        }
+
+        return res.status(500).json({
+            message: "Error updating NeuroScience session",
+            error: error.message,
+        });
+    }
+};
   
 exports.createNeuroScience = async (req, res) => {
     const transaction = await db.sequelize.transaction();
@@ -363,10 +542,9 @@ exports.createNeuroScience = async (req, res) => {
       });
   
       if (!sessions || sessions.length === 0) {
-        return res.status(404).json({
-          message: "No NeuroScience sessions found for this candidate in the unit",
-        });
+        return res.status(200).json([]); // ✅ FIX
       }
+      
   
       return res.status(200).json(sessions);
     } catch (error) {
