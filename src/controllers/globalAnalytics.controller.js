@@ -38,7 +38,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
     }
 
     // ===================================================
-    // 2. For each unit, fetch all candidates and calculate their averages
+    // 2. For each unit, fetch all candidates and calculate their averages AND cumulative sums
     // ===================================================
     const allResults = [];
     const totalMetrics = {
@@ -57,9 +57,14 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
       MSIP: { threshold: "MSIP", successCount: 0, totalInstances: 0 },
       IC: { threshold: "IC", successCount: 0, totalInstances: 0 },
       GEQ: { threshold: "ΔGEQ", successCount: 0, totalInstances: 0 },
-      deltaRRN: { threshold: "ΔRRN", successCount: 0, totalInstances: 0 },
-      deltaPRN: { threshold: "ΔPRN", successCount: 0, totalInstances: 0 },
-      deltaARN: { threshold: "ΔARN", successCount: 0, totalInstances: 0 }
+      // Average delta metrics (from averages.deltaRRN, etc.)
+      avgDeltaRRN: { threshold: "ΔRRN", successCount: 0, totalInstances: 0 },
+      avgDeltaPRN: { threshold: "ΔPRN", successCount: 0, totalInstances: 0 },
+      avgDeltaARN: { threshold: "ΔARN", successCount: 0, totalInstances: 0 },
+      // Cumulative sum delta metrics (from cumulativeSums.deltaRRN, etc.)
+      sumDeltaRRN: { threshold: "ΔRRN", successCount: 0, totalInstances: 0 },
+      sumDeltaPRN: { threshold: "ΔPRN", successCount: 0, totalInstances: 0 },
+      sumDeltaARN: { threshold: "ΔARN", successCount: 0, totalInstances: 0 }
     };
 
     for (const unit of units) {
@@ -97,9 +102,13 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
             MSIP: unit.MSIP || 0,
             IC: unit.IC || 0,
             GEQ: unit.ΔGEQ || 0,
-            deltaRRN: unit["ΔRRN"] || 0,  // Receptive growth diff threshold
-            deltaPRN: unit["ΔPRN"] || 0,  // Productive growth diff threshold  
-            deltaARN: unit["ΔARN"] || 0 
+            // Both average and sum use the same unit thresholds
+            avgDeltaRRN: unit["ΔRRN"] || 0,
+            avgDeltaPRN: unit["ΔPRN"] || 0,
+            avgDeltaARN: unit["ΔARN"] || 0,
+            sumDeltaRRN: unit["ΔRRN"] || 0,
+            sumDeltaPRN: unit["ΔPRN"] || 0,
+            sumDeltaARN: unit["ΔARN"] || 0
           },
           candidateResults: unitResults
         });
@@ -111,23 +120,22 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
     // ===================================================
     for (const unitData of allResults) {
       for (const candidate of unitData.candidateResults) {
-        // For each metric, check if candidate average meets threshold
+        // For each metric, check if candidate value meets threshold
         Object.keys(totalMetrics).forEach(metric => {
           totalMetrics[metric].totalInstances++;
           
-          const candidateAvg = candidate[`avg${metric}`];
+          const candidateValue = candidate[metric]; // e.g., candidate.avgDeltaRRN or candidate.sumDeltaRRN
           const threshold = unitData.thresholds[metric];
           
-          if (candidateAvg !== null && candidateAvg !== undefined) {
+          if (candidateValue !== null && candidateValue !== undefined) {
             // For MSIP, we want <= threshold (lower is better)
             if (metric === 'MSIP') {
-              if (candidateAvg <= threshold) {
+              if (candidateValue <= threshold) {
                 totalMetrics[metric].successCount++;
               }
             } 
-            // For IC, we might want special comparison logic
-            // Assuming higher IC is better (like most metrics)
-            else if (candidateAvg >= threshold) {
+            // For all other metrics (including delta metrics), we want >= threshold
+            else if (candidateValue >= threshold) {
               totalMetrics[metric].successCount++;
             }
           }
@@ -142,19 +150,28 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
     
     Object.keys(totalMetrics).forEach(metric => {
       const data = totalMetrics[metric];
+      
+      // Create descriptive labels
+      let thresholdLabel;
+      if (metric.startsWith('avgDelta')) {
+        const metricName = metric.replace('avgDelta', '');
+        thresholdLabel = `Average Δ${metricName}`;
+      } else if (metric.startsWith('sumDelta')) {
+        const metricName = metric.replace('sumDelta', '');
+        thresholdLabel = `Cumulative Sum Δ${metricName}`;
+      } else {
+        thresholdLabel = `Average ${metric}`;
+      }
+      
       successRates[metric] = {
-        thresholdLabel: `Average ${metric}`,
+        thresholdLabel: thresholdLabel,
         comparison: metric === 'MSIP' ? '≤' : '≥',
         successCount: data.successCount,
         totalInstances: data.totalInstances,
         successRate: data.totalInstances > 0 
           ? +(data.successCount / data.totalInstances * 100).toFixed(2) 
           : 0,
-        description: metric === 'MSIP' 
-          ? 'Lower values are better' 
-          : metric === 'IC'
-          ? 'Higher Interaction Class is better' // Custom description for IC
-          : 'Higher values are better'
+        description: getMetricDescription(metric)
       };
     });
 
@@ -172,15 +189,15 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
       // Count successes for each candidate in this unit
       unit.candidateResults.forEach(candidate => {
         Object.keys(totalMetrics).forEach(metric => {
-          const candidateAvg = candidate[`avg${metric}`];
+          const candidateValue = candidate[metric];
           const threshold = unit.thresholds[metric];
           
-          if (candidateAvg !== null && candidateAvg !== undefined) {
+          if (candidateValue !== null && candidateValue !== undefined) {
             if (metric === 'MSIP') {
-              if (candidateAvg <= threshold) {
+              if (candidateValue <= threshold) {
                 unitSuccessCounts[`${metric}SuccessCount`]++;
               }
-            } else if (candidateAvg >= threshold) {
+            } else if (candidateValue >= threshold) {
               unitSuccessCounts[`${metric}SuccessCount`]++;
             }
           }
@@ -210,21 +227,53 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
     });
 
     // ===================================================
-    // 6. Return comprehensive results
+    // 6. Return comprehensive results with both average and sum delta metrics
     // ===================================================
     res.status(200).json({
       message: "Success rates calculated based on unit thresholds",
       summary: {
         totalUnits: units.length,
-        totalCandidates: totalMetrics.XEP.totalInstances, // All metrics have same total instances
-        metrics: successRates
+        totalCandidates: totalMetrics.XEP.totalInstances,
+        // Group metrics for clarity
+        regularMetrics: {
+          XEP: successRates.XEP,
+          XRR: successRates.XRR,
+          XLR: successRates.XLR,
+          XWR: successRates.XWR,
+          XSR: successRates.XSR,
+          XTR: successRates.XTR,
+          XPR: successRates.XPR,
+          XRVSR: successRates.XRVSR,
+          XPVSR: successRates.XPVSR,
+          XAVSR: successRates.XAVSR,
+          XCP: successRates.XCP,
+          XBP: successRates.XBP,
+          MSIP: successRates.MSIP,
+          IC: successRates.IC,
+          GEQ: successRates.GEQ
+        },
+        // Average delta growth metrics
+        averageDeltaMetrics: {
+          avgDeltaRRN: successRates.avgDeltaRRN,
+          avgDeltaPRN: successRates.avgDeltaPRN,
+          avgDeltaARN: successRates.avgDeltaARN
+        },
+        // Cumulative sum delta growth metrics
+        cumulativeSumDeltaMetrics: {
+          sumDeltaRRN: successRates.sumDeltaRRN,
+          sumDeltaPRN: successRates.sumDeltaPRN,
+          sumDeltaARN: successRates.sumDeltaARN
+        }
       },
       unitDetails,
-      allResults: allResults.map(unit => ({
-        unitId: unit.unitId,
-        unitName: unit.unitName,
-        sampleCandidateResults: unit.candidateResults.slice(0, 3) // Show first 3 candidates as sample
-      }))
+      explanation: {
+        avgDeltaRRN: "Average ∆RR (from averages.deltaRRN) compared to unit ΔRRN threshold",
+        avgDeltaPRN: "Average ∆PR (from averages.deltaPRN) compared to unit ΔPRN threshold",
+        avgDeltaARN: "Average ∆AR (from averages.deltaARN) compared to unit ΔARN threshold",
+        sumDeltaRRN: "Cumulative Sum ∆RR (from cumulativeSums.deltaRRN) compared to unit ΔRRN threshold",
+        sumDeltaPRN: "Cumulative Sum ∆PR (from cumulativeSums.deltaPRN) compared to unit ΔPRN threshold",
+        sumDeltaARN: "Cumulative Sum ∆AR (from cumulativeSums.deltaARN) compared to unit ΔARN threshold"
+      }
     });
 
   } catch (error) {
@@ -235,6 +284,21 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
     });
   }
 };
+
+// Helper function for metric descriptions
+function getMetricDescription(metric) {
+  switch(metric) {
+    case 'MSIP': return 'Lower values are better';
+    case 'IC': return 'Higher Interaction Class is better';
+    case 'avgDeltaRRN': return 'Average Receptive Growth - higher is better';
+    case 'avgDeltaPRN': return 'Average Productive Growth - higher is better';
+    case 'avgDeltaARN': return 'Average Acuity Growth - higher is better';
+    case 'sumDeltaRRN': return 'Cumulative Receptive Growth - higher is better';
+    case 'sumDeltaPRN': return 'Cumulative Productive Growth - higher is better';
+    case 'sumDeltaARN': return 'Cumulative Acuity Growth - higher is better';
+    default: return 'Higher values are better';
+  }
+}
 
 // Helper function to calculate ALL candidate metrics for a unit
 async function calculateAllCandidateMetrics(unitId, candidateIds) {
@@ -248,24 +312,32 @@ async function calculateAllCandidateMetrics(unitId, candidateIds) {
       if (candidateData) {
         results.push({
           candidateId,
-          avgXEP: candidateData.avgXEP,
-          avgXRR: candidateData.avgXRR,
-          avgXLR: candidateData.avgXLR,
-          avgXWR: candidateData.avgXWR,
-          avgXSR: candidateData.avgXSR,
-          avgXTR: candidateData.avgXTR,
-          avgXPR: candidateData.avgXPR,
-          avgXRVSR: candidateData.avgXRVSR,
-          avgXPVSR: candidateData.avgXPVSR,
-          avgXAVSR: candidateData.avgXAVSR,
-          avgXCP: candidateData.avgXCP,
-          avgXBP: candidateData.avgXBP,
-          avgMSIP: candidateData.avgMSIP,
-          avgIC: candidateData.avgIC,
-          avgGEQ: candidateData.avgGEQ, // ADDED IC average
-          avgDeltaRRN: candidateData.avgDeltaRRN,  // From cumulativeAverages.deltaRRN
-          avgDeltaPRN: candidateData.avgDeltaPRN,  // From cumulativeAverages.deltaPRN
-          avgDeltaARN: candidateData.avgDeltaARN 
+          // Regular metrics
+          XEP: candidateData.avgXEP,
+          XRR: candidateData.avgXRR,
+          XLR: candidateData.avgXLR,
+          XWR: candidateData.avgXWR,
+          XSR: candidateData.avgXSR,
+          XTR: candidateData.avgXTR,
+          XPR: candidateData.avgXPR,
+          XRVSR: candidateData.avgXRVSR,
+          XPVSR: candidateData.avgXPVSR,
+          XAVSR: candidateData.avgXAVSR,
+          XCP: candidateData.avgXCP,
+          XBP: candidateData.avgXBP,
+          MSIP: candidateData.avgMSIP,
+          IC: candidateData.avgIC,
+          GEQ: candidateData.avgGEQ,
+          
+          // Average delta metrics (from averages.deltaRRN, etc.)
+          avgDeltaRRN: candidateData.avgDeltaRRN,
+          avgDeltaPRN: candidateData.avgDeltaPRN,
+          avgDeltaARN: candidateData.avgDeltaARN,
+          
+          // Cumulative sum delta metrics (from cumulativeSums.deltaRRN, etc.)
+          sumDeltaRRN: candidateData.sumDeltaRRN,
+          sumDeltaPRN: candidateData.sumDeltaPRN,
+          sumDeltaARN: candidateData.sumDeltaARN
         });
       }
     }
@@ -280,53 +352,57 @@ async function calculateAllCandidateMetrics(unitId, candidateIds) {
 // Helper function to get ALL candidate metrics from tabulation data
 async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
   try {
-    // You need to implement this based on your actual tabulation logic
-    // Here's an example using your existing tabulation function
-    
-    // Create a mock request/response to call your existing function
     const tabulationData = await callTabulationFunction(unitId, candidateId);
-    
-    if (!tabulationData ) {
-      return null;
-    }
 
-    const cumulativeAvg = tabulationData.cumulativeAverages ? 
-    tabulationData.cumulativeAverages.find(avg => avg.candidateId === candidateId.toString()) : null;
-  
-    // Get regular averages
-    const regularAvg = tabulationData.averages ? 
-      tabulationData.averages.find(avg => avg.candidateId === candidateId.toString()) : null;
+    if (!tabulationData) return null;
 
-    
-    // Extract averages from the tabulation data
-    // Adjust these property names based on your actual tabulation output
+    // Find candidate in averages
+    const regularAvg = tabulationData.averages?.find(
+      avg => avg.candidateId === candidateId.toString()
+    );
+
+    // Find candidate in cumulativeSums
+    const cumulativeSum = tabulationData.cumulativeSums?.find(
+      sum => sum.candidateId === candidateId.toString()
+    );
+
+    if (!regularAvg) return null;
+
     return {
-      avgXEP: regularAvg?.XEP || 0,
-      avgXRR: regularAvg?.XRR || 0,
-      avgXLR: regularAvg?.XLR || 0,
-      avgXWR: regularAvg?.XWR || 0,
-      avgXSR: regularAvg?.XSR || 0,
-      avgXTR: regularAvg?.XTR || 0,
-      avgXPR: regularAvg?.XPR || 0,
-      avgXRVSR: regularAvg?.XRVSR || 0,
-      avgXPVSR: regularAvg?.XPVSR || 0,
-      avgXAVSR: regularAvg?.XAVSR || 0,
-      avgXCP: regularAvg?.XCP || 0,
-      avgXBP: regularAvg?.XBP || 0,
-      avgMSIP: regularAvg?.MSIP || 0,
-      avgIC: regularAvg?.IC || 0,
-      avgGEQ: regularAvg?.GEQ || 0,
-      
-      avgDeltaRRN: cumulativeAvg?.deltaRRN || 0,  //  Average ∆RR
-      avgDeltaPRN: cumulativeAvg?.deltaPRN || 0,  //  Average ∆PR
-      avgDeltaARN: cumulativeAvg?.deltaARN || 0   //  Average ∆AR
+      // Regular average metrics
+      avgXEP: regularAvg.XEP ?? 0,
+      avgXRR: regularAvg.XRR ?? 0,
+      avgXLR: regularAvg.XLR ?? 0,
+      avgXWR: regularAvg.XWR ?? 0,
+      avgXSR: regularAvg.XSR ?? 0,
+      avgXTR: regularAvg.XTR ?? 0,
+      avgXPR: regularAvg.XPR ?? 0,
+      avgXRVSR: regularAvg.XRVSR ?? 0,
+      avgXPVSR: regularAvg.XPVSR ?? 0,
+      avgXAVSR: regularAvg.XAVSR ?? 0,
+      avgXCP: regularAvg.XCP ?? 0,
+      avgXBP: regularAvg.XBP ?? 0,
+      avgMSIP: regularAvg.MSIP ?? 0,
+      avgIC: regularAvg.IC ?? 0,
+      avgGEQ: regularAvg.GEQ ?? 0,
+
+      // Average delta values from averages array
+      avgDeltaRRN: regularAvg.deltaRRN ?? 0,
+      avgDeltaPRN: regularAvg.deltaPRN ?? 0,
+      avgDeltaARN: regularAvg.deltaARN ?? 0,
+
+      // Cumulative sum delta values from cumulativeSums array
+      sumDeltaRRN: cumulativeSum?.deltaRRN ?? 0,
+      sumDeltaPRN: cumulativeSum?.deltaPRN ?? 0,
+      sumDeltaARN: cumulativeSum?.deltaARN ?? 0
     };
-    
+
   } catch (error) {
     console.error("Error fetching tabulation data:", error);
     return null;
   }
 }
+
 
 // Helper function to call your existing tabulation function
 async function callTabulationFunction(unitId, candidateId) {
