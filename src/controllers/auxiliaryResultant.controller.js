@@ -1047,6 +1047,18 @@ exports.getLeaderMarks = async (req, res) => {
 exports.getEffortBu = async (req, res) => {
   try {
     const { unitId, candidate_id } = req.params;
+    const { ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+
+    const ppFrom = ppIdFrom ? Number(ppIdFrom) : null;
+    const ppTo = ppIdTo ? Number(ppIdTo) : null;
+
+    const dateFrom = criticalRefDateFrom
+      ? new Date(criticalRefDateFrom)
+      : null;
+
+    const dateTo = criticalRefDateTo
+      ? new Date(criticalRefDateTo)
+      : null;
 
     if (!unitId || !candidate_id) {
       return res.status(400).json({
@@ -1068,7 +1080,21 @@ exports.getEffortBu = async (req, res) => {
     await getInsertScoresByUnitAndCandidate(mockReq1, mockRes1);
 
     // Only positive ppIds
-    const positive = insertScores.filter(r => r.ppId > 0);
+    const positive = insertScores.filter(r => {
+      if (r.ppId <= 0) return false;
+    
+      if (ppFrom !== null && r.ppId < ppFrom) return false;
+      if (ppTo !== null && r.ppId > ppTo) return false;
+    
+      if (dateFrom || dateTo) {
+        const refDate = new Date(r.criticalRefDate);
+        if (dateFrom && refDate < dateFrom) return false;
+        if (dateTo && refDate > dateTo) return false;
+      }
+    
+      return true;
+    });
+    
 
     if (!positive.length) {
       return res.status(200).json({
@@ -1110,8 +1136,22 @@ exports.getEffortBu = async (req, res) => {
     // 4) EXTRACT ARRAYS (sorted by ppId)
     // ----------------------------------------
     const sorted = auxData.results
-      .filter(r => r.ppId > 0)
-      .sort((a, b) => a.ppId - b.ppId);
+  .filter(r => {
+    if (r.ppId <= 0) return false;
+
+    if (ppFrom !== null && r.ppId < ppFrom) return false;
+    if (ppTo !== null && r.ppId > ppTo) return false;
+
+    if (dateFrom || dateTo) {
+      const refDate = new Date(r.criticalRefDate);
+      if (dateFrom && refDate < dateFrom) return false;
+      if (dateTo && refDate > dateTo) return false;
+    }
+
+    return true;
+  })
+  .sort((a, b) => a.ppId - b.ppId);
+
 
     const xArray = sorted.map(r => r.ppId);
     const yArrayCSD = sorted.map(r => r.Productivity_CSD || 0);
