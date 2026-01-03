@@ -137,16 +137,21 @@ function generateRange(start, end, step = 1) {
   
       await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
       const allResults = competencyData.results || [];
+      console.log(`Total results fetched: ${allResults.length} for candidates: ${candidateIds} in unit: ${allResults}`);
   
       // Build lookup for filtering
       const ppMap = new Map();
-      candidatePpList.forEach(({ candidateId, ppId }) => {
-        ppMap.set(`${candidateId}_${ppId}`, true);
-      });
-  
-      const results = allResults.filter(r =>
-        ppMap.has(`${r.candidateId}_${r.ppId}`)
-      );
+candidatePpList.forEach(({ candidateId, ppId }) => {
+  ppMap.set(`${String(candidateId)}_${Number(ppId)}`, true);
+});
+
+const results = allResults.filter(r => candidatePpList.some(
+  c => String(c.candidateId) === String(r.candidateId)
+));
+
+
+
+      console.log(`Filtered results count: ${results} from total: ${allResults.length}`);
   
       // Collect values only from filtered results
       const collect = (k) =>
@@ -167,6 +172,8 @@ function generateRange(start, end, step = 1) {
         const xbpArray = collect("XBP");
 
         const deltaGEQArray = collect("GEQ"); // if deltaGEQ uses GEQ field
+
+        console.log("Collected Data Arrays:", {RR: rrArray, PR: prArray, AR: arArray, deltaRR: deltaRRArray, deltaPR: deltaPRArray, deltaARArray: deltaARArray, XEQ: xeqArray, deltaGEQArray});
 
 
         // if (mockRes.statusCode >= 400) {
