@@ -1,6 +1,5 @@
 const { fn, col, literal } = require("sequelize");
 const db = require("../models");
-
 const Unit = db.Unit;
 const Benchmark = db.Benchmark;
 const AssessmentBlockManager = db.AssessmentBlockManager;
@@ -10,25 +9,24 @@ const CandidateMarks = db.CandidateMarks;
 const LeaderMarks = db.LeaderMarks;
 const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.controller');
 
-
 exports.getUnitSuccessRatesByThreshold = async (req, res) => {
   try {
     const { clientId } = req.params;
-
+    
     if (!clientId) {
       return res.status(400).json({ message: "clientId is required" });
     }
 
-    // ===================================================
+    // =================================================== 
     // 1. Fetch all units with their threshold values
     // ===================================================
     const units = await Unit.findAll({
       where: { clientId },
       attributes: [
-        "id", "unitId", "unitName", 
-        "XEP", "XRR", "XLR", "XWR", "XSR", 
-        "XTR", "XPR", "XRVSR", "XPVSR", "XAVSR",
-        "XCP", "XBP", "MSIP", "IC", "ΔGEQ", "ΔRRN", "ΔPRN", "ΔARN"
+        "id", "unitId", "unitName",
+        "XEP", "XRR", "XLR", "XWR", "XSR", "XTR", "XPR",
+        "XRVSR", "XPVSR", "XAVSR", "XCP", "XBP", "MSIP", "IC",
+        "ΔGEQ", "ΔRRN", "ΔPRN", "ΔARN"
       ],
       raw: true,
     });
@@ -37,8 +35,8 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
       return res.status(404).json({ message: "No units found for this client" });
     }
 
-    // ===================================================
-    // 2. For each unit, fetch all candidates and calculate their averages AND cumulative sums
+    // =================================================== 
+    // 2. Initialize totals including STAP/STAG counters
     // ===================================================
     const allResults = [];
     const totalMetrics = {
@@ -57,18 +55,24 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
       MSIP: { threshold: "MSIP", successCount: 0, totalInstances: 0 },
       IC: { threshold: "IC", successCount: 0, totalInstances: 0 },
       GEQ: { threshold: "ΔGEQ", successCount: 0, totalInstances: 0 },
-      // Average delta metrics (from averages.deltaRRN, etc.)
       avgDeltaRRN: { threshold: "ΔRRN", successCount: 0, totalInstances: 0 },
       avgDeltaPRN: { threshold: "ΔPRN", successCount: 0, totalInstances: 0 },
       avgDeltaARN: { threshold: "ΔARN", successCount: 0, totalInstances: 0 },
-      // Cumulative sum delta metrics (from cumulativeSums.deltaRRN, etc.)
       sumDeltaRRN: { threshold: "ΔRRN", successCount: 0, totalInstances: 0 },
       sumDeltaPRN: { threshold: "ΔPRN", successCount: 0, totalInstances: 0 },
       sumDeltaARN: { threshold: "ΔARN", successCount: 0, totalInstances: 0 }
     };
 
+    // NEW: STAP and STAG counters
+    const stabilityMetrics = {
+      STAP: { stableCount: 0, unstableCount: 0, totalInstances: 0 },
+      STAG: { stableCount: 0, unstableCount: 0, totalInstances: 0 }
+    };
+
+    // =================================================== 
+    // 3. Process each unit
+    // ===================================================
     for (const unit of units) {
-      // Get all candidates for this unit
       const unitRosters = await UnitRoster.findAll({
         where: { unitId: unit.id },
         attributes: ["candidateId"],
@@ -79,10 +83,10 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
 
       const candidateIds = unitRosters.map(roster => roster.candidateId);
 
-      // Fetch all metrics for all candidates in this unit
+      // Fetch all metrics AND stability data for candidates
       const unitResults = await calculateAllCandidateMetrics(unit.id, candidateIds);
-      
-      if (unitResults.length) {
+
+      if (unitResults.candidateMetrics.length) {
         allResults.push({
           unitId: unit.id,
           unitName: unit.unitName,
@@ -102,7 +106,6 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
             MSIP: unit.MSIP || 0,
             IC: unit.IC || 0,
             GEQ: unit.ΔGEQ || 0,
-            // Both average and sum use the same unit thresholds
             avgDeltaRRN: unit["ΔRRN"] || 0,
             avgDeltaPRN: unit["ΔPRN"] || 0,
             avgDeltaARN: unit["ΔARN"] || 0,
@@ -110,49 +113,54 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
             sumDeltaPRN: unit["ΔPRN"] || 0,
             sumDeltaARN: unit["ΔARN"] || 0
           },
-          candidateResults: unitResults
+          candidateResults: unitResults.candidateMetrics,
+          // NEW: Unit-level stability counts
+          stabilityData: unitResults.stabilityCounts
         });
       }
     }
 
-    // ===================================================
-    // 3. Calculate success rates across all instances for all metrics
+    // =================================================== 
+    // 4. Calculate success rates and aggregate stability data
     // ===================================================
     for (const unitData of allResults) {
       for (const candidate of unitData.candidateResults) {
-        // For each metric, check if candidate value meets threshold
+        // Process regular metrics
         Object.keys(totalMetrics).forEach(metric => {
           totalMetrics[metric].totalInstances++;
-          
-          const candidateValue = candidate[metric]; // e.g., candidate.avgDeltaRRN or candidate.sumDeltaRRN
+          const candidateValue = candidate[metric];
           const threshold = unitData.thresholds[metric];
           
           if (candidateValue !== null && candidateValue !== undefined) {
-            // For MSIP, we want <= threshold (lower is better)
             if (metric === 'MSIP') {
               if (candidateValue <= threshold) {
                 totalMetrics[metric].successCount++;
               }
-            } 
-            // For all other metrics (including delta metrics), we want >= threshold
-            else if (candidateValue >= threshold) {
+            } else if (candidateValue >= threshold) {
               totalMetrics[metric].successCount++;
             }
           }
         });
       }
+
+      // NEW: Aggregate stability counts
+      stabilityMetrics.STAP.stableCount += unitData.stabilityData.STAP.stableCount;
+      stabilityMetrics.STAP.unstableCount += unitData.stabilityData.STAP.unstableCount;
+      stabilityMetrics.STAP.totalInstances += unitData.stabilityData.STAP.totalInstances;
+      
+      stabilityMetrics.STAG.stableCount += unitData.stabilityData.STAG.stableCount;
+      stabilityMetrics.STAG.unstableCount += unitData.stabilityData.STAG.unstableCount;
+      stabilityMetrics.STAG.totalInstances += unitData.stabilityData.STAG.totalInstances;
     }
 
-    // ===================================================
-    // 4. Calculate success rates (percentages) for all metrics
+    // =================================================== 
+    // 5. Calculate success rates for regular metrics
     // ===================================================
     const successRates = {};
-    
     Object.keys(totalMetrics).forEach(metric => {
       const data = totalMetrics[metric];
-      
-      // Create descriptive labels
       let thresholdLabel;
+      
       if (metric.startsWith('avgDelta')) {
         const metricName = metric.replace('avgDelta', '');
         thresholdLabel = `Average Δ${metricName}`;
@@ -162,7 +170,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
       } else {
         thresholdLabel = `Average ${metric}`;
       }
-      
+
       successRates[metric] = {
         thresholdLabel: thresholdLabel,
         comparison: metric === 'MSIP' ? '≤' : '≥',
@@ -175,18 +183,16 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
       };
     });
 
-    // ===================================================
-    // 5. Calculate unit-level success counts
+    // =================================================== 
+    // 6. Calculate unit-level success counts
     // ===================================================
     const unitDetails = allResults.map(unit => {
       const unitSuccessCounts = {};
       
-      // Initialize counts for each metric
       Object.keys(totalMetrics).forEach(metric => {
         unitSuccessCounts[`${metric}SuccessCount`] = 0;
       });
-      
-      // Count successes for each candidate in this unit
+
       unit.candidateResults.forEach(candidate => {
         Object.keys(totalMetrics).forEach(metric => {
           const candidateValue = candidate[metric];
@@ -203,38 +209,54 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
           }
         });
       });
-      
+
+      const unitSuccessRates = {};
+      Object.keys(totalMetrics).forEach(metric => {
+        if (unit.candidateResults.length > 0) {
+          unitSuccessRates[`${metric}Rate`] = 
+            +(unitSuccessCounts[`${metric}SuccessCount`] / unit.candidateResults.length * 100).toFixed(2);
+        } else {
+          unitSuccessRates[`${metric}Rate`] = 0;
+        }
+      });
+
       return {
         unitId: unit.unitId,
         unitName: unit.unitName,
         candidateCount: unit.candidateResults.length,
         thresholds: unit.thresholds,
         successCounts: unitSuccessCounts,
-        successRates: {}
+        successRates: unitSuccessRates,
+        // NEW: Include stability data at unit level
+        stabilityData: {
+          STAP: {
+            stableCount: unit.stabilityData.STAP.stableCount,
+            unstableCount: unit.stabilityData.STAP.unstableCount,
+            totalInstances: unit.stabilityData.STAP.totalInstances,
+            stablePercentage: unit.stabilityData.STAP.totalInstances > 0
+              ? +(unit.stabilityData.STAP.stableCount / unit.stabilityData.STAP.totalInstances * 100).toFixed(2)
+              : 0
+          },
+          STAG: {
+            stableCount: unit.stabilityData.STAG.stableCount,
+            unstableCount: unit.stabilityData.STAG.unstableCount,
+            totalInstances: unit.stabilityData.STAG.totalInstances,
+            stablePercentage: unit.stabilityData.STAG.totalInstances > 0
+              ? +(unit.stabilityData.STAG.stableCount / unit.stabilityData.STAG.totalInstances * 100).toFixed(2)
+              : 0
+          }
+        }
       };
     });
 
-    // Calculate success rates for each unit
-    unitDetails.forEach(unit => {
-      Object.keys(totalMetrics).forEach(metric => {
-        if (unit.candidateCount > 0) {
-          unit.successRates[`${metric}Rate`] = 
-            +(unit.successCounts[`${metric}SuccessCount`] / unit.candidateCount * 100).toFixed(2);
-        } else {
-          unit.successRates[`${metric}Rate`] = 0;
-        }
-      });
-    });
-
-    // ===================================================
-    // 6. Return comprehensive results with both average and sum delta metrics
+    // =================================================== 
+    // 7. Return comprehensive results
     // ===================================================
     res.status(200).json({
       message: "Success rates calculated based on unit thresholds",
       summary: {
         totalUnits: units.length,
         totalCandidates: totalMetrics.XEP.totalInstances,
-        // Group metrics for clarity
         regularMetrics: {
           XEP: successRates.XEP,
           XRR: successRates.XRR,
@@ -252,17 +274,36 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
           IC: successRates.IC,
           GEQ: successRates.GEQ
         },
-        // Average delta growth metrics
         averageDeltaMetrics: {
           avgDeltaRRN: successRates.avgDeltaRRN,
           avgDeltaPRN: successRates.avgDeltaPRN,
           avgDeltaARN: successRates.avgDeltaARN
         },
-        // Cumulative sum delta growth metrics
         cumulativeSumDeltaMetrics: {
           sumDeltaRRN: successRates.sumDeltaRRN,
           sumDeltaPRN: successRates.sumDeltaPRN,
           sumDeltaARN: successRates.sumDeltaARN
+        },
+        // NEW: Global stability metrics
+        stabilityMetrics: {
+          STAP: {
+            stableCount: stabilityMetrics.STAP.stableCount,
+            unstableCount: stabilityMetrics.STAP.unstableCount,
+            totalInstances: stabilityMetrics.STAP.totalInstances,
+            stablePercentage: stabilityMetrics.STAP.totalInstances > 0
+              ? +(stabilityMetrics.STAP.stableCount / stabilityMetrics.STAP.totalInstances * 100).toFixed(2)
+              : 0,
+            description: "Stability Assessment Performance - counts instances where STAP = 'STABLE'"
+          },
+          STAG: {
+            stableCount: stabilityMetrics.STAG.stableCount,
+            unstableCount: stabilityMetrics.STAG.unstableCount,
+            totalInstances: stabilityMetrics.STAG.totalInstances,
+            stablePercentage: stabilityMetrics.STAG.totalInstances > 0
+              ? +(stabilityMetrics.STAG.stableCount / stabilityMetrics.STAG.totalInstances * 100).toFixed(2)
+              : 0,
+            description: "Stability Assessment Growth - counts instances where STAG = 'STABLE'"
+          }
         }
       },
       unitDetails,
@@ -272,7 +313,9 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
         avgDeltaARN: "Average ∆AR (from averages.deltaARN) compared to unit ΔARN threshold",
         sumDeltaRRN: "Cumulative Sum ∆RR (from cumulativeSums.deltaRRN) compared to unit ΔRRN threshold",
         sumDeltaPRN: "Cumulative Sum ∆PR (from cumulativeSums.deltaPRN) compared to unit ΔPRN threshold",
-        sumDeltaARN: "Cumulative Sum ∆AR (from cumulativeSums.deltaARN) compared to unit ΔARN threshold"
+        sumDeltaARN: "Cumulative Sum ∆AR (from cumulativeSums.deltaARN) compared to unit ΔARN threshold",
+        STAP: "Counts all ppId instances across all candidates where STAP = 'STABLE' (not averaged)",
+        STAG: "Counts all ppId instances across all candidates where STAG = 'STABLE' (not averaged)"
       }
     });
 
@@ -300,11 +343,17 @@ function getMetricDescription(metric) {
   }
 }
 
-// Helper function to calculate ALL candidate metrics for a unit
+// Helper function to calculate ALL candidate metrics AND stability counts
 async function calculateAllCandidateMetrics(unitId, candidateIds) {
   try {
     const results = [];
     
+    // Initialize unit-level stability counters
+    const unitStabilityCounts = {
+      STAP: { stableCount: 0, unstableCount: 0, totalInstances: 0 },
+      STAG: { stableCount: 0, unstableCount: 0, totalInstances: 0 }
+    };
+
     for (const candidateId of candidateIds) {
       // Get all metrics for this candidate
       const candidateData = await getAllCandidateMetricsFromTabulation(unitId, candidateId);
@@ -328,32 +377,46 @@ async function calculateAllCandidateMetrics(unitId, candidateIds) {
           MSIP: candidateData.avgMSIP,
           IC: candidateData.avgIC,
           GEQ: candidateData.avgGEQ,
-          
-          // Average delta metrics (from averages.deltaRRN, etc.)
           avgDeltaRRN: candidateData.avgDeltaRRN,
           avgDeltaPRN: candidateData.avgDeltaPRN,
           avgDeltaARN: candidateData.avgDeltaARN,
-          
-          // Cumulative sum delta metrics (from cumulativeSums.deltaRRN, etc.)
           sumDeltaRRN: candidateData.sumDeltaRRN,
           sumDeltaPRN: candidateData.sumDeltaPRN,
           sumDeltaARN: candidateData.sumDeltaARN
         });
+
+        // NEW: Aggregate stability counts for this candidate
+        unitStabilityCounts.STAP.stableCount += candidateData.stabilityCounts.STAP.stableCount;
+        unitStabilityCounts.STAP.unstableCount += candidateData.stabilityCounts.STAP.unstableCount;
+        unitStabilityCounts.STAP.totalInstances += candidateData.stabilityCounts.STAP.totalInstances;
+        
+        unitStabilityCounts.STAG.stableCount += candidateData.stabilityCounts.STAG.stableCount;
+        unitStabilityCounts.STAG.unstableCount += candidateData.stabilityCounts.STAG.unstableCount;
+        unitStabilityCounts.STAG.totalInstances += candidateData.stabilityCounts.STAG.totalInstances;
       }
     }
-    
-    return results;
+
+    return {
+      candidateMetrics: results,
+      stabilityCounts: unitStabilityCounts
+    };
   } catch (error) {
     console.error("Error calculating candidate metrics:", error);
-    return [];
+    return {
+      candidateMetrics: [],
+      stabilityCounts: {
+        STAP: { stableCount: 0, unstableCount: 0, totalInstances: 0 },
+        STAG: { stableCount: 0, unstableCount: 0, totalInstances: 0 }
+      }
+    };
   }
 }
 
-// Helper function to get ALL candidate metrics from tabulation data
+// MODIFIED: Helper function to get ALL candidate metrics AND count STAP/STAG from tabulation data
 async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
   try {
     const tabulationData = await callTabulationFunction(unitId, candidateId);
-
+    
     if (!tabulationData) return null;
 
     // Find candidate in averages
@@ -367,6 +430,39 @@ async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
     );
 
     if (!regularAvg) return null;
+
+    // NEW: Count STAP and STAG from results array (which contains all ppIds)
+    const stabilityCounts = {
+      STAP: { stableCount: 0, unstableCount: 0, totalInstances: 0 },
+      STAG: { stableCount: 0, unstableCount: 0, totalInstances: 0 }
+    };
+
+    // Process all ppId records for this candidate from the results array
+    if (tabulationData.results && Array.isArray(tabulationData.results)) {
+      tabulationData.results.forEach(record => {
+        if (record.candidateId === candidateId.toString() && record.ppId > 0) {
+          // Count STAP
+          if (record.STAP !== null && record.STAP !== undefined) {
+            stabilityCounts.STAP.totalInstances++;
+            if (record.STAP === 'STABLE') {
+              stabilityCounts.STAP.stableCount++;
+            } else if (record.STAP === 'UNSTABLE') {
+              stabilityCounts.STAP.unstableCount++;
+            }
+          }
+
+          // Count STAG
+          if (record.STAG !== null && record.STAG !== undefined) {
+            stabilityCounts.STAG.totalInstances++;
+            if (record.STAG === 'STABLE') {
+              stabilityCounts.STAG.stableCount++;
+            } else if (record.STAG === 'UNSTABLE') {
+              stabilityCounts.STAG.unstableCount++;
+            }
+          }
+        }
+      });
+    }
 
     return {
       // Regular average metrics
@@ -385,44 +481,35 @@ async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
       avgMSIP: regularAvg.MSIP ?? 0,
       avgIC: regularAvg.IC ?? 0,
       avgGEQ: regularAvg.GEQ ?? 0,
-
       // Average delta values from averages array
       avgDeltaRRN: regularAvg.deltaRRN ?? 0,
       avgDeltaPRN: regularAvg.deltaPRN ?? 0,
       avgDeltaARN: regularAvg.deltaARN ?? 0,
-
       // Cumulative sum delta values from cumulativeSums array
       sumDeltaRRN: cumulativeSum?.deltaRRN ?? 0,
       sumDeltaPRN: cumulativeSum?.deltaPRN ?? 0,
-      sumDeltaARN: cumulativeSum?.deltaARN ?? 0
+      sumDeltaARN: cumulativeSum?.deltaARN ?? 0,
+      // NEW: Stability counts
+      stabilityCounts: stabilityCounts
     };
-
   } catch (error) {
     console.error("Error fetching tabulation data:", error);
     return null;
   }
 }
 
-
 // Helper function to call your existing tabulation function
 async function callTabulationFunction(unitId, candidateId) {
   try {
-    // This is a wrapper to call getPpCompetencyRatioMultipleCandidate
-    // You might need to adjust this based on how your function works
-    
-    // If you can call it directly:
     const tabulationController = require('./tabulationTable.controller');
-    
-    // Create a mock request
+
     const mockReq = {
       query: {
         unitId: unitId,
         candidate_id: candidateId.toString(),
-        // Add other required parameters
       }
     };
-    
-    // Create a mock response that captures the result
+
     let capturedData = null;
     const mockRes = {
       json: (data) => {
@@ -430,12 +517,10 @@ async function callTabulationFunction(unitId, candidateId) {
       },
       status: () => mockRes
     };
-    
-    // Call the function
+
     await tabulationController.getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
     
     return capturedData;
-    
   } catch (error) {
     console.error("Error calling tabulation function:", error);
     return null;
