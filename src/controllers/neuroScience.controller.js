@@ -190,20 +190,52 @@ const rows = [
           const bucket = lobeStats[resp.lobe];
   
           // Combined value for non-delta
-          let total = 0;
-          if (rowDef.rr === "y") total += rms.RRN;
-          if (rowDef.pr === "y") total += rms.PRN;
-          if (isThirdParameter && rowDef.ar === "y") total += rms.ARN;
-          bucket.sum += total ** 2;
-          if (total !== 0) bucket.count++;
-  
-          // Combined value for delta
-          let deltaTotal = 0;
-          if (rowDef.rr === "y") deltaTotal += rms.deltaRRN;
-          if (rowDef.pr === "y") deltaTotal += rms.deltaPRN;
-          if (isThirdParameter && rowDef.ar === "y") deltaTotal += rms.deltaARN;
-          bucket.deltaSum += deltaTotal ** 2;
-          if (deltaTotal !== 0) bucket.deltaCount++;
+          // normalize null → 0
+          const RRN = rms.RRN ?? 0;
+          const PRN = rms.PRN ?? 0;
+          const ARN = rms.ARN ?? 0;
+
+          const dRRN = rms.deltaRRN ?? 0;
+          const dPRN = rms.deltaPRN ?? 0;
+          const dARN = rms.deltaARN ?? 0;
+
+          // ----- NON-DELTA RMS -----
+          let added = false;
+
+          if (rowDef.rr === "y") {
+            bucket.sum += RRN ** 2;
+            bucket.count++;
+            added = true;
+          }
+
+          if (rowDef.pr === "y") {
+            bucket.sum += PRN ** 2;
+            bucket.count++;
+            added = true;
+          }
+
+          if (isThirdParameter && rowDef.ar === "y") {
+            bucket.sum += ARN ** 2;
+            bucket.count++;
+            added = true;
+          }
+
+          // ----- DELTA RMS -----
+          if (rowDef.rr === "y") {
+            bucket.deltaSum += dRRN ** 2;
+            bucket.deltaCount++;
+          }
+
+          if (rowDef.pr === "y") {
+            bucket.deltaSum += dPRN ** 2;
+            bucket.deltaCount++;
+          }
+
+          if (isThirdParameter && rowDef.ar === "y") {
+            bucket.deltaSum += dARN ** 2;
+            bucket.deltaCount++;
+          }
+
         });
   
         // Calculate RMS and deltaRMS per lobe
