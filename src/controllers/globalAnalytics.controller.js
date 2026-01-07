@@ -7,6 +7,7 @@ const UnitRoster = db.UnitRoster;
 const NeedAssessments = db.CandidateNeedAssessment;
 const CandidateMarks = db.CandidateMarks;
 const LeaderMarks = db.LeaderMarks;
+const InsertScore = db.InsertScore;
 const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.controller');
 
 exports.getUnitSuccessRatesByThreshold = async (req, res) => {
@@ -63,11 +64,6 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
       sumDeltaARN: { threshold: "ΔARN", successCount: 0, totalInstances: 0 }
     };
 
-    // NEW: STAP and STAG counters
-    const stabilityMetrics = {
-      STAP: { stableCount: 0, unstableCount: 0, totalInstances: 0 },
-      STAG: { stableCount: 0, unstableCount: 0, totalInstances: 0 }
-    };
 
     // =================================================== 
     // 3. Process each unit
@@ -114,8 +110,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
             sumDeltaARN: unit["ΔARN"] || 0
           },
           candidateResults: unitResults.candidateMetrics,
-          // NEW: Unit-level stability counts
-          stabilityData: unitResults.stabilityCounts
+          
         });
       }
     }
@@ -142,15 +137,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
           }
         });
       }
-
-      // NEW: Aggregate stability counts
-      stabilityMetrics.STAP.stableCount += unitData.stabilityData.STAP.stableCount;
-      stabilityMetrics.STAP.unstableCount += unitData.stabilityData.STAP.unstableCount;
-      stabilityMetrics.STAP.totalInstances += unitData.stabilityData.STAP.totalInstances;
-      
-      stabilityMetrics.STAG.stableCount += unitData.stabilityData.STAG.stableCount;
-      stabilityMetrics.STAG.unstableCount += unitData.stabilityData.STAG.unstableCount;
-      stabilityMetrics.STAG.totalInstances += unitData.stabilityData.STAG.totalInstances;
+     
     }
 
     // =================================================== 
@@ -177,7 +164,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
         successCount: data.successCount,
         totalInstances: data.totalInstances,
         successRate: data.totalInstances > 0 
-          ? +(data.successCount / data.totalInstances * 100).toFixed(2) 
+          ? +(data.successCount / data.totalInstances).toFixed(3) 
           : 0,
         description: getMetricDescription(metric)
       };
@@ -227,25 +214,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
         thresholds: unit.thresholds,
         successCounts: unitSuccessCounts,
         successRates: unitSuccessRates,
-        // NEW: Include stability data at unit level
-        stabilityData: {
-          STAP: {
-            stableCount: unit.stabilityData.STAP.stableCount,
-            unstableCount: unit.stabilityData.STAP.unstableCount,
-            totalInstances: unit.stabilityData.STAP.totalInstances,
-            stablePercentage: unit.stabilityData.STAP.totalInstances > 0
-              ? +(unit.stabilityData.STAP.stableCount / unit.stabilityData.STAP.totalInstances * 100).toFixed(2)
-              : 0
-          },
-          STAG: {
-            stableCount: unit.stabilityData.STAG.stableCount,
-            unstableCount: unit.stabilityData.STAG.unstableCount,
-            totalInstances: unit.stabilityData.STAG.totalInstances,
-            stablePercentage: unit.stabilityData.STAG.totalInstances > 0
-              ? +(unit.stabilityData.STAG.stableCount / unit.stabilityData.STAG.totalInstances * 100).toFixed(2)
-              : 0
-          }
-        }
+        
       };
     });
 
@@ -284,27 +253,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
           sumDeltaPRN: successRates.sumDeltaPRN,
           sumDeltaARN: successRates.sumDeltaARN
         },
-        // NEW: Global stability metrics
-        stabilityMetrics: {
-          STAP: {
-            stableCount: stabilityMetrics.STAP.stableCount,
-            unstableCount: stabilityMetrics.STAP.unstableCount,
-            totalInstances: stabilityMetrics.STAP.totalInstances,
-            stablePercentage: stabilityMetrics.STAP.totalInstances > 0
-              ? +(stabilityMetrics.STAP.stableCount / stabilityMetrics.STAP.totalInstances * 100).toFixed(2)
-              : 0,
-            description: "Stability Assessment Performance - counts instances where STAP = 'STABLE'"
-          },
-          STAG: {
-            stableCount: stabilityMetrics.STAG.stableCount,
-            unstableCount: stabilityMetrics.STAG.unstableCount,
-            totalInstances: stabilityMetrics.STAG.totalInstances,
-            stablePercentage: stabilityMetrics.STAG.totalInstances > 0
-              ? +(stabilityMetrics.STAG.stableCount / stabilityMetrics.STAG.totalInstances * 100).toFixed(2)
-              : 0,
-            description: "Stability Assessment Growth - counts instances where STAG = 'STABLE'"
-          }
-        }
+        
       },
       unitDetails,
       explanation: {
@@ -314,8 +263,6 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
         sumDeltaRRN: "Cumulative Sum ∆RR (from cumulativeSums.deltaRRN) compared to unit ΔRRN threshold",
         sumDeltaPRN: "Cumulative Sum ∆PR (from cumulativeSums.deltaPRN) compared to unit ΔPRN threshold",
         sumDeltaARN: "Cumulative Sum ∆AR (from cumulativeSums.deltaARN) compared to unit ΔARN threshold",
-        STAP: "Counts all ppId instances across all candidates where STAP = 'STABLE' (not averaged)",
-        STAG: "Counts all ppId instances across all candidates where STAG = 'STABLE' (not averaged)"
       }
     });
 
@@ -348,12 +295,6 @@ async function calculateAllCandidateMetrics(unitId, candidateIds) {
   try {
     const results = [];
     
-    // Initialize unit-level stability counters
-    const unitStabilityCounts = {
-      STAP: { stableCount: 0, unstableCount: 0, totalInstances: 0 },
-      STAG: { stableCount: 0, unstableCount: 0, totalInstances: 0 }
-    };
-
     for (const candidateId of candidateIds) {
       // Get all metrics for this candidate
       const candidateData = await getAllCandidateMetricsFromTabulation(unitId, candidateId);
@@ -384,35 +325,22 @@ async function calculateAllCandidateMetrics(unitId, candidateIds) {
           sumDeltaPRN: candidateData.sumDeltaPRN,
           sumDeltaARN: candidateData.sumDeltaARN
         });
-
-        // NEW: Aggregate stability counts for this candidate
-        unitStabilityCounts.STAP.stableCount += candidateData.stabilityCounts.STAP.stableCount;
-        unitStabilityCounts.STAP.unstableCount += candidateData.stabilityCounts.STAP.unstableCount;
-        unitStabilityCounts.STAP.totalInstances += candidateData.stabilityCounts.STAP.totalInstances;
-        
-        unitStabilityCounts.STAG.stableCount += candidateData.stabilityCounts.STAG.stableCount;
-        unitStabilityCounts.STAG.unstableCount += candidateData.stabilityCounts.STAG.unstableCount;
-        unitStabilityCounts.STAG.totalInstances += candidateData.stabilityCounts.STAG.totalInstances;
+ 
       }
     }
 
     return {
       candidateMetrics: results,
-      stabilityCounts: unitStabilityCounts
     };
   } catch (error) {
     console.error("Error calculating candidate metrics:", error);
     return {
       candidateMetrics: [],
-      stabilityCounts: {
-        STAP: { stableCount: 0, unstableCount: 0, totalInstances: 0 },
-        STAG: { stableCount: 0, unstableCount: 0, totalInstances: 0 }
-      }
     };
   }
 }
 
-// MODIFIED: Helper function to get ALL candidate metrics AND count STAP/STAG from tabulation data
+// Helper function to get ALL candidate metrics AND count STAP/STAG from tabulation data
 async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
   try {
     const tabulationData = await callTabulationFunction(unitId, candidateId);
@@ -431,35 +359,11 @@ async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
 
     if (!regularAvg) return null;
 
-    // NEW: Count STAP and STAG from results array (which contains all ppIds)
-    const stabilityCounts = {
-      STAP: { stableCount: 0, unstableCount: 0, totalInstances: 0 },
-      STAG: { stableCount: 0, unstableCount: 0, totalInstances: 0 }
-    };
-
     // Process all ppId records for this candidate from the results array
     if (tabulationData.results && Array.isArray(tabulationData.results)) {
       tabulationData.results.forEach(record => {
         if (record.candidateId === candidateId.toString() && record.ppId > 0) {
-          // Count STAP
-          if (record.STAP !== null && record.STAP !== undefined) {
-            stabilityCounts.STAP.totalInstances++;
-            if (record.STAP === 'STABLE') {
-              stabilityCounts.STAP.stableCount++;
-            } else if (record.STAP === 'UNSTABLE') {
-              stabilityCounts.STAP.unstableCount++;
-            }
-          }
-
-          // Count STAG
-          if (record.STAG !== null && record.STAG !== undefined) {
-            stabilityCounts.STAG.totalInstances++;
-            if (record.STAG === 'STABLE') {
-              stabilityCounts.STAG.stableCount++;
-            } else if (record.STAG === 'UNSTABLE') {
-              stabilityCounts.STAG.unstableCount++;
-            }
-          }
+          
         }
       });
     }
@@ -489,8 +393,7 @@ async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
       sumDeltaRRN: cumulativeSum?.deltaRRN ?? 0,
       sumDeltaPRN: cumulativeSum?.deltaPRN ?? 0,
       sumDeltaARN: cumulativeSum?.deltaARN ?? 0,
-      // NEW: Stability counts
-      stabilityCounts: stabilityCounts
+      
     };
   } catch (error) {
     console.error("Error fetching tabulation data:", error);
@@ -526,6 +429,110 @@ async function callTabulationFunction(unitId, candidateId) {
     return null;
   }
 }
+
+exports.getCandidateStableCounts = async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    if (!clientId) {
+      return res.status(400).json({ message: "clientId is required" });
+    }
+
+    const units = await Unit.findAll({
+      where: { clientId },
+      attributes: ["id", "unitId", "unitName"],
+      raw: true
+    });
+
+    const results = [];
+    const totalStableByCandidate = {};
+
+    for (const unit of units) {
+      const rosters = await UnitRoster.findAll({
+        where: { unitId: unit.id },
+        attributes: ["candidateId"],
+        raw: true
+      });
+
+      if (!rosters.length) continue;
+
+      const candidates = [];
+
+      for (const { candidateId } of rosters) {
+        const tabulationData = await callTabulationFunction(unit.id, candidateId);
+
+        if (!tabulationData?.results) continue;
+
+        let stableSTAPCount = 0;
+        let stableSTAGCount = 0;
+
+        for (const record of tabulationData.results) {
+          // ✅ STAP (no ppId rule)
+          if (
+            record.STAP === "STABLE" &&
+            record.candidateId?.toString() === candidateId.toString()
+          ) {
+            stableSTAPCount++;
+          }
+
+          // ✅ STAG (ppId > 0 REQUIRED)
+          if (
+            record.STAG === "STABLE" &&
+            record.ppId > 0 &&
+            record.candidateId?.toString() === candidateId.toString()
+          ) {
+            stableSTAGCount++;
+          }
+        }
+
+        candidates.push({
+          candidateId,
+          stableSTAPCount,
+          stableSTAGCount
+        });
+
+        // ✅ global aggregation
+        if (!totalStableByCandidate[candidateId]) {
+          totalStableByCandidate[candidateId] = {
+            totalStableSTAPCount: 0,
+            totalStableSTAGCount: 0
+          };
+        }
+
+        totalStableByCandidate[candidateId].totalStableSTAPCount += stableSTAPCount;
+        totalStableByCandidate[candidateId].totalStableSTAGCount += stableSTAGCount;
+      }
+
+      results.push({
+        unitId: unit.unitId,
+        unitName: unit.unitName,
+        candidates
+      });
+    }
+
+    const totalStableCounts = Object.entries(totalStableByCandidate).map(
+      ([candidateId, counts]) => ({
+        candidateId: Number(candidateId),
+        ...counts
+      })
+    );
+
+    return res.status(200).json({
+      message: "STAP & STAG stable counts per candidate per unit and total",
+      unitWiseData: results,
+      totalByCandidate: totalStableCounts
+    });
+
+  } catch (error) {
+    console.error("STAP/STAG Count Error:", error);
+    res.status(500).json({
+      message: "Error calculating STAP/STAG counts",
+      error: error.message
+    });
+  }
+};
+
+
 
 // Alternative: Direct database query approach (more efficient)
 async function getCandidateMetricsFromDB(unitId, candidateId) {
@@ -663,7 +670,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       "AB > 20": 0,
     };
 
-    const needAssessmentSummary = { total: 0, open: 0 };
+    // const needAssessmentSummary = { total: 0, open: 0 };
 
     // ===================================================
     // 4️⃣ Need Assessments Aggregation
@@ -694,10 +701,10 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       raw: true,
     });
 
-    for (const row of needAssessmentTotals) {
-      needAssessmentSummary.total += Number(row.totalNeedAssessments) || 0;
-      needAssessmentSummary.open += Number(row.openNeedAssessments) || 0;
-    }
+    // for (const row of needAssessmentTotals) {
+    //   needAssessmentSummary.total += Number(row.totalNeedAssessments) || 0;
+    //   needAssessmentSummary.open += Number(row.openNeedAssessments) || 0;
+    // }
 
     // ===================================================
     //  Candidate Marks Aggregation (per unit, per candidate)
@@ -882,6 +889,39 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       fail: Number(unitOutcomeTotals[0]?.fail) || 0,
     };
     
+    const unitsOfClient = await Unit.findAll({
+      where: { clientId },
+      attributes: ["id"],
+      raw: true,
+    });
+    
+    let totalNeedAssessmentCount = 0;
+    let existingNeedAssessmentCount = 0;
+    
+    for (const unit of unitsOfClient) {
+      const unitId = unit.id;
+    
+      // 1️⃣ Total unique ppIds from InsertScore
+      const insertScores = await InsertScore.findAll({
+        where: { unitId },
+        attributes: ["ppId"],
+        raw: true,
+      });
+      const uniquePpIds = [...new Set(insertScores.map((s) => s.ppId))];
+      totalNeedAssessmentCount += uniquePpIds.length;
+    
+      // 2️⃣ Existing NeedAssessments count for this unit
+      const needAssessmentsForUnit = await NeedAssessments.count({
+        where: { unitId },
+      });
+      existingNeedAssessmentCount += needAssessmentsForUnit;
+    }
+    
+    // 3️⃣ Calculate open
+    const needAssessmentSummary = {
+      total: totalNeedAssessmentCount,
+      open: totalNeedAssessmentCount - existingNeedAssessmentCount,
+    };
 
     // ===================================================
     //  Final Response

@@ -138,23 +138,23 @@ function extractFieldValues(results, fieldName) {
       const distributions = {};
       
       if (rrArray.length > 0) {
-        distributions.RR = calculateDistribution({ data: rrArray, step: 0.05 });
+        distributions.RR = calculateDistribution({ data: rrArray, beta: beta ?? 1.5, step: 0.05 });
       }
       
       if (prArray.length > 0) {
-        distributions.PR = calculateDistribution({ data: prArray, step: 0.05 });
+        distributions.PR = calculateDistribution({ data: prArray, beta: beta ?? 1.5, step: 0.05 });
       }
       
       if (arArray.length > 0) {
-        distributions.AR = calculateDistribution({ data: arArray, step: 0.05 });
+        distributions.AR = calculateDistribution({ data: arArray, beta: beta ?? 1.5, step: 0.05 });
       }
       
       if (xepArray.length > 0) {
-        distributions.XEP = calculateDistribution({ data: xepArray, step: 0.05 });
+        distributions.XEP = calculateDistribution({ data: xepArray, beta: beta ?? 1.5, step: 0.05 });
       }
       
       if (deltaGEQArray.length > 0) {
-        distributions.deltaGEQ = calculateDistribution({ data: deltaGEQArray, step: 0.05 });
+        distributions.deltaGEQ = calculateDistribution({ data: deltaGEQArray, beta: beta ?? 1.5, step: 0.05 });
       }
       
       // Return the response
