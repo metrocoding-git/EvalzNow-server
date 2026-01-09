@@ -139,7 +139,7 @@ const rows = [
       }
   
       // 1️⃣ Fetch RMS values
-      const tabulationReq = { query: { unitId, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo, candidate_id: candidateId } };
+      const tabulationReq = { query: { unitId, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo, candidate_id: String(candidateId) } };
       let capturedResponse;
       const tabulationRes = { status: () => ({ json: data => (capturedResponse = data) }) };
       await getPpCompetencyRatioMultipleCandidate(tabulationReq, tabulationRes);
