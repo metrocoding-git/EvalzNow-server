@@ -135,6 +135,7 @@ exports.getDataExtractionByUnitId = async (req, res) => {
             jobType: row.candidate.jobType,
             dateOfBirth: row.candidate.dateOfBirth,
             candidateStartDate: row.candidate.startDate,
+            specialIdNo: row.candidate.specialIdNo,
             pps: [],
             competencyResults: []  
           };
@@ -253,7 +254,7 @@ exports.getDataExtractionByUnitId = async (req, res) => {
 
         await getNeuroScienceRmsValues(neuroReq, neuroRes);
 
-        console.log("nuero science RMS: ", neuroRes, neuroData);
+        // console.log("nuero science RMS: ", neuroRes, neuroData);
       
         // Attach only valid results
         if (neuroData?.data?.length) {
@@ -366,6 +367,7 @@ exports.getDataExtractionByClientId = async (req, res) => {
             jobType: row.candidate.jobType,
             dateOfBirth: row.candidate.dateOfBirth,
             candidateStartDate: row.candidate.startDate,
+            specialIdNo: row.candidate.specialIdNo,
             pps: [],
             competencyResults: []
           };
@@ -573,6 +575,7 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
             jobType: row.candidate.jobType,
             dateOfBirth: row.candidate.dateOfBirth,
             candidateStartDate: row.candidate.startDate,
+            specialIdNo: row.candidate.specialIdNo,
             pps: [],
             competencyResults: []
           };

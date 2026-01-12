@@ -124,12 +124,12 @@ function generateRange(start, end, step = 1) {
         const deltaGEQArray = collect("GEQ");  // deltaGEQ values
 
         // Log the extracted arrays for debugging
-        console.log('Extracted arrays:');
-        console.log('RR:', rrArray);
-        console.log('PR:', prArray);
-        console.log('AR:', arArray);
-        console.log('XEQ:', xeqArray);
-        console.log('deltaGEQ:', deltaGEQArray);
+        // console.log('Extracted arrays:');
+        // console.log('RR:', rrArray);
+        // console.log('PR:', prArray);
+        // console.log('AR:', arArray);
+        // console.log('XEQ:', xeqArray);
+        // console.log('deltaGEQ:', deltaGEQArray);
 
         // Calculate distributions
         const rrDistribution = rrArray.length > 0 ? calculateDistribution({ data: rrArray, step: 0.05 }) : null;
