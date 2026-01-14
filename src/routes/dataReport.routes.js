@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const dataReport = require('../controllers/dataReport.controller');
 
+router.get('/global/:clientId', dataReport.getGlobalDataReportByClient);
+router.get('/unit-level/:unitId', dataReport.getDataReportByUnit);
+router.get('/candidate-level/:unitId', dataReport.getDataReportByUnitAllCandidates);
+router.get('/client-level/:clientId', dataReport.getDataReportByClient);
 router.get('/:unitId/:candidateId', dataReport.getDataReportByUnitCandidate);
-router.get('/all/:unitId', dataReport.getDataReportByUnitAllCandidates);
-// router.get('/all/:clientId/:candidateId', dataExtract.getDataExtractionByCandidateId);
 
 module.exports = router;
