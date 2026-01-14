@@ -1066,7 +1066,7 @@ exports.getLeaderMarks = async (req, res) => {
 exports.getEffortBu = async (req, res) => {
   try {
     const { unitId, candidate_id } = req.params;
-    const { ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+    const { ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query || {};
 
     const ppFrom = ppIdFrom ? Number(ppIdFrom) : null;
     const ppTo = ppIdTo ? Number(ppIdTo) : null;
