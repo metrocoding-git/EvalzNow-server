@@ -355,7 +355,7 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
         include: [
           { model: AssessmentBlockManager, as: "assessmentBlock" },
           { model: Unit, as: "unit" },
-          { model: Candidate, as: "candidate" }
+          { model: Candidate, as: "candidate", include: [ {model: db.Irregularity, as: "irregularities"}, ] }
         ],
         order: [
           ["ppId", "ASC"],
