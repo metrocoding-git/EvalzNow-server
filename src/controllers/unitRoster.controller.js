@@ -118,7 +118,7 @@ exports.getUnitRostersByUnitId = async (req, res) => {
         {
           model: Unit,
           as: "unit",
-          attributes: ["id", "unitId", "unitName", "unitType", "signatureProfile", "environment", "scoringSystem"],
+          attributes: ["id", "unitId", "unitName", "unitType", "unitStartDate", "signatureProfile", "environment", "scoringSystem"],
         },
       ],
     });
