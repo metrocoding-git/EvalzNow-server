@@ -155,6 +155,24 @@ exports.getAuxiliaryGraphData = async (req, res) => {
           }
       }
 
+      const engageLevelCounts = {
+        High: 0,
+        Medium: 0,
+        Low: 0,
+        "N/A": 0
+      };
+    
+      insertScoresAll.forEach(score => {
+          const level = score.engageLevel?.trim() || "N/A";
+      
+          if (engageLevelCounts[level] !== undefined) {
+              engageLevelCounts[level]++;
+          } else {
+              // safety fallback (unexpected value)
+              engageLevelCounts["N/A"]++;
+          }
+      });
+
       // ----------------------------------------------------
       // FILTER ONLY POSITIVE PPIDs in InsertScores
       // ----------------------------------------------------
@@ -306,6 +324,7 @@ exports.getAuxiliaryGraphData = async (req, res) => {
           unitId,
           candidate_id,
           rosterData: rostersAll,
+          engageLevelSummary: engageLevelCounts,
           results: finalResponse,
           filters: {
               ppIdFrom: ppIdFrom || null,
@@ -1047,7 +1066,7 @@ exports.getLeaderMarks = async (req, res) => {
 exports.getEffortBu = async (req, res) => {
   try {
     const { unitId, candidate_id } = req.params;
-    const { ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+    const { ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query || {};
 
     const ppFrom = ppIdFrom ? Number(ppIdFrom) : null;
     const ppTo = ppIdTo ? Number(ppIdTo) : null;

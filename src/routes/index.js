@@ -23,5 +23,7 @@ router.use('/unit-distribution', require('./unitDistribution.route'));
 router.use('/auxiliary', require('./auxiliary.routes'));
 router.use('/neuro-science', require('./neuroScience.routes'));
 router.use('/global-analytics', require('./globalAnalytic.routes'));
+router.use('/data-extract', require('./dataExtraction.routes'));
+router.use('/data-report', require('./dataReport.routes'));
 
 module.exports = router;
