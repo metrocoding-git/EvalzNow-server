@@ -8,6 +8,7 @@ const NeedAssessments = db.CandidateNeedAssessment;
 const CandidateMarks = db.CandidateMarks;
 const LeaderMarks = db.LeaderMarks;
 const InsertScore = db.InsertScore;
+const StaffLookup = db.StaffLookup;
 const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.controller');
 
 exports.getUnitSuccessRatesByThreshold = async (req, res) => {
@@ -430,6 +431,221 @@ async function callTabulationFunction(unitId, candidateId) {
   }
 }
 
+// Helper function to map IC string to IC class number
+function getIcClass(icValue, signatureProfile) {
+  if (!icValue) return null;
+
+  const match = icValue.match(/(\d)R(\d)P/);
+  if (!match) return null;
+
+  const r = parseInt(match[1], 10);
+  const p = parseInt(match[2], 10);
+
+  switch(signatureProfile) {
+    case 'Case 1: Solid Balanced':
+    case 'Case 2: Rigorous Balanced':
+      // Average IC: take R=P value (both equal in these cases)
+      return r; // or p, same
+    case 'Case 3a: Productive-Weighted':
+      // Use P value
+      return p;
+    case 'Case 3b: Receptive-Weighed':
+      // Use R value
+      return r;
+    default:
+      return null;
+  }
+}
+
+// Main controller
+exports.getClientIcDistribution = async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    if (!clientId) return res.status(400).json({ message: "clientId is required" });
+
+    // 1️⃣ Get all units for the client
+    const units = await Unit.findAll({
+      where: { clientId },
+      attributes: ["id", "unitId", "unitName"],
+      raw: true
+    });
+
+    if (!units.length) return res.status(404).json({ message: "No units found for this client" });
+
+    const icCounts = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let totalCandidates = 0;
+
+    // 2️⃣ Iterate units & candidates
+    for (const unit of units) {
+      const rosters = await UnitRoster.findAll({
+        where: { unitId: unit.id },
+        attributes: ["candidateId"],
+        raw: true
+      });
+
+      if (!rosters.length) continue;
+
+      for (const { candidateId } of rosters) {
+        const tabulationData = await callTabulationFunction(unit.id, candidateId);
+      
+        if (!tabulationData?.averages) continue;
+      
+        // Use default signatureProfile if missing
+        const signatureProfile = tabulationData.signatureProfile || 'Case 1: Solid Balanced';
+      
+        console.log("unit:", unit.unitId, "candidateId:", candidateId, "signatureProfile:", signatureProfile);
+      
+        const candidateAvg = tabulationData.averages.find(
+          avg => avg.candidateId.toString().trim() === candidateId.toString().trim() && avg.ppId === "Average"
+        );
+      
+        if (!candidateAvg) {
+          console.log("No average found for candidate:", candidateId, "averages:", tabulationData.averages);
+          continue;
+        }
+      
+        if (!candidateAvg.IC) {
+          console.log("No IC value for candidate:", candidateId, "IC field:", candidateAvg.IC);
+          continue;
+        }
+      
+        const icClass = getIcClass(candidateAvg.IC, signatureProfile);
+        console.log("Candidate:", candidateId, "IC:", candidateAvg.IC, "IC Class:", icClass);
+      
+        if (icClass !== null && icCounts.hasOwnProperty(icClass)) {
+          icCounts[icClass]++;
+          totalCandidates++;
+        }
+      }
+      
+    }
+
+    // 3️⃣ Convert counts to percentages
+    const icDistribution = {};
+    for (let i = 0; i <= 5; i++) {
+      icDistribution[i] = totalCandidates > 0
+        ? +(icCounts[i] / totalCandidates).toFixed(3)
+        : 0;
+    }
+
+    return res.status(200).json({
+      message: "IC class distribution calculated",
+      totalCandidates,
+      icCounts,
+      icDistribution
+    });
+
+  } catch (error) {
+    console.error("IC Distribution Error:", error);
+    return res.status(500).json({
+      message: "Error calculating IC class distribution",
+      error: error.message
+    });
+  }
+};
+
+exports.getClientProductivityDistribution = async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    if (!clientId) {
+      return res.status(400).json({ message: "clientId is required" });
+    }
+
+    // 1️⃣ Fetch units with environment
+    const units = await Unit.findAll({
+      where: { clientId },
+      attributes: ["id", "environment"],
+      raw: true
+    });
+
+    if (!units.length) {
+      return res.status(404).json({ message: "No units found for this client" });
+    }
+
+    const counts = {
+      low: 0,
+      mid: 0,
+      high: 0
+    };
+
+    let totalCandidates = 0;
+
+    // 2️⃣ Loop units
+    for (const unit of units) {
+      const { id: unitId, environment } = unit;
+
+      const rosters = await UnitRoster.findAll({
+        where: { unitId },
+        attributes: ["candidateId"],
+        raw: true
+      });
+
+      if (!rosters.length) continue;
+
+      // 3️⃣ Loop candidates
+      for (const { candidateId } of rosters) {
+        const tabulationData = await callTabulationFunction(unitId, candidateId);
+
+        if (!tabulationData?.averages) continue;
+
+        const avg = tabulationData.averages.find(
+          a =>
+            a.candidateId?.toString() === candidateId.toString() &&
+            a.ppId === "Average"
+        );
+
+        if (!avg) continue;
+
+        // 4️⃣ Pick productivity based on environment
+        let urValue = null;
+
+        if (environment === "Classroom") {
+          urValue = avg.Productivity_USD;
+        } else if (environment === "Workforce") {
+          urValue = avg.Productivity_CSD;
+        }
+
+        if (urValue === null || urValue === undefined) continue;
+
+        const ur = Number(urValue);
+        if (Number.isNaN(ur)) continue;
+
+        // 5️⃣ Categorize UR
+        if (ur < 0.3) {
+          counts.low++;
+        } else if (ur <= 0.6) {
+          counts.mid++;
+        } else {
+          counts.high++;
+        }
+
+        totalCandidates++;
+      }
+    }
+
+    // 6️⃣ Normalize to 0–1
+    const distribution = {
+      low: totalCandidates ? +(counts.low / totalCandidates).toFixed(3) : 0,
+      mid: totalCandidates ? +(counts.mid / totalCandidates).toFixed(3) : 0,
+      high: totalCandidates ? +(counts.high / totalCandidates).toFixed(3) : 0
+    };
+
+    return res.status(200).json({
+      message: "Productivity distribution calculated",
+      totalCandidates,
+      counts,
+      distribution
+    });
+
+  } catch (error) {
+    console.error("Productivity Distribution Error:", error);
+    return res.status(500).json({
+      message: "Error calculating productivity distribution",
+      error: error.message
+    });
+  }
+};
+
 exports.getCandidateStableCounts = async (req, res) => {
   try {
     const { clientId } = req.params;
@@ -634,6 +850,59 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       raw: true,
     });
 
+    const candidateCountByUnit = await UnitRoster.findAll({
+      attributes: [
+        "unitId",
+        [fn("COUNT", fn("DISTINCT", col("candidateId"))), "candidateCount"],
+      ],
+      include: [
+        {
+          model: Unit,
+          as: "unit",
+          where: { clientId },
+          attributes: [],
+          required: true,
+        },
+      ],
+      group: ["unitId"],
+      raw: true,
+    });
+
+    const staffCountByUnit = await StaffLookup.findAll({
+      attributes: [
+        "unitId",
+        [fn("COUNT", col("StaffLookup.id")), "staffCount"],
+      ],
+      include: [
+        {
+          model: Unit,
+          as: "unit",
+          where: { clientId },
+          attributes: [],
+          required: true,
+        },
+      ],
+      group: ["unitId"],
+      raw: true,
+    });
+
+    
+    const candidateMap = {};
+    for (const row of candidateCountByUnit) {
+      candidateMap[row.unitId] = Number(row.candidateCount) || 0;
+    }
+
+    const staffMap = {};
+    for (const row of staffCountByUnit) {
+      staffMap[row.unitId] = Number(row.staffCount) || 0;
+    }
+
+    const candidateStaffRatioSummary = {
+      "≤ 20": 0,
+      "20–30": 0,
+      "≥ 30": 0,
+    };
+    
     const attendanceSummary = {
       present: Number(rosterTotals[0]?.present) || 0,
       excusedAbsences: Number(rosterTotals[0]?.excusedAbsences) || 0,
@@ -768,6 +1037,24 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     // 7️⃣ Other Analytics Calculations
     // ===================================================
     for (const unit of units) {
+
+      const unitId = unit.id;
+
+      const candidateCount = candidateMap[unitId] ?? 0;
+      const staffCount = staffMap[unitId] ?? 0;
+
+      // 🚨 Avoid division by zero
+      if (staffCount === 0) continue;
+
+      const ratio = candidateCount / staffCount;
+
+      if (ratio <= 20) {
+        candidateStaffRatioSummary["≤ 20"]++;
+      } else if (ratio <= 30) {
+        candidateStaffRatioSummary["20–30"]++;
+      } else {
+        candidateStaffRatioSummary["≥ 30"]++;
+      }
       const bc = Number(unit.benchmarkCount) || 0;
       const ab = Number(unit.assessmentBlockCount) || 0;
 
@@ -938,6 +1225,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       candidateMarks: globalCandidateMarks,
       leaderMarks: globalLeaderMarks,
       unitOutcomes: unitOutcomeSummary,
+      candidateStaffRatio: candidateStaffRatioSummary,
     });
   } catch (error) {
     console.error("Global Analytics Error:", error);
