@@ -25,45 +25,45 @@ const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.con
 
 // Standalone helpers for Weibull Hazard
 function generateRange(start, end, step = 1) {
-    const arr = [];
-    const nSteps = Math.floor((end - start) / step);
-    for (let i = 0; i <= nSteps; i++) arr.push(Number((start + i * step).toFixed(10)));
-    if (arr.length === 0 || arr[arr.length - 1] < end) arr.push(Number(end.toFixed(10)));
-    return arr;
+  const arr = [];
+  const nSteps = Math.floor((end - start) / step);
+  for (let i = 0; i <= nSteps; i++) arr.push(Number((start + i * step).toFixed(10)));
+  if (arr.length === 0 || arr[arr.length - 1] < end) arr.push(Number(end.toFixed(10)));
+  return arr;
+}
+function meanFn(arr) {
+  if (!arr || arr.length === 0) return 0;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+function weibullPdf(t, beta, eta) {
+  if (t < 0) return 0;
+  const z = Math.pow(t / eta, beta - 1);
+  return (beta / eta) * z * Math.exp(-Math.pow(t / eta, beta));
+}
+function weibullReliability(t, beta, eta) {
+  if (t < 0) return 1;
+  return Math.exp(-Math.pow(t / eta, beta));
+}
+function weibullHazard(t, beta, eta) {
+  const r = weibullReliability(t, beta, eta);
+  if (r === 0) return 0;
+  return weibullPdf(t, beta, eta) / r;
+}
+
+function calculateDistribution(params = {}) {
+  const beta = params.beta ?? 1.5;
+  let eta = params.eta;
+  if (!eta && Array.isArray(params.data) && params.data.length) {
+    eta = meanFn(params.data);
   }
-  function meanFn(arr) {
-    if (!arr || arr.length === 0) return 0;
-    return arr.reduce((a, b) => a + b, 0) / arr.length;
-  }
-  function weibullPdf(t, beta, eta) {
-    if (t < 0) return 0;
-    const z = Math.pow(t / eta, beta - 1);
-    return (beta / eta) * z * Math.exp(-Math.pow(t / eta, beta));
-  }
-  function weibullReliability(t, beta, eta) {
-    if (t < 0) return 1;
-    return Math.exp(-Math.pow(t / eta, beta));
-  }
-  function weibullHazard(t, beta, eta) {
-    const r = weibullReliability(t, beta, eta);
-    if (r === 0) return 0;
-    return weibullPdf(t, beta, eta) / r;
-  }
-  
-  function calculateDistribution(params = {}) {
-    const beta = params.beta ?? 1.5;
-    let eta = params.eta;
-    if (!eta && Array.isArray(params.data) && params.data.length) {
-      eta = meanFn(params.data);
-    }
-    eta = eta ?? (params.meanValue ?? 100);
-    const step = params.step ?? (eta / 100);
-    const end = params.end ?? (4 * eta);
-    const x = generateRange(0, end, step);
-    const y = x.map((t) => weibullHazard(t, beta, eta));
-    const table = x.map((t, i) => ({ t: parseFloat(t.toFixed(4)), h: parseFloat(y[i].toFixed(4)) }));
-    return { x, y, mean: null, variance: null, params: { beta, eta, step }, table, name: 'Weibull Hazard' };
-  }
+  eta = eta ?? (params.meanValue ?? 100);
+  const step = params.step ?? (eta / 100);
+  const end = params.end ?? (4 * eta);
+  const x = generateRange(0, end, step);
+  const y = x.map((t) => weibullHazard(t, beta, eta));
+  const table = x.map((t, i) => ({ t: parseFloat(t.toFixed(4)), h: parseFloat(y[i].toFixed(4)) }));
+  return { x, y, mean: null, variance: null, params: { beta, eta, step }, table, name: 'Weibull Hazard' };
+}
   
   
    // Helper function to extract specific field values from results

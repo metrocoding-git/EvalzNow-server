@@ -28,49 +28,48 @@ const { getUnitById } = require('./unit.controller');
 
 // Standalone helpers for Chi-Square
 function generateRange(start, end, step = 1) {
-    const arr = [];
-    const nSteps = Math.floor((end - start) / step);
-    for (let i = 0; i <= nSteps; i++) arr.push(Number((start + i * step).toFixed(10)));
-    if (arr.length === 0 || arr[arr.length - 1] < end) arr.push(Number(end.toFixed(10)));
-    return arr;
+  const arr = [];
+  const nSteps = Math.floor((end - start) / step);
+  for (let i = 0; i <= nSteps; i++) arr.push(Number((start + i * step).toFixed(10)));
+  if (arr.length === 0 || arr[arr.length - 1] < end) arr.push(Number(end.toFixed(10)));
+  return arr;
+}
+function gamma(z) {
+  const g = 7;
+  const p = [0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
+  z -= 1; let x = p[0];
+  for (let i = 1; i < p.length; i++) x += p[i] / (z + i);
+  const t = z + g + 0.5;
+  return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+}
+function chiSquarePdf(x, k) {
+  if (x <= 0) return 0;
+  const c = 1 / (Math.pow(2, k / 2) * gamma(k / 2));
+  return c * Math.pow(x, k / 2 - 1) * Math.exp(-x / 2);
+}
+function integrateSimpson(f, a, b, n = 1024) {
+  if (n % 2 !== 0) n += 1;
+  const h = (b - a) / n;
+  let s = f(a) + f(b);
+  for (let i = 1; i < n; i++) {
+    const x = a + i * h;
+    s += f(x) * (i % 2 === 0 ? 2 : 4);
   }
-  function gamma(z) {
-    const g = 7;
-    const p = [0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
-    if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
-    z -= 1; let x = p[0];
-    for (let i = 1; i < p.length; i++) x += p[i] / (z + i);
-    const t = z + g + 0.5;
-    return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+  return (h / 3) * s;
+}
+function inverseCdfByBisection(pdf, lower, upper, target, tol = 1e-5, maxIter = 80) {
+  let lo = lower, hi = upper, mid = 0;
+  const cdf = (x) => integrateSimpson(pdf, lower, x);
+  for (let i = 0; i < maxIter; i++) {
+    mid = (lo + hi) / 2;
+    const cm = cdf(mid);
+    if (Math.abs(cm - target) < tol) return mid;
+    if (cm < target) lo = mid; else hi = mid;
   }
-  function chiSquarePdf(x, k) {
-    if (x <= 0) return 0;
-    const c = 1 / (Math.pow(2, k / 2) * gamma(k / 2));
-    return c * Math.pow(x, k / 2 - 1) * Math.exp(-x / 2);
-  }
-  function integrateSimpson(f, a, b, n = 1024) {
-    if (n % 2 !== 0) n += 1;
-    const h = (b - a) / n;
-    let s = f(a) + f(b);
-    for (let i = 1; i < n; i++) {
-      const x = a + i * h;
-      s += f(x) * (i % 2 === 0 ? 2 : 4);
-    }
-    return (h / 3) * s;
-  }
-  function inverseCdfByBisection(pdf, lower, upper, target, tol = 1e-5, maxIter = 80) {
-    let lo = lower, hi = upper, mid = 0;
-    const cdf = (x) => integrateSimpson(pdf, lower, x);
-    for (let i = 0; i < maxIter; i++) {
-      mid = (lo + hi) / 2;
-      const cm = cdf(mid);
-      if (Math.abs(cm - target) < tol) return mid;
-      if (cm < target) lo = mid; else hi = mid;
-    }
-    return mid;
-  }
+  return mid;
+}
   // No plotting – tabular only
-  
   function calculateDistributionCICO_TP(params = {}) {
     const k = 4;
     const step = params.step ?? 0.1;
@@ -111,7 +110,6 @@ function generateRange(start, end, step = 1) {
     };
   }
 
-
   function calculateDistributionTPRM(params = {}) {
     const k = 6;
     const step = params.step ?? 0.1;
@@ -151,7 +149,6 @@ function generateRange(start, end, step = 1) {
       name: 'Chi-Square (k=6)',
     };
   }
-
 
   
   
