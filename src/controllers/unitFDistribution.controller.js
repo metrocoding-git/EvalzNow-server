@@ -24,148 +24,144 @@ need to determine the average of the selected candidate data first
 
 // Standalone helpers for F distribution
 function generateRange(start, end, step = 1) {
-    const arr = [];
-    const nSteps = Math.floor((end - start) / step);
-    for (let i = 0; i <= nSteps; i++) arr.push(Number((start + i * step).toFixed(10)));
-    if (arr.length === 0 || arr[arr.length - 1] < end) arr.push(Number(end.toFixed(10)));
-    return arr;
+  const arr = [];
+  const nSteps = Math.floor((end - start) / step);
+  for (let i = 0; i <= nSteps; i++) arr.push(Number((start + i * step).toFixed(10)));
+  if (arr.length === 0 || arr[arr.length - 1] < end) arr.push(Number(end.toFixed(10)));
+  return arr;
+}
+function gamma(z) {
+  const g = 7;
+  const p = [0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
+  z -= 1; let x = p[0];
+  for (let i = 1; i < p.length; i++) x += p[i] / (z + i);
+  const t = z + g + 0.5;
+  return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+}
+function fPdf(x, d1, d2) {
+  if (x <= 0) return 0;
+  const a = d1 / 2, b = d2 / 2;
+  const B = (gamma(a) * gamma(b)) / gamma(a + b);
+  const r = d1 / d2;
+  return (Math.pow(r, a) * Math.pow(x, a - 1)) / (B * Math.pow(1 + r * x, a + b));
+}
+function integrateSimpson(f, a, b, n = 1024) {
+  if (n % 2 !== 0) n += 1;
+  const h = (b - a) / n;
+  let s = f(a) + f(b);
+  for (let i = 1; i < n; i++) {
+    const x = a + i * h;
+    s += f(x) * (i % 2 === 0 ? 2 : 4);
   }
-  function gamma(z) {
-    const g = 7;
-    const p = [0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
-    if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
-    z -= 1; let x = p[0];
-    for (let i = 1; i < p.length; i++) x += p[i] / (z + i);
-    const t = z + g + 0.5;
-    return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+  return (h / 3) * s;
+}
+function inverseCdfByBisection(pdf, lower, upper, target, tol = 1e-5, maxIter = 80) {
+  let lo = lower, hi = upper, mid = 0;
+  const cdf = (x) => integrateSimpson(pdf, lower, x);
+  for (let i = 0; i < maxIter; i++) {
+    mid = (lo + hi) / 2;
+    const cm = cdf(mid);
+    if (Math.abs(cm - target) < tol) return mid;
+    if (cm < target) lo = mid; else hi = mid;
   }
-  function fPdf(x, d1, d2) {
-    if (x <= 0) return 0;
-    const a = d1 / 2, b = d2 / 2;
-    const B = (gamma(a) * gamma(b)) / gamma(a + b);
-    const r = d1 / d2;
-    return (Math.pow(r, a) * Math.pow(x, a - 1)) / (B * Math.pow(1 + r * x, a + b));
-  }
-  function integrateSimpson(f, a, b, n = 1024) {
-    if (n % 2 !== 0) n += 1;
-    const h = (b - a) / n;
-    let s = f(a) + f(b);
-    for (let i = 1; i < n; i++) {
-      const x = a + i * h;
-      s += f(x) * (i % 2 === 0 ? 2 : 4);
-    }
-    return (h / 3) * s;
-  }
-  function inverseCdfByBisection(pdf, lower, upper, target, tol = 1e-5, maxIter = 80) {
-    let lo = lower, hi = upper, mid = 0;
-    const cdf = (x) => integrateSimpson(pdf, lower, x);
-    for (let i = 0; i < maxIter; i++) {
-      mid = (lo + hi) / 2;
-      const cm = cdf(mid);
-      if (Math.abs(cm - target) < tol) return mid;
-      if (cm < target) lo = mid; else hi = mid;
-    }
-    return mid;
-  }
-  // No plotting – tabular only
+  return mid;
+}
+// No plotting – tabular only
 
-  
 function calculateDistributionCICO_TP(params = {}) {
-    // Derive df and variances strictly from samples provided by caller
-    const s1 = Array.isArray(params.s1) ? params.s1 : null;
-    const s2 = Array.isArray(params.s2) ? params.s2 : null;
-    if (!s1 || !s2 || s1.length < 2 || s2.length < 2) {
-      return { x: [], y: [], mean: null, variance: null, params: { error: 's1 and s2 arrays (length >= 2) are required' }, table: [], name: 'F Distribution' };
-    }
-    const n1 = s1.length, n2 = s2.length;
-    const df1 = Math.max(1, n1 - 1);
-    const df2 = Math.max(1, n2 - 1);
-    const mean = (arr) => arr.reduce((a,b)=>a+b,0) / (arr.length || 1);
-    const varianceSample = (arr) => {
-      if (!arr || arr.length < 2) return 0;
-      const m = mean(arr);
-      return arr.reduce((acc,v)=>acc+(v-m)*(v-m),0) / (arr.length - 1);
-    };
-    const s1Var = varianceSample(s1);
-    const s2Var = varianceSample(s2);
-    const step = params.step ?? 0.02;
-    const end = 10;
-    const x = generateRange(0.001, end, step);
-    const y = x.map((xi) => fPdf(xi, df1, df2));
-  
-    const pdf = (v) => fPdf(v, df1, df2);
-    const fc = inverseCdfByBisection(pdf, 0, end, 0.95);
-  
-    const table = x.map((xi, i) => ({ x: parseFloat(xi.toFixed(4)), y: parseFloat(y[i].toFixed(4)) }));
-  
-    const distMean = df2 > 2 ? df2 / (df2 - 2) : Infinity;
-    const distVariance = (df2 > 4)
-      ? (2 * df2 * df2 * (df1 + df2 - 2)) / (df1 * (df2 - 2) * (df2 - 2) * (df2 - 4))
-      : Infinity;
-  
-    // Optional F-statistic if variances provided
-    const fStatistic = s2Var > 0 ? (s1Var / s2Var) : null;
-  
-    return {
-      x, y,
-      mean: distMean,
-      variance: distVariance,
-      params: { df1, df2, step, fc, fStatistic, s1Var, s2Var, n1, n2 },
-      table,
-      name: 'F Distribution (df1 derived)'
-    };
+  // Derive df and variances strictly from samples provided by caller
+  const s1 = Array.isArray(params.s1) ? params.s1 : null;
+  const s2 = Array.isArray(params.s2) ? params.s2 : null;
+  if (!s1 || !s2 || s1.length < 2 || s2.length < 2) {
+    return { x: [], y: [], mean: null, variance: null, params: { error: 's1 and s2 arrays (length >= 2) are required' }, table: [], name: 'F Distribution' };
   }
+  const n1 = s1.length, n2 = s2.length;
+  const df1 = Math.max(1, n1 - 1);
+  const df2 = Math.max(1, n2 - 1);
+  const mean = (arr) => arr.reduce((a,b)=>a+b,0) / (arr.length || 1);
+  const varianceSample = (arr) => {
+    if (!arr || arr.length < 2) return 0;
+    const m = mean(arr);
+    return arr.reduce((acc,v)=>acc+(v-m)*(v-m),0) / (arr.length - 1);
+  };
+  const s1Var = varianceSample(s1);
+  const s2Var = varianceSample(s2);
+  const step = params.step ?? 0.02;
+  const end = 10;
+  const x = generateRange(0.001, end, step);
+  const y = x.map((xi) => fPdf(xi, df1, df2));
 
+  const pdf = (v) => fPdf(v, df1, df2);
+  const fc = inverseCdfByBisection(pdf, 0, end, 0.95);
 
+  const table = x.map((xi, i) => ({ x: parseFloat(xi.toFixed(4)), y: parseFloat(y[i].toFixed(4)) }));
+
+  const distMean = df2 > 2 ? df2 / (df2 - 2) : Infinity;
+  const distVariance = (df2 > 4)
+    ? (2 * df2 * df2 * (df1 + df2 - 2)) / (df1 * (df2 - 2) * (df2 - 2) * (df2 - 4))
+    : Infinity;
+
+  // Optional F-statistic if variances provided
+  const fStatistic = s2Var > 0 ? (s1Var / s2Var) : null;
+
+  return {
+    x, y,
+    mean: distMean,
+    variance: distVariance,
+    params: { df1, df2, step, fc, fStatistic, s1Var, s2Var, n1, n2 },
+    table,
+    name: 'F Distribution (df1 derived)'
+  };
+}
   
+
 function calculateDistributionTPRM(params = {}) {
-    // Derive df and variances strictly from samples provided by caller
-    const s1 = Array.isArray(params.s1) ? params.s1 : null;
-    const s2 = Array.isArray(params.s2) ? params.s2 : null;
-    if (!s1 || !s2 || s1.length < 2 || s2.length < 2) {
-      return { x: [], y: [], mean: null, variance: null, params: { error: 's1 and s2 arrays (length >= 2) are required' }, table: [], name: 'F Distribution' };
-    }
-    const n1 = s1.length, n2 = s2.length;
-    const df1 = Math.max(1, n1 - 1);
-    const df2 = Math.max(1, n2 - 1);
-    const mean = (arr) => arr.reduce((a,b)=>a+b,0) / (arr.length || 1);
-    const varianceSample = (arr) => {
-      if (!arr || arr.length < 2) return 0;
-      const m = mean(arr);
-      return arr.reduce((acc,v)=>acc+(v-m)*(v-m),0) / (arr.length - 1);
-    };
-    const s1Var = varianceSample(s1);
-    const s2Var = varianceSample(s2);
-    const step = params.step ?? 0.02;
-    const end = 10; // reasonable range for visualization
-    const x = generateRange(0.001, end, step);
-    const y = x.map((xi) => fPdf(xi, df1, df2));
-  
-    const pdf = (v) => fPdf(v, df1, df2);
-    // Right-tail alpha=5% → CDF=0.95
-    const fc = inverseCdfByBisection(pdf, 0, end, 0.95);
-  
-    const table = x.map((xi, i) => ({ x: parseFloat(xi.toFixed(4)), y: parseFloat(y[i].toFixed(4)) }));
-  
-    // Mean exists for df2 > 2
-    const distMean = df2 > 2 ? df2 / (df2 - 2) : Infinity;
-    const distVariance = (df2 > 4)
-      ? (2 * df2 * df2 * (df1 + df2 - 2)) / (df1 * (df2 - 2) * (df2 - 2) * (df2 - 4))
-      : Infinity;
-  
-    const fStatistic = s2Var > 0 ? (s1Var / s2Var) : null;
-  
-    return {
-      x, y,
-      mean: distMean,
-      variance: distVariance,
-      params: { df1, df2, step, fc, fStatistic, s1Var, s2Var, n1, n2 },
-      table,
-      name: 'F Distribution (df1 derived)'
-    };
+  // Derive df and variances strictly from samples provided by caller
+  const s1 = Array.isArray(params.s1) ? params.s1 : null;
+  const s2 = Array.isArray(params.s2) ? params.s2 : null;
+  if (!s1 || !s2 || s1.length < 2 || s2.length < 2) {
+    return { x: [], y: [], mean: null, variance: null, params: { error: 's1 and s2 arrays (length >= 2) are required' }, table: [], name: 'F Distribution' };
   }
-  
-  
+  const n1 = s1.length, n2 = s2.length;
+  const df1 = Math.max(1, n1 - 1);
+  const df2 = Math.max(1, n2 - 1);
+  const mean = (arr) => arr.reduce((a,b)=>a+b,0) / (arr.length || 1);
+  const varianceSample = (arr) => {
+    if (!arr || arr.length < 2) return 0;
+    const m = mean(arr);
+    return arr.reduce((acc,v)=>acc+(v-m)*(v-m),0) / (arr.length - 1);
+  };
+  const s1Var = varianceSample(s1);
+  const s2Var = varianceSample(s2);
+  const step = params.step ?? 0.02;
+  const end = 10; // reasonable range for visualization
+  const x = generateRange(0.001, end, step);
+  const y = x.map((xi) => fPdf(xi, df1, df2));
+
+  const pdf = (v) => fPdf(v, df1, df2);
+  // Right-tail alpha=5% → CDF=0.95
+  const fc = inverseCdfByBisection(pdf, 0, end, 0.95);
+
+  const table = x.map((xi, i) => ({ x: parseFloat(xi.toFixed(4)), y: parseFloat(y[i].toFixed(4)) }));
+
+  // Mean exists for df2 > 2
+  const distMean = df2 > 2 ? df2 / (df2 - 2) : Infinity;
+  const distVariance = (df2 > 4)
+    ? (2 * df2 * df2 * (df1 + df2 - 2)) / (df1 * (df2 - 2) * (df2 - 2) * (df2 - 4))
+    : Infinity;
+
+  const fStatistic = s2Var > 0 ? (s1Var / s2Var) : null;
+
+  return {
+    x, y,
+    mean: distMean,
+    variance: distVariance,
+    params: { df1, df2, step, fc, fStatistic, s1Var, s2Var, n1, n2 },
+    table,
+    name: 'F Distribution (df1 derived)'
+  };
+}
   
 exports.getFDistributionData = async (req, res) => {
     try {
