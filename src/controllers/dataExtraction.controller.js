@@ -158,6 +158,24 @@ exports.getDataExtractionByUnitId = async (req, res) => {
         } 
       });
 
+      const sortPpIds = (a, b) => {
+        // both negative
+        if (a.ppId < 0 && b.ppId < 0) {
+          return Math.abs(a.ppId) - Math.abs(b.ppId);
+        }
+      
+        // one negative, one positive
+        if (a.ppId < 0 && b.ppId > 0) return -1;
+        if (a.ppId > 0 && b.ppId < 0) return 1;
+      
+        // both positive
+        return a.ppId - b.ppId;
+      };
+
+      grouped.candidates.forEach(candidate => {
+        candidate.pps.sort(sortPpIds);
+      });
+
       //  extract candidate IDs
       const candidateIds = grouped.candidates.map(c => c.candidateId);
 
@@ -386,6 +404,24 @@ exports.getDataExtractionByClientId = async (req, res) => {
         }
       });
 
+      const sortPpIds = (a, b) => {
+        // both negative
+        if (a.ppId < 0 && b.ppId < 0) {
+          return Math.abs(a.ppId) - Math.abs(b.ppId);
+        }
+      
+        // one negative, one positive
+        if (a.ppId < 0 && b.ppId > 0) return -1;
+        if (a.ppId > 0 && b.ppId < 0) return 1;
+      
+        // both positive
+        return a.ppId - b.ppId;
+      };
+
+      grouped.candidates.forEach(candidate => {
+        candidate.pps.sort(sortPpIds);
+      });
+
       // ---------------------------
       // Competency ratios
       // ---------------------------
@@ -560,6 +596,7 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
       scores.forEach(row => {
         let candidate = grouped.candidates.find(c => c.candidateId === row.candidate.id);
 
+        
         if (!candidate) {
           candidate = {
             candidateId: row.candidate.id,
@@ -594,6 +631,26 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
         }
       });
 
+      const sortPpIds = (a, b) => {
+        // both negative
+        if (a.ppId < 0 && b.ppId < 0) {
+          return Math.abs(a.ppId) - Math.abs(b.ppId);
+        }
+      
+        // one negative, one positive
+        if (a.ppId < 0 && b.ppId > 0) return -1;
+        if (a.ppId > 0 && b.ppId < 0) return 1;
+      
+        // both positive
+        return a.ppId - b.ppId;
+      };
+
+      grouped.candidates.forEach(candidate => {
+        candidate.pps.sort(sortPpIds);
+      });
+      
+      
+      
       // Competency ratios
       const mockReq = {
         query: {
