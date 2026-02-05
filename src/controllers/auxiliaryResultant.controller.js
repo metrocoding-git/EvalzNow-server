@@ -1360,12 +1360,19 @@ exports.getAssessmentChainData = async (req, res) => {
     const competencyResults = tabData.results;
 
     // Helper to fetch candidateNeedAssessment for ppId
-    const getBenchmarkIds = async (unitId, candidateId, ppId) => {
-      const assessments = await CandidateNeedAssessment.findAll({
+    const getNeedAssessmentData = async (unitId, candidateId, ppId) => {
+      const assessment = await CandidateNeedAssessment.findOne({
         where: { unitId, candidateId, ppId }
       });
-      return assessments.map(a => a.benchmarkIds).flat();
+    
+      return {
+        benchmarkIds: assessment?.benchmarkIds
+          ? JSON.parse(assessment.benchmarkIds)
+          : [],
+        observation: assessment?.observation?.trim() || ""
+      };
     };
+    
 
     // 3️⃣ Build response
     const response = [];
@@ -1388,12 +1395,19 @@ exports.getAssessmentChainData = async (req, res) => {
         const criticalRefDate = comp.criticalRefDate || null;
 
         // Get benchmark ids
-        const benchmarkIds = await getBenchmarkIds(unitId, candidateId, ppId);
+        const { benchmarkIds, observation } = await getNeedAssessmentData(unitId, candidateId, ppId);
 
-        // Determine action status
         let actionStatus = "Open";
-        if (benchmarkIds.length === 5) actionStatus = "Closed";
-        else if (benchmarkIds.length > 0 && benchmarkIds.length < 5) actionStatus = "Pending";
+
+        if (benchmarkIds.length > 1 && observation) {
+          actionStatus = "Closed";
+        } else if (
+          (benchmarkIds.length > 1 && !observation) ||
+          (benchmarkIds.length === 0 && observation)
+        ) {
+          actionStatus = "Pending";
+        }
+        // else → Open (no benchmarks + no observation)
 
         selections.push({
           selectionNumber: i,
