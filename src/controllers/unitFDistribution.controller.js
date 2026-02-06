@@ -163,15 +163,243 @@ function calculateDistributionTPRM(params = {}) {
   };
 }
   
-exports.getFDistributionData = async (req, res) => {
-    try {
-        const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+// exports.getFDistributionData = async (req, res) => {
+//     try {
+//         const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
 
-        if (!unitId || !candidate_id) {
-            return res.status(400).json({ message: "unitId and candidate_id are required" });
+//         if (!unitId || !candidate_id) {
+//             return res.status(400).json({ message: "unitId and candidate_id are required" });
+//         }
+
+//         // Step 1: Get unit data to fetch threshold values
+//         let unitData;
+//         try {
+//             const unitReq = { params: { id: unitId } };
+//             const unitRes = {
+//                 status: function(code) {
+//                     this.statusCode = code;
+//                     return this;
+//                 },
+//                 json: function(data) {
+//                     unitData = data;
+//                     return this;
+//                 }
+//             };
+//             await getUnitById(unitReq, unitRes);
+            
+//             if (!unitData) {
+//                 return res.status(404).json({ message: "Unit not found" });
+//             }
+//         } catch (unitError) {
+//             console.error("Error fetching unit data:", unitError);
+//             return res.status(500).json({ message: "Error fetching unit threshold data" });
+//         }
+
+//         // Step 2: Get competency data
+//         const mockReq = {
+//             query: {
+//                 unitId,
+//                 candidate_id,
+//                 ppIdFrom: ppIdFrom || null,
+//                 ppIdTo: ppIdTo || null,
+//                 criticalRefDateFrom: criticalRefDateFrom || null,
+//                 criticalRefDateTo: criticalRefDateTo || null
+//             }
+//         };
+
+//         let competencyData = null;
+
+//         const mockRes = {
+//             status: function(code) {
+//                 this.statusCode = code;
+//                 return this;
+//             },
+//             json: function(data) {
+//                 competencyData = data;
+//                 return this;
+//             }
+//         };
+
+//         await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+        
+//         if (!competencyData || !competencyData.results) {
+//             return res.status(404).json({ message: "No competency data found" });
+//         }
+
+//         const allResults = competencyData.results;
+
+//         // Determine unit type from unit data (more reliable than competency data)
+//         const unitType = unitData.unitType;
+        
+//         if (!unitType) {
+//             return res.status(400).json({ message: "No unitType found in unit data" });
+//         }
+
+//         // Helper function to calculate average of valid numeric values
+//         const calculateAverage = (values) => {
+//             const validValues = values.filter(v => v !== null && v !== undefined && !isNaN(v));
+//             if (validValues.length === 0) return null;
+//             return validValues.reduce((sum, val) => sum + val, 0) / validValues.length;
+//         };
+
+//         // Collect values from the actual field names in your response
+//         const collect = (key) =>
+//             allResults
+//                 .map(r => {
+//                     const value = r[key];
+//                     // Handle null/undefined values and convert to number
+//                     return value !== null && value !== undefined ? Number(value) : null;
+//                 })
+//                 .filter(v => v !== null && !isNaN(v));
+
+//         // Extract arrays using the correct field names
+//         const rrArray = collect("RRN");
+//         const prArray = collect("PRN");
+//         const arArray = collect("ARN");
+//         const deltaRRArray = collect("deltaRRN");
+//         const deltaPRArray = collect("deltaPRN");
+//         const deltaARArray = collect("deltaARN");
+//         const deltaGEQArray = collect("GEQ");
+//         const xeqArray = collect("XEQ");
+//         const xcpArray = collect("XCP");
+//         const xbpArray = collect("XBP");
+        
+//         // Calculate averages for s1 values
+//         const avgRR = calculateAverage(rrArray);
+//         const avgPR = calculateAverage(prArray);
+//         const avgAR = calculateAverage(arArray);
+//         const avgDeltaRR = calculateAverage(deltaRRArray);
+//         const avgDeltaPR = calculateAverage(deltaPRArray);
+//         const avgDeltaAR = calculateAverage(deltaARArray);
+//         const avgDeltaGEQ = calculateAverage(deltaGEQArray);
+//         const avgXEQ = calculateAverage(xeqArray);
+//         const avgXCP = calculateAverage(xcpArray);
+//         const avgXBP = calculateAverage(xbpArray);
+
+//         let s1 = [];
+//         let s2 = [];
+//         let distributionFunction = null;
+//         let distributionName = '';
+
+       
+       
+
+//         if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+//             // For CICO_TP: Use RR, PR, deltaRR, deltaPR
+//             s1 = [avgRR, avgPR, avgXEQ, avgXCP, avgXBP].filter(val => val !== null);
+//             s2 = [avgDeltaRR, avgDeltaPR, avgDeltaGEQ].slice(0, s1.length);
+//             distributionFunction = calculateDistributionCICO_TP;
+//             distributionName = 'Chi-Square (k=4) - CICO/TP';
+//         } else if (unitType === "Third Parameter") {
+//             // For TPRM: Use RR, PR, AR, deltaRR, deltaPR, deltaAR
+//             s1 = [avgRR, avgPR, avgAR, avgDeltaRR, avgDeltaPR, avgDeltaAR].filter(val => val !== null);
+//             s2 = [avgDeltaRR, avgDeltaPR, , avgAR, avgDeltaGEQ].slice(0, s1.length);
+//             distributionFunction = calculateDistributionTPRM;
+//             distributionName = 'Chi-Square (k=6) - TPRM';
+//         } else {
+//             return res.status(400).json({ message: `Unknown unit type: ${unitType}` });
+//         }
+
+//         // Ensure s1 and s2 arrays have the same length
+//         if (s1.length !== s2.length) {
+//             // Trim s2 to match s1 length
+//             s2 = s2.slice(0, s1.length);
+//         }
+
+//         // Calculate the distribution
+//         const distribution = distributionFunction({
+//             s1,
+//             s2,
+//             step: 0.1
+//         });
+
+//         // Prepare response
+//         const response = {
+//             unitType,
+//             distribution: {
+//                 name: distributionName,
+//                 table: distribution.table,
+//                 parameters: distribution.params,
+//                 mean: distribution.mean,
+//                 variance: distribution.variance
+//             },
+//             averages: {
+//                 RR: avgRR,
+//                 PR: avgPR,
+//                 AR: avgAR,
+//                 XEQ: avgXEQ,
+//                 XCP: avgXCP,
+//                 XBP: avgXBP,
+//                 deltaRR: avgDeltaRR,
+//                 deltaPR: avgDeltaPR,
+//                 deltaAR: avgDeltaAR,
+//                 deltaGEQ: avgDeltaGEQ
+//             },
+//             s1Values: s1,
+//             s2Values: s2,
+//             sourceData: {
+//                 counts: {
+//                     totalResults: allResults.length,
+//                     RR: rrArray.length,
+//                     PR: prArray.length,
+//                     AR: arArray.length,
+//                     deltaRR: deltaRRArray.length,
+//                     deltaPR: deltaPRArray.length,
+//                     deltaAR: deltaARArray.length
+//                 },
+//                 extractedValues: {
+//                     RR: rrArray,
+//                     PR: prArray,
+//                     AR: arArray,
+//                     deltaRR: deltaRRArray,
+//                     deltaPR: deltaPRArray,
+//                     deltaAR: deltaARArray
+//                 }
+//             }
+//         };
+
+//         res.status(200).json(response);
+
+//     } catch(error) {
+//         console.error("Error in getChiDistributionData:", error);
+//         res.status(500).json({ 
+//             message: "Error computing chi-square distribution", 
+//             error: error.message 
+//         });
+//     }
+// };
+  
+  // (plotDistribution removed)
+
+
+  exports.getFDistributionData = async (req, res) => {
+    try {
+        // ✅ Updated: Receive data via req.body like getChiDistributionData
+        const { candidatePpList, unitId } = req.body;
+
+        if (!unitId || !Array.isArray(candidatePpList)) {
+            return res.status(400).json({ 
+                message: "unitId and candidatePpList are required" 
+            });
         }
 
-        // Step 1: Get unit data to fetch threshold values
+        // ✅ Extract candidate IDs from the list
+        const candidateIds = candidatePpList
+            .map(x => x.candidateId)
+            .join(",");
+
+        // ✅ Check if we need PP filtering (same logic as other distributions)
+        const hasPpFilter = candidatePpList.some(
+            x => x.ppId !== null && x.ppId !== undefined && x.ppId !== ""
+        );
+
+        // ✅ Build query parameters for competency data fetch
+        const queryParams = {
+            unitId,
+            candidate_id: candidateIds
+        };
+
+        // Step 1: Get unit data
         let unitData;
         try {
             const unitReq = { params: { id: unitId } };
@@ -192,19 +420,12 @@ exports.getFDistributionData = async (req, res) => {
             }
         } catch (unitError) {
             console.error("Error fetching unit data:", unitError);
-            return res.status(500).json({ message: "Error fetching unit threshold data" });
+            return res.status(500).json({ message: "Error fetching unit data" });
         }
 
         // Step 2: Get competency data
         const mockReq = {
-            query: {
-                unitId,
-                candidate_id,
-                ppIdFrom: ppIdFrom || null,
-                ppIdTo: ppIdTo || null,
-                criticalRefDateFrom: criticalRefDateFrom || null,
-                criticalRefDateTo: criticalRefDateTo || null
-            }
+            query: queryParams
         };
 
         let competencyData = null;
@@ -226,33 +447,54 @@ exports.getFDistributionData = async (req, res) => {
             return res.status(404).json({ message: "No competency data found" });
         }
 
-        const allResults = competencyData.results;
+        let sourceRows = [];
+        
+        // ✅ Apply PP filtering if needed (same logic as other distributions)
+        if (hasPpFilter) {
+            // PP-level filtering
+            const ppMap = new Map();
+            candidatePpList.forEach(({ candidateId, ppId }) => {
+                if (ppId !== null && ppId !== undefined && ppId !== "") {
+                    ppMap.set(`${candidateId}_${ppId}`, true);
+                }
+            });
 
-        // Determine unit type from unit data (more reliable than competency data)
+            sourceRows = competencyData.results.filter(r =>
+                ppMap.has(`${r.candidateId}_${r.ppId}`)
+            );
+        } else {
+            // ✅ Use candidate-level averages if available, otherwise all results
+            if (competencyData.averages && competencyData.averages.length > 0) {
+                sourceRows = competencyData.averages;
+            } else {
+                sourceRows = competencyData.results;
+            }
+        }
+
+        // ✅ Determine unit type from unit data
         const unitType = unitData.unitType;
         
         if (!unitType) {
             return res.status(400).json({ message: "No unitType found in unit data" });
         }
 
-        // Helper function to calculate average of valid numeric values
+        // ✅ Helper function to calculate average of valid numeric values
         const calculateAverage = (values) => {
             const validValues = values.filter(v => v !== null && v !== undefined && !isNaN(v));
             if (validValues.length === 0) return null;
             return validValues.reduce((sum, val) => sum + val, 0) / validValues.length;
         };
 
-        // Collect values from the actual field names in your response
+        // ✅ Safe collector function (same as other distributions)
         const collect = (key) =>
-            allResults
+            sourceRows
                 .map(r => {
                     const value = r[key];
-                    // Handle null/undefined values and convert to number
                     return value !== null && value !== undefined ? Number(value) : null;
                 })
                 .filter(v => v !== null && !isNaN(v));
 
-        // Extract arrays using the correct field names
+        // ✅ Extract arrays using the correct field names
         const rrArray = collect("RRN");
         const prArray = collect("PRN");
         const arArray = collect("ARN");
@@ -260,11 +502,15 @@ exports.getFDistributionData = async (req, res) => {
         const deltaPRArray = collect("deltaPRN");
         const deltaARArray = collect("deltaARN");
         const deltaGEQArray = collect("GEQ");
-        const xeqArray = collect("XEQ");
+        const xeqArray = collect("XEP");
         const xcpArray = collect("XCP");
         const xbpArray = collect("XBP");
         
-        // Calculate averages for s1 values
+        console.log("Source rows count:", sourceRows.length);
+        console.log("Extracted arrays - XEQ:", xeqArray, "XCP:", xcpArray, "XBP:", xbpArray);
+        console.log("Extracted deltas - deltaGEQ:", deltaGEQArray);
+
+        // ✅ Calculate averages for F-distribution
         const avgRR = calculateAverage(rrArray);
         const avgPR = calculateAverage(prArray);
         const avgAR = calculateAverage(arArray);
@@ -276,84 +522,153 @@ exports.getFDistributionData = async (req, res) => {
         const avgXCP = calculateAverage(xcpArray);
         const avgXBP = calculateAverage(xbpArray);
 
-        let s1 = [];
-        let s2 = [];
+        // ✅ For F-distribution, we need ALL raw values (not just averages)
+        // These will be used for variance calculation
+        let s1RawValues = [];
+        let s2RawValues = [];
         let distributionFunction = null;
         let distributionName = '';
 
-       
-       
-
+        // ✅ Unit-type specific logic for F-distribution
         if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-            // For CICO_TP: Use RR, PR, deltaRR, deltaPR
-            s1 = [avgRR, avgPR, avgXEQ, avgXCP, avgXBP].filter(val => val !== null);
-            s2 = [avgDeltaRR, avgDeltaPR, avgDeltaGEQ].slice(0, s1.length);
+            // For CICO_TP F-distribution:
+            // s1 = [RR, PR, XEQ, XCP, XBP] - Level metrics
+            // s2 = [deltaRR, deltaPR, deltaGEQ] - Change metrics
+            
+            // Collect ALL raw values for each metric (not just averages)
+            s1RawValues = [
+                ...rrArray,       // All RR values
+                ...prArray,       // All PR values
+                ...xeqArray,      // All XEQ values
+                ...xcpArray,      // All XCP values
+                ...xbpArray       // All XBP values
+            ];
+            
+            s2RawValues = [
+                ...deltaRRArray,  // All deltaRR values
+                ...deltaPRArray,  // All deltaPR values
+                ...deltaGEQArray  // All deltaGEQ values
+            ];
+            
             distributionFunction = calculateDistributionCICO_TP;
-            distributionName = 'Chi-Square (k=4) - CICO/TP';
+            distributionName = 'F Distribution (CICO/TP) - s1: Level metrics, s2: Change metrics';
+            
         } else if (unitType === "Third Parameter") {
-            // For TPRM: Use RR, PR, AR, deltaRR, deltaPR, deltaAR
-            s1 = [avgRR, avgPR, avgAR, avgDeltaRR, avgDeltaPR, avgDeltaAR].filter(val => val !== null);
-            s2 = [avgDeltaRR, avgDeltaPR, , avgAR, avgDeltaGEQ].slice(0, s1.length);
+            // For TPRM F-distribution:
+            // s1 = [RR, PR, AR, deltaRR, deltaPR, deltaAR] - Core metrics
+            // s2 = [deltaGEQ, XEQ, XCP, XBP] - Additional metrics
+            
+            s1RawValues = [
+                ...rrArray,       // All RR values
+                ...prArray,       // All PR values
+                ...arArray,       // All AR values
+                ...deltaRRArray,  // All deltaRR values
+                ...deltaPRArray,  // All deltaPR values
+                ...deltaARArray   // All deltaAR values
+            ];
+            
+            s2RawValues = [
+                ...deltaGEQArray, // All deltaGEQ values
+                ...xeqArray,      // All XEQ values
+                ...xcpArray,      // All XCP values
+                ...xbpArray       // All XBP values
+            ];
+            
             distributionFunction = calculateDistributionTPRM;
-            distributionName = 'Chi-Square (k=6) - TPRM';
+            distributionName = 'F Distribution (TPRM) - s1: Core metrics, s2: Additional metrics';
         } else {
             return res.status(400).json({ message: `Unknown unit type: ${unitType}` });
         }
 
-        // Ensure s1 and s2 arrays have the same length
-        if (s1.length !== s2.length) {
-            // Trim s2 to match s1 length
-            s2 = s2.slice(0, s1.length);
+        // ✅ Ensure we have enough data for F-distribution calculation
+        // F-distribution needs at least 2 values in each sample for variance calculation
+        if (s1RawValues.length < 2 || s2RawValues.length < 2) {
+            return res.status(400).json({ 
+                message: "Insufficient data for F-distribution. Need at least 2 values in each sample." 
+            });
         }
 
-        // Calculate the distribution
+        // ✅ Calculate the F-distribution
         const distribution = distributionFunction({
-            s1,
-            s2,
-            step: 0.1
+            s1: s1RawValues,
+            s2: s2RawValues,
+            step: 0.02  // Smaller step for smoother F-distribution curve
         });
 
-        // Prepare response
+        // ✅ Prepare response
         const response = {
+            mode: hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE",
             unitType,
             distribution: {
                 name: distributionName,
                 table: distribution.table,
-                parameters: distribution.params,
+                parameters: {
+                    df1: distribution.params.df1,
+                    df2: distribution.params.df2,
+                    step: distribution.params.step,
+                    fc: distribution.params.fc,
+                    fStatistic: distribution.params.fStatistic,
+                    s1Variance: distribution.params.s1Var,
+                    s2Variance: distribution.params.s2Var,
+                    s1SampleSize: distribution.params.n1,
+                    s2SampleSize: distribution.params.n2
+                },
                 mean: distribution.mean,
                 variance: distribution.variance
             },
+            // ✅ Also include averages for reference
             averages: {
-                RR: avgRR,
-                PR: avgPR,
-                AR: avgAR,
-                XEQ: avgXEQ,
-                XCP: avgXCP,
-                XBP: avgXBP,
-                deltaRR: avgDeltaRR,
-                deltaPR: avgDeltaPR,
-                deltaAR: avgDeltaAR,
-                deltaGEQ: avgDeltaGEQ
+                levelMetrics: {
+                    RR: avgRR,
+                    PR: avgPR,
+                    AR: avgAR,
+                    XEQ: avgXEQ,
+                    XCP: avgXCP,
+                    XBP: avgXBP
+                },
+                changeMetrics: {
+                    deltaRR: avgDeltaRR,
+                    deltaPR: avgDeltaPR,
+                    deltaAR: avgDeltaAR,
+                    deltaGEQ: avgDeltaGEQ
+                }
             },
-            s1Values: s1,
-            s2Values: s2,
+            // ✅ Sample information
+            samples: {
+                s1: {
+                    description: unitType.includes("Communicative") || unitType.includes("Theory") 
+                        ? "Level metrics (RR, PR, XEQ, XCP, XBP)" 
+                        : "Core metrics (RR, PR, AR, ΔRR, ΔPR, ΔAR)",
+                    values: s1RawValues,
+                    count: s1RawValues.length,
+                    variance: distribution.params.s1Var
+                },
+                s2: {
+                    description: unitType.includes("Communicative") || unitType.includes("Theory")
+                        ? "Change metrics (ΔRR, ΔPR, ΔGEQ)"
+                        : "Additional metrics (ΔGEQ, XEQ, XCP, XBP)",
+                    values: s2RawValues,
+                    count: s2RawValues.length,
+                    variance: distribution.params.s2Var
+                }
+            },
             sourceData: {
                 counts: {
-                    totalResults: allResults.length,
+                    totalRows: sourceRows.length,
                     RR: rrArray.length,
                     PR: prArray.length,
                     AR: arArray.length,
                     deltaRR: deltaRRArray.length,
                     deltaPR: deltaPRArray.length,
-                    deltaAR: deltaARArray.length
+                    deltaAR: deltaARArray.length,
+                    deltaGEQ: deltaGEQArray.length,
+                    XEQ: xeqArray.length,
+                    XCP: xcpArray.length,
+                    XBP: xbpArray.length
                 },
-                extractedValues: {
-                    RR: rrArray,
-                    PR: prArray,
-                    AR: arArray,
-                    deltaRR: deltaRRArray,
-                    deltaPR: deltaPRArray,
-                    deltaAR: deltaARArray
+                filtering: {
+                    ppFilterApplied: hasPpFilter,
+                    candidatesProcessed: candidatePpList.length
                 }
             }
         };
@@ -361,15 +676,13 @@ exports.getFDistributionData = async (req, res) => {
         res.status(200).json(response);
 
     } catch(error) {
-        console.error("Error in getChiDistributionData:", error);
+        console.error("Error in getFDistributionData:", error);
         res.status(500).json({ 
-            message: "Error computing chi-square distribution", 
+            message: "Error computing F distribution", 
             error: error.message 
         });
     }
 };
-  
-  // (plotDistribution removed)
   
   
   

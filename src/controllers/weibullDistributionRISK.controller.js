@@ -79,108 +79,202 @@ function extractFieldValues(results, fieldName) {
   
   exports.getWeibullRiskDistributionData = async (req, res) => {
     try {
-      const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
-  
-      if (!unitId || !candidate_id) {
-        return res.status(400).json({ message: "unitId and candidate_id are required" });
-      }
-  
-      // Prepare mock request for existing controller
-      const mockReq = {
-        query: {
-          unitId,
-          candidate_id,
-          ppIdFrom: ppIdFrom || null,
-          ppIdTo: ppIdTo || null,
-          criticalRefDateFrom: criticalRefDateFrom || null,
-          criticalRefDateTo: criticalRefDateTo || null
-        }
-      };
-  
-      let competencyData = null;
-  
-      const mockRes = {
-        status(code) {
-          this.statusCode = code;
-          return this;
-        },
-        json(data) {
-          competencyData = data;
-          return this;
-        }
-      };
-  
-      // Get competency data
-      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-  
-      if (!competencyData || !competencyData.results || competencyData.results.length === 0) {
-        return res.status(404).json({ message: "No competency data found" });
-      }
-  
-      const allResults = competencyData.results;
-      
-      // Extract arrays for each metric
-      const rrArray = extractFieldValues(allResults, "RRN");
-      const prArray = extractFieldValues(allResults, "PRN");
-      const arArray = extractFieldValues(allResults, "ARN");
-      const xepArray = extractFieldValues(allResults, "XEP");
-      const deltaGEQArray = extractFieldValues(allResults, "GEQ"); // Using GEQ field for deltaGEQ
+        // ✅ Updated: Receive data via req.body like getWeibullPDFDistributionData
+        const { candidatePpList, unitId, beta } = req.body;
 
-      const beta = req.query.beta ? Number(req.query.beta) : null;
-      
-      // Check if we have any valid data
-      if (rrArray.length === 0 && prArray.length === 0 && arArray.length === 0 && 
-          xepArray.length === 0 && deltaGEQArray.length === 0) {
-        return res.status(404).json({ message: "No valid numeric data found in the results" });
-      }
-      
-      // Calculate distributions for each array
-      const distributions = {};
-      
-      if (rrArray.length > 0) {
-        distributions.RR = calculateDistribution({ data: rrArray, beta: beta ?? 1.5, step: 0.05 });
-      }
-      
-      if (prArray.length > 0) {
-        distributions.PR = calculateDistribution({ data: prArray, beta: beta ?? 1.5, step: 0.05 });
-      }
-      
-      if (arArray.length > 0) {
-        distributions.AR = calculateDistribution({ data: arArray, beta: beta ?? 1.5, step: 0.05 });
-      }
-      
-      if (xepArray.length > 0) {
-        distributions.XEP = calculateDistribution({ data: xepArray, beta: beta ?? 1.5, step: 0.05 });
-      }
-      
-      if (deltaGEQArray.length > 0) {
-        distributions.deltaGEQ = calculateDistribution({ data: deltaGEQArray, beta: beta ?? 1.5, step: 0.05 });
-      }
-      
-      // Return the response
-      res.status(200).json({
-        distributions,
-        sourceData: {
-          rrArray,
-          prArray,
-          arArray,
-          xepArray,
-          deltaGEQArray,
-          summary: {
-            RRN: { count: rrArray.length, values: rrArray },
-            PRN: { count: prArray.length, values: prArray },
-            ARN: { count: arArray.length, values: arArray },
-            XEP: { count: xepArray.length, values: xepArray },
-            deltaGEQ: { count: deltaGEQArray.length, values: deltaGEQArray }
-          }
+        if (!unitId || !Array.isArray(candidatePpList)) {
+            return res.status(400).json({
+                message: "unitId and candidatePpList required"
+            });
         }
-      });
-  
+
+        // ✅ Extract candidate IDs from the list
+        const candidateIds = candidatePpList
+            .map(x => x.candidateId)
+            .join(",");
+
+        // ✅ Check if we need PP filtering (same logic as Weibull PDF)
+        const hasPpFilter = candidatePpList.some(
+            x => x.ppId !== null && x.ppId !== undefined && x.ppId !== ""
+        );
+
+        // ✅ Build query parameters for competency data fetch
+        const queryParams = {
+            unitId,
+            candidate_id: candidateIds
+        };
+
+        // Step 1: Get competency data
+        const mockReq = {
+            query: queryParams
+        };
+
+        let competencyData = null;
+
+        const mockRes = {
+            status(code) {
+                this.statusCode = code;
+                return this;
+            },
+            json(data) {
+                competencyData = data;
+                return this;
+            }
+        };
+
+        await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+
+        const allResults = competencyData.results || [];
+        const allAverages = competencyData.averages || [];
+
+        let sourceRows = [];
+
+        if (hasPpFilter) {
+            // ✅ PP-level filtering
+            const ppMap = new Map();
+            candidatePpList.forEach(({ candidateId, ppId }) => {
+                if (ppId !== null && ppId !== undefined && ppId !== "") {
+                    ppMap.set(`${candidateId}_${ppId}`, true);
+                }
+            });
+
+            sourceRows = allResults.filter(r =>
+                ppMap.has(`${r.candidateId}_${r.ppId}`)
+            );
+        } else {
+            // ✅ Candidate-level averages
+            sourceRows = allAverages;
+        }
+
+        console.log("Weibull Risk - Source rows count:", sourceRows.length);
+        console.log("Mode:", hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE");
+
+        // ✅ Safe collector function (same as Weibull PDF)
+        const collect = (k) =>
+            sourceRows
+                .map(r => {
+                    const v = r[k];
+                    return v !== null && v !== undefined ? Number(v) : null;
+                })
+                .filter(v => v !== null && !isNaN(v));
+
+        // ✅ BUILD ARRAYS for Weibull Risk (same metrics as Weibull PDF)
+        const rrArray = collect("RRN");
+        const prArray = collect("PRN");
+        const arArray = collect("ARN");
+        const xepArray = collect("XEP");
+        const deltaGEQArray = collect("GEQ"); // Using GEQ field for deltaGEQ
+
+        console.log("Weibull Risk arrays:");
+        console.log("RR:", rrArray);
+        console.log("PR:", prArray);
+        console.log("AR:", arArray);
+        console.log("XEP:", xepArray);
+        console.log("deltaGEQ:", deltaGEQArray);
+
+        // Check if we have any valid data
+        if (rrArray.length === 0 && prArray.length === 0 && arArray.length === 0 &&
+            xepArray.length === 0 && deltaGEQArray.length === 0) {
+            return res.status(404).json({ message: "No valid numeric data found in the results" });
+        }
+
+        // ✅ Use provided beta or default to 1.5
+        const betaValue = beta ? Number(beta) : 1.5;
+
+        // ✅ Calculate Weibull Risk (Hazard) distributions for each metric
+        const distributions = {};
+
+        if (rrArray.length > 0) {
+            distributions.RR = calculateDistribution({
+                data: rrArray,
+                beta: betaValue,
+                step: 0.05
+            });
+        }
+
+        if (prArray.length > 0) {
+            distributions.PR = calculateDistribution({
+                data: prArray,
+                beta: betaValue,
+                step: 0.05
+            });
+        }
+
+        if (arArray.length > 0) {
+            distributions.AR = calculateDistribution({
+                data: arArray,
+                beta: betaValue,
+                step: 0.05
+            });
+        }
+
+        if (xepArray.length > 0) {
+            distributions.XEP = calculateDistribution({
+                data: xepArray,
+                beta: betaValue,
+                step: 0.05
+            });
+        }
+
+        if (deltaGEQArray.length > 0) {
+            distributions.deltaGEQ = calculateDistribution({
+                data: deltaGEQArray,
+                beta: betaValue,
+                step: 0.05
+            });
+        }
+
+        // ✅ Prepare response (similar structure to Weibull PDF)
+        res.status(200).json({
+            mode: hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE",
+            parameters: {
+                beta: betaValue,
+                description: "Weibull shape parameter (β)"
+            },
+            distributions: {
+                RR: distributions.RR,
+                PR: distributions.PR,
+                AR: distributions.AR,
+                XEP: distributions.XEP,
+                deltaGEQ: distributions.deltaGEQ
+            },
+            sourceStats: {
+                rowsUsed: sourceRows.length,
+                usedAverages: !hasPpFilter,
+                metricCounts: {
+                    RR: rrArray.length,
+                    PR: prArray.length,
+                    AR: arArray.length,
+                    XEP: xepArray.length,
+                    deltaGEQ: deltaGEQArray.length
+                }
+            },
+            // ✅ Include Weibull Risk-specific information
+            weibullInfo: {
+                formula: {
+                    Hazard: "h(t) = f(t) / R(t) = (β/η) (t/η)^{β-1}",
+                    PDF: "f(t) = (β/η) (t/η)^{β-1} exp(-(t/η)^β)",
+                    Reliability: "R(t) = exp(-(t/η)^β)",
+                    eta: "η (scale parameter) = mean of data",
+                    beta: "β (shape parameter) = provided or default 1.5"
+                },
+                interpretation: {
+                    Hazard: "Instantaneous failure rate at time t",
+                    eta: "Scale parameter η = characteristic life",
+                    beta_interpretation: {
+                        "β < 1": "Decreasing hazard rate (infant mortality)",
+                        "β = 1": "Constant hazard rate (exponential distribution)",
+                        "β > 1": "Increasing hazard rate (wear-out failures)"
+                    }
+                }
+            }
+        });
+
     } catch (error) {
-      console.error("Error in getWeibullRiskDistributionData:", error);
-      res.status(500).json({
-        message: "Error computing Weibull distribution",
-        error: error.message
-      });
+        console.error("Error in getWeibullRiskDistributionData:", error);
+        res.status(500).json({
+            message: "Error computing Weibull Risk (Hazard) distribution",
+            error: error.message
+        });
     }
-  };
+};

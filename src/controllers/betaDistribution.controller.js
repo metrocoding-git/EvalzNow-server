@@ -72,24 +72,149 @@ function generateRange(start, end, step = 1) {
   }
 
 
-  exports.getBetaDistributionData = async (req, res) => {
-    try {
-        const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+//   exports.getBetaDistributionData = async (req, res) => {
+//     try {
+//         const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
 
-        if (!unitId || !candidate_id) {
-            return res.status(400).json({ message: "unitId and candidate_id are required" });
+//         if (!unitId || !candidate_id) {
+//             return res.status(400).json({ message: "unitId and candidate_id are required" });
+//         }
+
+//         // Create mock req for existing function
+//         const mockReq = {
+//             query: {
+//                 unitId,
+//                 candidate_id,
+//                 ppIdFrom: ppIdFrom || null,
+//                 ppIdTo: ppIdTo || null,
+//                 criticalRefDateFrom: criticalRefDateFrom || null,
+//                 criticalRefDateTo: criticalRefDateTo || null
+//             }
+//         };
+
+//         let competencyData = null;
+
+//         const mockRes = {
+//             status: function(code) {
+//                 this.statusCode = code;
+//                 return this;
+//             },
+//             json: function(data) {
+//                 competencyData = data;
+//                 return this;
+//             }
+//         };
+
+//         await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+        
+//         if (!competencyData || !competencyData.results) {
+//             return res.status(404).json({ message: "No competency data found" });
+//         }
+
+//         const allResults = competencyData.results;
+
+//         // Process STAG and STAP values
+//         const processStabilityValues = (key) => {
+//             return allResults
+//                 .map(r => {
+//                     const value = r[key];
+//                     if (value === null || value === undefined) return null;
+                    
+//                     const stringValue = String(value).toUpperCase();
+//                     if (stringValue === 'STABLE') return 'S';
+//                     if (stringValue === 'UNSTABLE') return 'U';
+//                     return null;
+//                 })
+//                 .filter(v => v !== null);
+//         };
+
+//         // Extract stability patterns
+//         const stagPatterns = processStabilityValues("STAG");
+//         const stapPatterns = processStabilityValues("STAP");
+
+//         // Calculate distributions
+//         const stagDistribution = stagPatterns.length > 0 ? calculateDistribution({ patternSymbols: stagPatterns }) : null;
+//         const stapDistribution = stapPatterns.length > 0 ? calculateDistribution({ patternSymbols: stapPatterns }) : null;
+
+//         // Prepare response
+//         const response = {
+//             distributions: {
+//                 STAG: stagDistribution,
+//                 STAP: stapDistribution
+//             },
+//             sourceData: {
+//                 counts: {
+//                     totalResults: allResults.length,
+//                     STAG: stagPatterns.length,
+//                     STAP: stapPatterns.length
+//                 },
+//                 extractedValues: {
+//                     STAG: stagPatterns,
+//                     STAP: stapPatterns
+//                 },
+//                 statistics: {
+//                     STAG: stagDistribution ? {
+//                         alpha: stagDistribution.params.alpha,
+//                         beta: stagDistribution.params.beta,
+//                         stableCount: stagDistribution.params.alpha - 1,
+//                         unstableCount: stagDistribution.params.beta - 1,
+//                         mean: stagDistribution.mean,
+//                         variance: stagDistribution.variance
+//                     } : null,
+//                     STAP: stapDistribution ? {
+//                         alpha: stapDistribution.params.alpha,
+//                         beta: stapDistribution.params.beta,
+//                         stableCount: stapDistribution.params.alpha - 1,
+//                         unstableCount: stapDistribution.params.beta - 1,
+//                         mean: stapDistribution.mean,
+//                         variance: stapDistribution.variance
+//                     } : null
+//                 }
+//             }
+//         };
+
+//         res.status(200).json(response);
+
+//     } catch(error) {
+//         console.error("Error in getBetaDistributionData:", error);
+//         res.status(500).json({ 
+//             message: "Error computing beta distribution", 
+//             error: error.message 
+//         });
+//     }
+// };
+
+
+exports.getBetaDistributionData = async (req, res) => {
+    try {
+        // ✅ Updated: Receive data via req.body like getNormalDistributionData
+        const { candidatePpList, unitId } = req.body;
+
+        if (!unitId || !Array.isArray(candidatePpList)) {
+            return res.status(400).json({ 
+                message: "unitId and candidatePpList are required" 
+            });
         }
 
-        // Create mock req for existing function
+        // ✅ Extract candidate IDs from the list
+        const candidateIds = candidatePpList
+            .map(x => x.candidateId)
+            .join(",");
+
+        // ✅ Check if we need PP filtering (same logic as normal distribution)
+        const hasPpFilter = candidatePpList.some(
+            x => x.ppId !== null && x.ppId !== undefined && x.ppId !== ""
+        );
+
+        // ✅ Build query parameters for competency data fetch
+        const queryParams = {
+            unitId,
+            candidate_id: candidateIds
+        };
+
+        // Step 1: Get competency data
         const mockReq = {
-            query: {
-                unitId,
-                candidate_id,
-                ppIdFrom: ppIdFrom || null,
-                ppIdTo: ppIdTo || null,
-                criticalRefDateFrom: criticalRefDateFrom || null,
-                criticalRefDateTo: criticalRefDateTo || null
-            }
+            query: queryParams
         };
 
         let competencyData = null;
@@ -111,11 +236,35 @@ function generateRange(start, end, step = 1) {
             return res.status(404).json({ message: "No competency data found" });
         }
 
-        const allResults = competencyData.results;
+        const allResults = competencyData.results || [];
+        const allAverages = competencyData.averages || [];
 
-        // Process STAG and STAP values
+        let sourceRows = [];
+        
+        // ✅ Apply PP filtering if needed (same logic as normal distribution)
+        if (hasPpFilter) {
+            // PP-level filtering
+            const ppMap = new Map();
+            candidatePpList.forEach(({ candidateId, ppId }) => {
+                if (ppId !== null && ppId !== undefined && ppId !== "") {
+                    ppMap.set(`${candidateId}_${ppId}`, true);
+                }
+            });
+
+            sourceRows = allResults.filter(r =>
+                ppMap.has(`${r.candidateId}_${r.ppId}`)
+            );
+        } else {
+            // ✅ Use candidate-level averages if available
+            sourceRows = allAverages.length > 0 ? allAverages : allResults;
+        }
+
+        console.log("Beta distribution - Source rows count:", sourceRows.length);
+        console.log("Mode:", hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE");
+
+        // ✅ Process STAG and STAP values from filtered source rows
         const processStabilityValues = (key) => {
-            return allResults
+            return sourceRows
                 .map(r => {
                     const value = r[key];
                     if (value === null || value === undefined) return null;
@@ -128,48 +277,62 @@ function generateRange(start, end, step = 1) {
                 .filter(v => v !== null);
         };
 
-        // Extract stability patterns
+        // ✅ Extract stability patterns from filtered data
         const stagPatterns = processStabilityValues("STAG");
         const stapPatterns = processStabilityValues("STAP");
 
-        // Calculate distributions
-        const stagDistribution = stagPatterns.length > 0 ? calculateDistribution({ patternSymbols: stagPatterns }) : null;
-        const stapDistribution = stapPatterns.length > 0 ? calculateDistribution({ patternSymbols: stapPatterns }) : null;
+        // ✅ Calculate beta distributions (if data exists)
+        let stagDistribution = null;
+        let stapDistribution = null;
+        
+        if (stagPatterns.length > 0) {
+            stagDistribution = calculateDistribution({ patternSymbols: stagPatterns });
+        }
+        
+        if (stapPatterns.length > 0) {
+            stapDistribution = calculateDistribution({ patternSymbols: stapPatterns });
+        }
 
-        // Prepare response
+        // ✅ Prepare response (similar structure to normal distribution)
         const response = {
+            mode: hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE",
             distributions: {
                 STAG: stagDistribution,
                 STAP: stapDistribution
             },
-            sourceData: {
-                counts: {
-                    totalResults: allResults.length,
+            sourceStats: {
+                rowsUsed: sourceRows.length,
+                usedAverages: !hasPpFilter,
+                patternCounts: {
                     STAG: stagPatterns.length,
                     STAP: stapPatterns.length
-                },
-                extractedValues: {
-                    STAG: stagPatterns,
-                    STAP: stapPatterns
-                },
-                statistics: {
-                    STAG: stagDistribution ? {
-                        alpha: stagDistribution.params.alpha,
-                        beta: stagDistribution.params.beta,
-                        stableCount: stagDistribution.params.alpha - 1,
-                        unstableCount: stagDistribution.params.beta - 1,
-                        mean: stagDistribution.mean,
-                        variance: stagDistribution.variance
-                    } : null,
-                    STAP: stapDistribution ? {
-                        alpha: stapDistribution.params.alpha,
-                        beta: stapDistribution.params.beta,
-                        stableCount: stapDistribution.params.alpha - 1,
-                        unstableCount: stapDistribution.params.beta - 1,
-                        mean: stapDistribution.mean,
-                        variance: stapDistribution.variance
-                    } : null
                 }
+            },
+            statistics: {
+                STAG: stagDistribution ? {
+                    alpha: stagDistribution.params.alpha,
+                    beta: stagDistribution.params.beta,
+                    stableCount: stagDistribution.params.alpha - 1,
+                    unstableCount: stagDistribution.params.beta - 1,
+                    mean: stagDistribution.mean,
+                    variance: stagDistribution.variance,
+                    totalPatterns: stagPatterns.length,
+                    stableRatio: (stagDistribution.params.alpha - 1) / stagPatterns.length
+                } : null,
+                STAP: stapDistribution ? {
+                    alpha: stapDistribution.params.alpha,
+                    beta: stapDistribution.params.beta,
+                    stableCount: stapDistribution.params.alpha - 1,
+                    unstableCount: stapDistribution.params.beta - 1,
+                    mean: stapDistribution.mean,
+                    variance: stapDistribution.variance,
+                    totalPatterns: stapPatterns.length,
+                    stableRatio: (stapDistribution.params.alpha - 1) / stapPatterns.length
+                } : null
+            },
+            patterns: {
+                STAG: stagPatterns,
+                STAP: stapPatterns
             }
         };
 

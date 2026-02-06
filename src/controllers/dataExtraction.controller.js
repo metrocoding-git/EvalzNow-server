@@ -315,6 +315,7 @@ exports.getDataExtractionByClientId = async (req, res) => {
       where: { clientId },
       attributes: [
         "id",
+        "unitId",
         "unitName",
         "unitStartDate",
         "unitEndDate",
@@ -545,6 +546,7 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
       where: { clientId },
       attributes: [
         "id",
+        "unitId",
         "unitName",
         "unitStartDate",
         "unitEndDate",
