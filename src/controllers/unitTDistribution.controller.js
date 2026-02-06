@@ -109,119 +109,144 @@ function calculateDistribution(params = {}) {
 }
 
 
-  exports.getTDistributionData = async (req, res) => {
-    try {
-      const { candidatePpList, unitId } = req.body;
-  
-      if (!unitId || !Array.isArray(candidatePpList)) {
-        return res.status(400).json({ message: "unitId and candidatePpList required" });
+exports.getTDistributionData = async (req, res) => {
+  try {
+    const { candidatePpList, unitId } = req.body;
+
+    if (!unitId || !Array.isArray(candidatePpList)) {
+      return res.status(400).json({
+        message: "unitId and candidatePpList required"
+      });
+    }
+
+    const candidateIds = candidatePpList
+      .map(x => x.candidateId)
+      .join(",");
+
+    const mockReq = {
+      query: {
+        unitId,
+        candidate_id: candidateIds
       }
-  
-      // Build candidate_id string to send to legacy controller
-      const candidateIds = candidatePpList.map(x => x.candidateId).join(",");
+    };
 
-      // Create mock req for existing function
-      const mockReq = { 
-        query: { 
-          unitId,
-          candidate_id: candidateIds
-        } 
-      };
+    let competencyData = null;
 
-      let competencyData = null;
-  
-      const mockRes = {
-        status(code) { this.statusCode = code; return this; },
-        json(data) { competencyData = data; return this; }
-      };
-  
-      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-      const allResults = competencyData.results || [];
-      console.log(`Total results fetched: ${allResults.length} for candidates: ${candidateIds} in unit: ${allResults}`);
-  
-      // Build lookup for filtering
+    const mockRes = {
+      status(code) { this.statusCode = code; return this; },
+      json(data) { competencyData = data; return this; }
+    };
+
+    await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+
+    const allResults = competencyData.results || [];
+    const allAverages = competencyData.averages || [];
+
+    // 🔍 Detect if PP-level filtering is meaningful
+    const hasPpFilter = candidatePpList.some(
+      x => x.ppId !== null && x.ppId !== undefined && x.ppId !== ""
+    );
+
+    let sourceRows = [];
+
+    if (hasPpFilter) {
+      // ✅ PP-level T-distribution
       const ppMap = new Map();
       candidatePpList.forEach(({ candidateId, ppId }) => {
-        ppMap.set(`${String(candidateId)}_${Number(ppId)}`, true);
+        if (ppId !== null && ppId !== undefined && ppId !== "") {
+          ppMap.set(`${candidateId}_${ppId}`, true);
+        }
       });
 
-      const results = allResults.filter(r => candidatePpList.some(
-        c => String(c.candidateId) === String(r.candidateId)
-      ));
-
-
-
-      console.log(`Filtered results count: ${results} from total: ${allResults.length}`);
-  
-      // Collect values only from filtered results
-      const collect = (k) =>
-        results.map(r => Number(r[k])).filter(v => !isNaN(v));
-
-        // --- BUILD ARRAYS ---
-
-        const rrArray = collect("RRN");
-        const prArray = collect("PRN");
-        const arArray = collect("ARN");
-
-        const deltaRRArray = collect("deltaRRN");
-        const deltaPRArray = collect("deltaPRN");
-        const deltaARArray = collect("deltaARN");
-
-        const xeqArray = collect("XEP");
-        const xcpArray = collect("XCP");
-        const xbpArray = collect("XBP");
-
-        const deltaGEQArray = collect("GEQ"); // if deltaGEQ uses GEQ field
-
-        console.log("Collected Data Arrays:", {RR: rrArray, PR: prArray, AR: arArray, deltaRR: deltaRRArray, deltaPR: deltaPRArray, deltaARArray: deltaARArray, XEQ: xeqArray, deltaGEQArray});
-
-
-        // if (mockRes.statusCode >= 400) {
-        //     return res.status(mockRes.statusCode).json(competencyData);
-        // }
-
-        // // Now you have the competency data, process it for distribution
-        // console.log("Competency data received:", competencyData);
-        
-        // Your distribution logic here using competencyData
-        // For example:
-        const rrDistribution = calculateDistribution({ data: rrArray, step: 0.05 });
-        const prDistribution = calculateDistribution({ data: prArray, step: 0.05 });
-        const arDistribution = calculateDistribution({ data: arArray, step: 0.05 });
-
-        const deltaRRDistribution = calculateDistribution({ data: deltaRRArray, step: 0.05 });
-        const deltaPRDistribution = calculateDistribution({ data: deltaPRArray, step: 0.05 });
-        const deltaARDistribution = calculateDistribution({ data: deltaARArray, step: 0.05 });
-
-        const xeqDistribution = calculateDistribution({ data: xeqArray, step: 0.05 });
-        const deltaGEQDistribution = calculateDistribution({ data: deltaGEQArray, step: 0.05 });
-
-        
-        res.status(200).json({
-          distributions: {
-              RR: rrDistribution,
-              PR: prDistribution,
-              AR: arDistribution,
-      
-              deltaRR: deltaRRDistribution,
-              deltaPR: deltaPRDistribution,
-              deltaAR: deltaARDistribution,
-      
-              XEQ: xeqDistribution,
-              deltaGEQ: deltaGEQDistribution
-          },
-          sourceData: competencyData
-      });
-      
-
-    } catch(error) {
-        console.error("Error in getUnitDistributionData:", error);
-        res.status(500).json({ 
-            message: "Error computing unit distribution", 
-            error: error.message 
-        });
+      sourceRows = allResults.filter(r =>
+        ppMap.has(`${r.candidateId}_${r.ppId}`)
+      );
+    } else {
+      // ✅ Candidate-average T-distribution
+      sourceRows = allAverages;
     }
+
+    // --- Safe collector ---
+    const collect = (k) =>
+      sourceRows
+        .map(r => {
+          const v = r[k];
+          return v !== null && v !== undefined ? Number(v) : null;
+        })
+        .filter(v => v !== null && !isNaN(v));
+
+    // --- BUILD ARRAYS ---
+    const rrArray = collect("RRN");
+    const prArray = collect("PRN");
+    const arArray = collect("ARN");
+
+    const deltaRRArray = collect("deltaRRN");
+    const deltaPRArray = collect("deltaPRN");
+    const deltaARArray = collect("deltaARN");
+
+    const xeqArray = collect("XEP");
+    const xcpArray = collect("XCP");
+    const xbpArray = collect("XBP");
+
+    const deltaGEQArray = collect("GEQ");
+
+    console.log("Averaged arrays:");
+    console.log("RR:", rrArray);
+    console.log("PR:", prArray);
+    console.log("AR:", arArray);
+    console.log("delta RR:", deltaRRArray);
+    console.log(" detla PR:", deltaPRArray);
+    console.log("delta AR:", deltaARArray);
+    console.log("XEQ:", xeqArray);
+    console.log("deltaGEQ:", deltaGEQArray);
+
+    // --- DISTRIBUTIONS (T uses same input arrays) ---
+    const rrDistribution = calculateDistribution({ data: rrArray, step: 0.05 });
+    const prDistribution = calculateDistribution({ data: prArray, step: 0.05 });
+    const arDistribution = calculateDistribution({ data: arArray, step: 0.05 });
+
+    const deltaRRDistribution = calculateDistribution({ data: deltaRRArray, step: 0.05 });
+    const deltaPRDistribution = calculateDistribution({ data: deltaPRArray, step: 0.05 });
+    const deltaARDistribution = calculateDistribution({ data: deltaARArray, step: 0.05 });
+
+    const xeqDistribution = calculateDistribution({ data: xeqArray, step: 0.05 });
+    const xcpDistribution = calculateDistribution({ data: xcpArray, step: 0.05 });
+    const xbpDistribution = calculateDistribution({ data: xbpArray, step: 0.05 });
+
+    const deltaGEQDistribution = calculateDistribution({ data: deltaGEQArray, step: 0.05 });
+
+    res.status(200).json({
+      mode: hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE",
+      distributions: {
+        RR: rrDistribution,
+        PR: prDistribution,
+        AR: arDistribution,
+
+        deltaRR: deltaRRDistribution,
+        deltaPR: deltaPRDistribution,
+        deltaAR: deltaARDistribution,
+
+        XEQ: xeqDistribution,
+        // XCP: xcpDistribution,
+        // XBP: xbpDistribution,
+
+        deltaGEQ: deltaGEQDistribution
+      },
+      sourceStats: {
+        rowsUsed: sourceRows.length,
+        usedAverages: !hasPpFilter
+      }
+    });
+
+  } catch (error) {
+    console.error("Error in getTDistributionData:", error);
+    res.status(500).json({
+      message: "Error computing T distribution",
+      error: error.message
+    });
+  }
 };
+
   
   // (plotDistribution removed)
   
