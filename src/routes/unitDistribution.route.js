@@ -14,12 +14,12 @@ const weibullDistributionRISK = require('../controllers/weibullDistributionRISK.
 router.post('/normal-dist', unitDistribution.getNormalDistributionData);
 router.post('/t-dist', unitTDistribution.getTDistributionData);
 router.get('/exponential-dist', unitExponentialDistribution.getExponetialDistributionData);
-router.get('/chi-dist', chiSquareDistribution.getChiDistributionData);
-router.get('/f-dist', unitFDistribution.getFDistributionData);
-router.get('/beta-dist', unitbetaDistribution.getBetaDistributionData);
-router.get('/uniform-dist', unitUniformDistribution.getUniformDistributionData);
-router.get('/weibull-cdf-dist', weibullDistributionCDF.getWeibullCDFDistributionData);
-router.get('/weibull-pdf-dist', weibullDistributionPDF.getWeibullPDFDistributionData);
-router.get('/weibull-risk-dist', weibullDistributionRISK.getWeibullRiskDistributionData);
+router.post('/chi-dist', chiSquareDistribution.getChiDistributionData);
+router.post('/f-dist', unitFDistribution.getFDistributionData);
+router.post('/beta-dist', unitbetaDistribution.getBetaDistributionData);
+router.post('/uniform-dist', unitUniformDistribution.getUniformDistributionData);
+router.post('/weibull-cdf-dist', weibullDistributionCDF.getWeibullCDFDistributionData);
+router.post('/weibull-pdf-dist', weibullDistributionPDF.getWeibullPDFDistributionData);
+router.post('/weibull-risk-dist', weibullDistributionRISK.getWeibullRiskDistributionData);
 
 module.exports = router;

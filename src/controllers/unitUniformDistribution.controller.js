@@ -66,53 +66,87 @@ function generateRange(start, end, step = 1) {
   
   exports.getUniformDistributionData = async (req, res) => {
     try {
-        const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+        // ✅ Updated: Receive data via req.body like getBetaDistributionData
+        const { candidatePpList, unitId } = req.body;
 
-        if (!unitId || !candidate_id) {
-            return res.status(400).json({ message: "unitId and candidate_id are required" });
+        if (!unitId || !Array.isArray(candidatePpList)) {
+            return res.status(400).json({ 
+                message: "unitId and candidatePpList are required" 
+            });
         }
 
-        // Prepare mock request for existing controller
+        // ✅ Extract candidate IDs from the list
+        const candidateIds = candidatePpList
+            .map(x => x.candidateId)
+            .join(",");
+
+        // ✅ Check if we need PP filtering (same logic as beta distribution)
+        const hasPpFilter = candidatePpList.some(
+            x => x.ppId !== null && x.ppId !== undefined && x.ppId !== ""
+        );
+
+        // ✅ Build query parameters for competency data fetch
+        const queryParams = {
+            unitId,
+            candidate_id: candidateIds
+        };
+
+        // Step 1: Get competency data
         const mockReq = {
-            query: {
-                unitId,
-                candidate_id,
-                ppIdFrom: ppIdFrom || null,
-                ppIdTo: ppIdTo || null,
-                criticalRefDateFrom: criticalRefDateFrom || null,
-                criticalRefDateTo: criticalRefDateTo || null
-            }
+            query: queryParams
         };
 
         let competencyData = null;
 
         const mockRes = {
-            status(code) {
+            status: function(code) {
                 this.statusCode = code;
                 return this;
             },
-            json(data) {
+            json: function(data) {
                 competencyData = data;
                 return this;
             }
         };
 
         await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-
+        
         if (!competencyData || !competencyData.results) {
             return res.status(404).json({ message: "No competency data found" });
         }
 
-        const allResults = competencyData.results;
+        const allResults = competencyData.results || [];
+        const allAverages = competencyData.averages || [];
 
-        // -----------------------------------------
-        // FUNCTION TO CONVERT STAG / STAP VALUES
-        // -----------------------------------------
+        let sourceRows = [];
+        
+        // ✅ Apply PP filtering if needed (same logic as beta distribution)
+        if (hasPpFilter) {
+            // PP-level filtering
+            const ppMap = new Map();
+            candidatePpList.forEach(({ candidateId, ppId }) => {
+                if (ppId !== null && ppId !== undefined && ppId !== "") {
+                    ppMap.set(`${candidateId}_${ppId}`, true);
+                }
+            });
+
+            sourceRows = allResults.filter(r =>
+                ppMap.has(`${r.candidateId}_${r.ppId}`)
+            );
+        } else {
+            // ✅ Use candidate-level averages if available
+            sourceRows = allAverages.length > 0 ? allAverages : allResults;
+        }
+
+        console.log("Uniform distribution - Source rows count:", sourceRows.length);
+        console.log("Mode:", hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE");
+
+        // ✅ Extract stability patterns from filtered source rows
         const extractPattern = (key) => {
-            return allResults
+            return sourceRows
                 .map(r => {
                     const val = r[key];
-                    if (!val) return null;
+                    if (val === null || val === undefined) return null;
 
                     const v = String(val).toUpperCase();
                     if (v === "STABLE") return "S";
@@ -122,59 +156,69 @@ function generateRange(start, end, step = 1) {
                 .filter(v => v !== null);
         };
 
-        // -----------------------------------------
-        // CREATE SEPARATE ARRAYS FOR STAG AND STAP
-        // -----------------------------------------
+        // ✅ Create separate arrays for STAG and STAP from filtered data
         const stagArray = extractPattern("STAG"); // e.g. ['S','U','S','S']
         const stapArray = extractPattern("STAP"); // e.g. ['U','U','S']
 
-        // -----------------------------------------
-        // PASS EACH ARRAY TO calculateDistribution
-        // -----------------------------------------
-        const stagDistribution =
-            stagArray.length > 0 ? calculateDistribution({ patternSymbols: stagArray }) : null;
+        // ✅ Calculate uniform distributions (if data exists)
+        const stagDistribution = stagArray.length > 0 
+            ? calculateDistribution({ patternSymbols: stagArray }) 
+            : null;
 
-        const stapDistribution =
-            stapArray.length > 0 ? calculateDistribution({ patternSymbols: stapArray }) : null;
+        const stapDistribution = stapArray.length > 0 
+            ? calculateDistribution({ patternSymbols: stapArray }) 
+            : null;
 
-        // -----------------------------------------
-        // RESPONSE OBJECT — UNIFORM ONLY (NO ALPHA/BETA)
-        // -----------------------------------------
+        // ✅ Prepare response (similar structure to beta distribution)
         const response = {
+            mode: hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE",
             distributions: {
                 STAG: stagDistribution,
                 STAP: stapDistribution
             },
-            sourceData: {
-                counts: {
-                    totalResults: allResults.length,
+            sourceStats: {
+                rowsUsed: sourceRows.length,
+                usedAverages: !hasPpFilter,
+                patternCounts: {
                     STAG: stagArray.length,
                     STAP: stapArray.length
-                },
-                extractedValues: {
-                    STAG: stagArray,
-                    STAP: stapArray
-                },
-                statistics: {
-                    STAG: stagDistribution ? {
-                        mean: stagDistribution.mean,
-                        variance: stagDistribution.variance
-                    } : null,
-                    STAP: stapDistribution ? {
-                        mean: stapDistribution.mean,
-                        variance: stapDistribution.variance
-                    } : null
                 }
+            },
+            statistics: {
+                STAG: stagDistribution ? {
+                    mean: stagDistribution.mean,
+                    variance: stagDistribution.variance,
+                    a: stagDistribution.params.a,
+                    b: stagDistribution.params.b,
+                    stableCount: stagArray.filter(s => s === 'S').length,
+                    unstableCount: stagArray.filter(s => s === 'U').length,
+                    totalPatterns: stagArray.length,
+                    stableRatio: stagArray.filter(s => s === 'S').length / stagArray.length
+                } : null,
+                STAP: stapDistribution ? {
+                    mean: stapDistribution.mean,
+                    variance: stapDistribution.variance,
+                    a: stapDistribution.params.a,
+                    b: stapDistribution.params.b,
+                    stableCount: stapArray.filter(s => s === 'S').length,
+                    unstableCount: stapArray.filter(s => s === 'U').length,
+                    totalPatterns: stapArray.length,
+                    stableRatio: stapArray.filter(s => s === 'S').length / stapArray.length
+                } : null
+            },
+            patterns: {
+                STAG: stagArray,
+                STAP: stapArray
             }
         };
 
-        return res.status(200).json(response);
+        res.status(200).json(response);
 
-    } catch (error) {
+    } catch(error) {
         console.error("Error in getUniformDistributionData:", error);
-        res.status(500).json({
-            message: "Error computing uniform distribution",
-            error: error.message
+        res.status(500).json({ 
+            message: "Error computing uniform distribution", 
+            error: error.message 
         });
     }
 };

@@ -152,211 +152,481 @@ function inverseCdfByBisection(pdf, lower, upper, target, tol = 1e-5, maxIter = 
 
   
   
-exports.getChiDistributionData = async (req, res) => {
-    try {
-        const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+// exports.getChiDistributionData = async (req, res) => {
+//     try {
+//         const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
 
-        if (!unitId || !candidate_id) {
-            return res.status(400).json({ message: "unitId and candidate_id are required" });
-        }
+//         if (!unitId || !candidate_id) {
+//             return res.status(400).json({ message: "unitId and candidate_id are required" });
+//         }
 
-        // Step 1: Get unit data to fetch threshold values
-        let unitData;
-        try {
-            const unitReq = { params: { id: unitId } };
-            const unitRes = {
-                status: function(code) {
-                    this.statusCode = code;
-                    return this;
-                },
-                json: function(data) {
-                    unitData = data;
-                    return this;
-                }
-            };
-            await getUnitById(unitReq, unitRes);
+//         // Step 1: Get unit data to fetch threshold values
+//         let unitData;
+//         try {
+//             const unitReq = { params: { id: unitId } };
+//             const unitRes = {
+//                 status: function(code) {
+//                     this.statusCode = code;
+//                     return this;
+//                 },
+//                 json: function(data) {
+//                     unitData = data;
+//                     return this;
+//                 }
+//             };
+//             await getUnitById(unitReq, unitRes);
             
-            if (!unitData) {
-                return res.status(404).json({ message: "Unit not found" });
-            }
-        } catch (unitError) {
-            console.error("Error fetching unit data:", unitError);
-            return res.status(500).json({ message: "Error fetching unit threshold data" });
-        }
+//             if (!unitData) {
+//                 return res.status(404).json({ message: "Unit not found" });
+//             }
+//         } catch (unitError) {
+//             console.error("Error fetching unit data:", unitError);
+//             return res.status(500).json({ message: "Error fetching unit threshold data" });
+//         }
 
-        // Step 2: Get competency data
-        const mockReq = {
-            query: {
-                unitId,
-                candidate_id,
-                ppIdFrom: ppIdFrom || null,
-                ppIdTo: ppIdTo || null,
-                criticalRefDateFrom: criticalRefDateFrom || null,
-                criticalRefDateTo: criticalRefDateTo || null
-            }
-        };
+//         // Step 2: Get competency data
+//         const mockReq = {
+//             query: {
+//                 unitId,
+//                 candidate_id,
+//                 ppIdFrom: ppIdFrom || null,
+//                 ppIdTo: ppIdTo || null,
+//                 criticalRefDateFrom: criticalRefDateFrom || null,
+//                 criticalRefDateTo: criticalRefDateTo || null
+//             }
+//         };
 
-        let competencyData = null;
+//         let competencyData = null;
 
-        const mockRes = {
-            status: function(code) {
-                this.statusCode = code;
-                return this;
-            },
-            json: function(data) {
-                competencyData = data;
-                return this;
-            }
-        };
+//         const mockRes = {
+//             status: function(code) {
+//                 this.statusCode = code;
+//                 return this;
+//             },
+//             json: function(data) {
+//                 competencyData = data;
+//                 return this;
+//             }
+//         };
 
-        await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+//         await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
         
-        if (!competencyData || !competencyData.results) {
-            return res.status(404).json({ message: "No competency data found" });
-        }
+//         if (!competencyData || !competencyData.results) {
+//             return res.status(404).json({ message: "No competency data found" });
+//         }
 
-        const allResults = competencyData.results;
+//         const allResults = competencyData.results;
 
-        // Determine unit type from unit data (more reliable than competency data)
-        const unitType = unitData.unitType;
+//         // Determine unit type from unit data (more reliable than competency data)
+//         const unitType = unitData.unitType;
         
-        if (!unitType) {
-            return res.status(400).json({ message: "No unitType found in unit data" });
-        }
+//         if (!unitType) {
+//             return res.status(400).json({ message: "No unitType found in unit data" });
+//         }
 
-        // Helper function to calculate average of valid numeric values
-        const calculateAverage = (values) => {
-            const validValues = values.filter(v => v !== null && v !== undefined && !isNaN(v));
-            if (validValues.length === 0) return null;
-            return validValues.reduce((sum, val) => sum + val, 0) / validValues.length;
-        };
+//         // Helper function to calculate average of valid numeric values
+//         const calculateAverage = (values) => {
+//             const validValues = values.filter(v => v !== null && v !== undefined && !isNaN(v));
+//             if (validValues.length === 0) return null;
+//             return validValues.reduce((sum, val) => sum + val, 0) / validValues.length;
+//         };
 
-        // Collect values from the actual field names in your response
-        const collect = (key) =>
-            allResults
-                .map(r => {
-                    const value = r[key];
-                    // Handle null/undefined values and convert to number
-                    return value !== null && value !== undefined ? Number(value) : null;
-                })
-                .filter(v => v !== null && !isNaN(v));
+//         // Collect values from the actual field names in your response
+//         const collect = (key) =>
+//             allResults
+//                 .map(r => {
+//                     const value = r[key];
+//                     // Handle null/undefined values and convert to number
+//                     return value !== null && value !== undefined ? Number(value) : null;
+//                 })
+//                 .filter(v => v !== null && !isNaN(v));
 
-        // Extract arrays using the correct field names
-        const rrArray = collect("RRN");
-        const prArray = collect("PRN");
-        const arArray = collect("ARN");
-        const deltaRRArray = collect("deltaRRN");
-        const deltaPRArray = collect("deltaPRN");
-        const deltaARArray = collect("deltaARN");
+//         // Extract arrays using the correct field names
+//         const rrArray = collect("RRN");
+//         const prArray = collect("PRN");
+//         const arArray = collect("ARN");
+//         const deltaRRArray = collect("deltaRRN");
+//         const deltaPRArray = collect("deltaPRN");
+//         const deltaARArray = collect("deltaARN");
 
-        // Calculate averages for observed values
-        const avgRR = calculateAverage(rrArray);
-        const avgPR = calculateAverage(prArray);
-        const avgAR = calculateAverage(arArray);
-        const avgDeltaRR = calculateAverage(deltaRRArray);
-        const avgDeltaPR = calculateAverage(deltaPRArray);
-        const avgDeltaAR = calculateAverage(deltaARArray);
+//         console.log("Extracted values - RR:", rrArray, "PR:", prArray, "AR:", arArray, "deltaRR:", deltaRRArray, "deltaPR:", deltaPRArray, "deltaAR:", deltaARArray);
+
+//         // Calculate averages for observed values
+//         const avgRR = calculateAverage(rrArray);
+//         const avgPR = calculateAverage(prArray);
+//         const avgAR = calculateAverage(arArray);
+//         const avgDeltaRR = calculateAverage(deltaRRArray);
+//         const avgDeltaPR = calculateAverage(deltaPRArray);
+//         const avgDeltaAR = calculateAverage(deltaARArray);
+
+//         console.log("Averages - RR:", avgRR, "PR:", avgPR, "AR:", avgAR, "deltaRR:", avgDeltaRR, "deltaPR:", avgDeltaPR, "deltaAR:", avgDeltaAR);
         
-        let observed = [];
-        let expected = [];
-        let distributionFunction = null;
-        let distributionName = '';
+//         let observed = [];
+//         let expected = [];
+//         let distributionFunction = null;
+//         let distributionName = '';
 
-        // Get threshold values from unit data
-        const thresRR = 0; // As per requirement, set to 0
-        const thresPR = 0; // As per requirement, set to 0
-        const thresAR = 0; // As per requirement, set to 0
-        const thresDeltaRR = unitData.ΔRRN ? Number(unitData.ΔRRN) : 0;
-        const thresDeltaPR = unitData.ΔPRN ? Number(unitData.ΔPRN) : 0;
-        const thresDeltaAR = unitData.ΔARN ? Number(unitData.ΔARN) : 0;
+//         // Get threshold values from unit data
+//         const thresRR = 0; // As per requirement, set to 0
+//         const thresPR = 0; // As per requirement, set to 0
+//         const thresAR = 0; // As per requirement, set to 0
+//         const thresDeltaRR = unitData.ΔRRN ? Number(unitData.ΔRRN) : 0;
+//         const thresDeltaPR = unitData.ΔPRN ? Number(unitData.ΔPRN) : 0;
+//         const thresDeltaAR = unitData.ΔARN ? Number(unitData.ΔARN) : 0;
 
-        if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-            // For CICO_TP: Use RR, PR, deltaRR, deltaPR
-            observed = [avgRR, avgPR, avgDeltaRR, avgDeltaPR].filter(val => val !== null);
-            expected = [thresRR, thresPR, thresDeltaRR, thresDeltaPR].slice(0, observed.length);
-            distributionFunction = calculateDistributionCICO_TP;
-            distributionName = 'Chi-Square (k=4) - CICO/TP';
-        } else if (unitType === "Third Parameter") {
-            // For TPRM: Use RR, PR, AR, deltaRR, deltaPR, deltaAR
-            observed = [avgRR, avgPR, avgAR, avgDeltaRR, avgDeltaPR, avgDeltaAR].filter(val => val !== null);
-            expected = [thresRR, thresPR, thresAR, thresDeltaRR, thresDeltaPR, thresDeltaAR].slice(0, observed.length);
-            distributionFunction = calculateDistributionTPRM;
-            distributionName = 'Chi-Square (k=6) - TPRM';
-        } else {
-            return res.status(400).json({ message: `Unknown unit type: ${unitType}` });
-        }
+//         if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+//             // For CICO_TP: Use RR, PR, deltaRR, deltaPR
+//             observed = [avgRR, avgPR, avgDeltaRR, avgDeltaPR].filter(val => val !== null);
+//             expected = [thresRR, thresPR, thresDeltaRR, thresDeltaPR].slice(0, observed.length);
+//             distributionFunction = calculateDistributionCICO_TP;
+//             distributionName = 'Chi-Square (k=4) - CICO/TP';
+//         } else if (unitType === "Third Parameter") {
+//             // For TPRM: Use RR, PR, AR, deltaRR, deltaPR, deltaAR
+//             observed = [avgRR, avgPR, avgAR, avgDeltaRR, avgDeltaPR, avgDeltaAR].filter(val => val !== null);
+//             expected = [thresRR, thresPR, thresAR, thresDeltaRR, thresDeltaPR, thresDeltaAR].slice(0, observed.length);
+//             distributionFunction = calculateDistributionTPRM;
+//             distributionName = 'Chi-Square (k=6) - TPRM';
+//         } else {
+//             return res.status(400).json({ message: `Unknown unit type: ${unitType}` });
+//         }
 
-        // Ensure observed and expected arrays have the same length
-        if (observed.length !== expected.length) {
-            // Trim expected to match observed length
-            expected = expected.slice(0, observed.length);
-        }
+//         // Ensure observed and expected arrays have the same length
+//         if (observed.length !== expected.length) {
+//             // Trim expected to match observed length
+//             expected = expected.slice(0, observed.length);
+//         }
 
-        // Calculate the distribution
-        const distribution = distributionFunction({
-            observed,
-            expected,
-            step: 0.1
-        });
+//         // Calculate the distribution
+//         const distribution = distributionFunction({
+//             observed,
+//             expected,
+//             step: 0.1
+//         });
 
-        // Prepare response
-        const response = {
-            unitType,
-            unitThresholds: {
-                RR: thresRR,
-                PR: thresPR,
-                AR: thresAR,
-                deltaRR: thresDeltaRR,
-                deltaPR: thresDeltaPR,
-                deltaAR: thresDeltaAR
-            },
-            distribution: {
-                name: distributionName,
-                table: distribution.table,
-                parameters: distribution.params,
-                mean: distribution.mean,
-                variance: distribution.variance
-            },
-            averages: {
-                RR: avgRR,
-                PR: avgPR,
-                AR: avgAR,
-                deltaRR: avgDeltaRR,
-                deltaPR: avgDeltaPR,
-                deltaAR: avgDeltaAR
-            },
-            observedValues: observed,
-            expectedValues: expected,
-            sourceData: {
-                counts: {
-                    totalResults: allResults.length,
-                    RR: rrArray.length,
-                    PR: prArray.length,
-                    AR: arArray.length,
-                    deltaRR: deltaRRArray.length,
-                    deltaPR: deltaPRArray.length,
-                    deltaAR: deltaARArray.length
-                },
-                extractedValues: {
-                    RR: rrArray,
-                    PR: prArray,
-                    AR: arArray,
-                    deltaRR: deltaRRArray,
-                    deltaPR: deltaPRArray,
-                    deltaAR: deltaARArray
-                }
-            }
-        };
+//         // Prepare response
+//         const response = {
+//             unitType,
+//             unitThresholds: {
+//                 RR: thresRR,
+//                 PR: thresPR,
+//                 AR: thresAR,
+//                 deltaRR: thresDeltaRR,
+//                 deltaPR: thresDeltaPR,
+//                 deltaAR: thresDeltaAR
+//             },
+//             distribution: {
+//                 name: distributionName,
+//                 table: distribution.table,
+//                 parameters: distribution.params,
+//                 mean: distribution.mean,
+//                 variance: distribution.variance
+//             },
+//             averages: {
+//                 RR: avgRR,
+//                 PR: avgPR,
+//                 AR: avgAR,
+//                 deltaRR: avgDeltaRR,
+//                 deltaPR: avgDeltaPR,
+//                 deltaAR: avgDeltaAR
+//             },
+//             observedValues: observed,
+//             expectedValues: expected,
+//             sourceData: {
+//                 counts: {
+//                     totalResults: allResults.length,
+//                     RR: rrArray.length,
+//                     PR: prArray.length,
+//                     AR: arArray.length,
+//                     deltaRR: deltaRRArray.length,
+//                     deltaPR: deltaPRArray.length,
+//                     deltaAR: deltaARArray.length
+//                 },
+//                 extractedValues: {
+//                     RR: rrArray,
+//                     PR: prArray,
+//                     AR: arArray,
+//                     deltaRR: deltaRRArray,
+//                     deltaPR: deltaPRArray,
+//                     deltaAR: deltaARArray
+//                 }
+//             }
+//         };
 
-        res.status(200).json(response);
+//         res.status(200).json(response);
 
-    } catch(error) {
-        console.error("Error in getChiDistributionData:", error);
-        res.status(500).json({ 
-            message: "Error computing chi-square distribution", 
-            error: error.message 
-        });
-    }
+//     } catch(error) {
+//         console.error("Error in getChiDistributionData:", error);
+//         res.status(500).json({ 
+//             message: "Error computing chi-square distribution", 
+//             error: error.message 
+//         });
+//     }
+// };
+
+
+exports.getChiDistributionData = async (req, res) => {
+  try {
+      // ✅ Updated: Receive data via req.body like getNormalDistributionData
+      const { candidatePpList, unitId } = req.body;
+
+      if (!unitId || !Array.isArray(candidatePpList)) {
+          return res.status(400).json({ 
+              message: "unitId and candidatePpList are required" 
+          });
+      }
+
+      // ✅ Extract candidate IDs from the list
+      const candidateIds = candidatePpList
+          .map(x => x.candidateId)
+          .join(",");
+
+      // ✅ Check if we need PP filtering (same logic as normal distribution)
+      const hasPpFilter = candidatePpList.some(
+          x => x.ppId !== null && x.ppId !== undefined && x.ppId !== ""
+      );
+
+      // ✅ Build query parameters for competency data fetch
+      let queryParams = {
+          unitId,
+          candidate_id: candidateIds
+      };
+
+      // ✅ Add date filters if provided (preserving existing functionality)
+      // if (dateFilter) {
+      //     if (dateFilter.criticalRefDateFrom) {
+      //         queryParams.criticalRefDateFrom = dateFilter.criticalRefDateFrom;
+      //     }
+      //     if (dateFilter.criticalRefDateTo) {
+      //         queryParams.criticalRefDateTo = dateFilter.criticalRefDateTo;
+      //     }
+      //     if (dateFilter.ppIdFrom) {
+      //         queryParams.ppIdFrom = dateFilter.ppIdFrom;
+      //     }
+      //     if (dateFilter.ppIdTo) {
+      //         queryParams.ppIdTo = dateFilter.ppIdTo;
+      //     }
+      // }
+
+      // Step 1: Get unit data to fetch threshold values
+      let unitData;
+      try {
+          const unitReq = { params: { id: unitId } };
+          const unitRes = {
+              status: function(code) {
+                  this.statusCode = code;
+                  return this;
+              },
+              json: function(data) {
+                  unitData = data;
+                  return this;
+              }
+          };
+          await getUnitById(unitReq, unitRes);
+          
+          if (!unitData) {
+              return res.status(404).json({ message: "Unit not found" });
+          }
+      } catch (unitError) {
+          console.error("Error fetching unit data:", unitError);
+          return res.status(500).json({ message: "Error fetching unit threshold data" });
+      }
+
+      // Step 2: Get competency data
+      const mockReq = {
+          query: queryParams
+      };
+
+      let competencyData = null;
+
+      const mockRes = {
+          status: function(code) {
+              this.statusCode = code;
+              return this;
+          },
+          json: function(data) {
+              competencyData = data;
+              return this;
+          }
+      };
+
+      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+      
+      if (!competencyData || !competencyData.results) {
+          return res.status(404).json({ message: "No competency data found" });
+      }
+
+      let sourceRows = [];
+      
+      // ✅ Apply PP filtering if needed (same logic as normal distribution)
+      if (hasPpFilter) {
+          // PP-level filtering
+          const ppMap = new Map();
+          candidatePpList.forEach(({ candidateId, ppId }) => {
+              if (ppId !== null && ppId !== undefined && ppId !== "") {
+                  ppMap.set(`${candidateId}_${ppId}`, true);
+              }
+          });
+
+          sourceRows = competencyData.results.filter(r =>
+              ppMap.has(`${r.candidateId}_${r.ppId}`)
+          );
+      } else {
+          // ✅ Use candidate-level averages if available, otherwise all results
+          if (competencyData.averages && competencyData.averages.length > 0) {
+              sourceRows = competencyData.averages;
+          } else {
+              sourceRows = competencyData.results;
+          }
+      }
+
+      // ✅ Determine unit type from unit data
+      const unitType = unitData.unitType;
+      
+      if (!unitType) {
+          return res.status(400).json({ message: "No unitType found in unit data" });
+      }
+
+      // ✅ Helper function to calculate average of valid numeric values
+      const calculateAverage = (values) => {
+          const validValues = values.filter(v => v !== null && v !== undefined && !isNaN(v));
+          if (validValues.length === 0) return null;
+          return validValues.reduce((sum, val) => sum + val, 0) / validValues.length;
+      };
+
+      // ✅ Safe collector function (same as normal distribution)
+      const collect = (key) =>
+          sourceRows
+              .map(r => {
+                  const value = r[key];
+                  return value !== null && value !== undefined ? Number(value) : null;
+              })
+              .filter(v => v !== null && !isNaN(v));
+
+      // ✅ Extract arrays using the correct field names
+      const rrArray = collect("RRN");
+      const prArray = collect("PRN");
+      const arArray = collect("ARN");
+      const deltaRRArray = collect("deltaRRN");
+      const deltaPRArray = collect("deltaPRN");
+      const deltaARArray = collect("deltaARN");
+
+      console.log("Source rows count:", sourceRows.length);
+      console.log("Extracted values - RR:", rrArray, "PR:", prArray, "AR:", arArray);
+
+      // ✅ Calculate averages for observed values
+      const avgRR = calculateAverage(rrArray);
+      const avgPR = calculateAverage(prArray);
+      const avgAR = calculateAverage(arArray);
+      const avgDeltaRR = calculateAverage(deltaRRArray);
+      const avgDeltaPR = calculateAverage(deltaPRArray);
+      const avgDeltaAR = calculateAverage(deltaARArray);
+
+      console.log("Averages - RR:", avgRR, "PR:", avgPR, "AR:", avgAR);
+      
+      let observed = [];
+      let expected = [];
+      let distributionFunction = null;
+      let distributionName = '';
+
+      // ✅ Get threshold values from unit data
+      const thresRR = 0; // As per requirement, set to 0
+      const thresPR = 0; // As per requirement, set to 0
+      const thresAR = 0; // As per requirement, set to 0
+      const thresDeltaRR = unitData.ΔRRN ? Number(unitData.ΔRRN) : 0;
+      const thresDeltaPR = unitData.ΔPRN ? Number(unitData.ΔPRN) : 0;
+      const thresDeltaAR = unitData.ΔARN ? Number(unitData.ΔARN) : 0;
+
+      // ✅ Apply unit-type specific logic
+      if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+          // For CICO_TP: Use RR, PR, deltaRR, deltaPR
+          observed = [avgRR, avgPR, avgDeltaRR, avgDeltaPR].filter(val => val !== null);
+          expected = [thresRR, thresPR, thresDeltaRR, thresDeltaPR].slice(0, observed.length);
+          distributionFunction = calculateDistributionCICO_TP;
+          distributionName = 'Chi-Square (k=4) - CICO/TP';
+      } else if (unitType === "Third Parameter") {
+          // For TPRM: Use RR, PR, AR, deltaRR, deltaPR, deltaAR
+          observed = [avgRR, avgPR, avgAR, avgDeltaRR, avgDeltaPR, avgDeltaAR].filter(val => val !== null);
+          expected = [thresRR, thresPR, thresAR, thresDeltaRR, thresDeltaPR, thresDeltaAR].slice(0, observed.length);
+          distributionFunction = calculateDistributionTPRM;
+          distributionName = 'Chi-Square (k=6) - TPRM';
+      } else {
+          return res.status(400).json({ message: `Unknown unit type: ${unitType}` });
+      }
+
+      // ✅ Ensure we have data for chi-square calculation
+      if (observed.length === 0) {
+          return res.status(400).json({ 
+              message: "No valid data available for chi-square calculation" 
+          });
+      }
+
+      // ✅ Ensure observed and expected arrays have the same length
+      if (observed.length !== expected.length) {
+          expected = expected.slice(0, observed.length);
+      }
+
+      // ✅ Calculate the chi-square distribution
+      const distribution = distributionFunction({
+          observed,
+          expected,
+          step: 0.1
+      });
+
+      // ✅ Prepare response
+      const response = {
+          mode: hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE",
+          unitType,
+          unitThresholds: {
+              RR: thresRR,
+              PR: thresPR,
+              AR: thresAR,
+              deltaRR: thresDeltaRR,
+              deltaPR: thresDeltaPR,
+              deltaAR: thresDeltaAR
+          },
+          distribution: {
+              name: distributionName,
+              table: distribution.table,
+              parameters: distribution.params,
+              mean: distribution.mean,
+              variance: distribution.variance
+          },
+          averages: {
+              RR: avgRR,
+              PR: avgPR,
+              AR: avgAR,
+              deltaRR: avgDeltaRR,
+              deltaPR: avgDeltaPR,
+              deltaAR: avgDeltaAR
+          },
+          observedValues: observed,
+          expectedValues: expected,
+          sourceData: {
+              counts: {
+                  totalResults: sourceRows.length,
+                  RR: rrArray.length,
+                  PR: prArray.length,
+                  AR: arArray.length,
+                  deltaRR: deltaRRArray.length,
+                  deltaPR: deltaPRArray.length,
+                  deltaAR: deltaARArray.length
+              },
+              filtering: {
+                  ppFilterApplied: hasPpFilter,
+                  // dateFilterApplied: !!dateFilter
+              }
+          }
+      };
+
+      res.status(200).json(response);
+
+  } catch(error) {
+      console.error("Error in getChiDistributionData:", error);
+      res.status(500).json({ 
+          message: "Error computing chi-square distribution", 
+          error: error.message 
+      });
+  }
 };
   
   // (plotDistribution removed)
