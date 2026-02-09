@@ -450,34 +450,50 @@ exports.getChiDistributionData = async (req, res) => {
       };
 
       await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+
+      const allResults = competencyData.results || [];
+      const allAverages = competencyData.averages || [];
       
       if (!competencyData || !competencyData.results) {
           return res.status(404).json({ message: "No competency data found" });
       }
 
-      let sourceRows = [];
-      
-      // ✅ Apply PP filtering if needed (same logic as normal distribution)
-      if (hasPpFilter) {
-          // PP-level filtering
-          const ppMap = new Map();
-          candidatePpList.forEach(({ candidateId, ppId }) => {
-              if (ppId !== null && ppId !== undefined && ppId !== "") {
-                  ppMap.set(`${candidateId}_${ppId}`, true);
-              }
-          });
+      const sourceRows = [];
 
-          sourceRows = competencyData.results.filter(r =>
-              ppMap.has(`${r.candidateId}_${r.ppId}`)
-          );
+    candidatePpList.forEach(({ candidateId, ppId }) => {
+      if (ppId !== null && ppId !== undefined && ppId !== "") {
+        // Fetch specific PP result for this candidate
+        const ppResult = allResults.find(
+          r => r.candidateId === String(candidateId) && r.ppId === ppId
+        );
+        if (ppResult) {
+          sourceRows.push(ppResult);
+        }
       } else {
-          // ✅ Use candidate-level averages if available, otherwise all results
-          if (competencyData.averages && competencyData.averages.length > 0) {
-              sourceRows = competencyData.averages;
-          } else {
-              sourceRows = competencyData.results;
-          }
+        // Fetch average for this candidate
+        const avgResult = allAverages.find(
+          r => r.candidateId === String(candidateId)
+        );
+        if (avgResult) {
+          sourceRows.push(avgResult);
+        }
       }
+    });
+
+    console.log("Source rows selected:", sourceRows.length);
+    console.log("Details:", sourceRows.map(r => ({ 
+      candidateId: r.candidateId, 
+      ppId: r.ppId 
+    })));
+
+    // --- Safe collector ---
+    // const collect = (k) =>
+    //   sourceRows
+    //     .map(r => {
+    //       const v = r[k];
+    //       return v !== null && v !== undefined ? Number(v) : null;
+    //     })
+    //     .filter(v => v !== null && !isNaN(v));
 
       // ✅ Determine unit type from unit data
       const unitType = unitData.unitType;
@@ -629,7 +645,7 @@ exports.getChiDistributionData = async (req, res) => {
   }
 };
   
-  // (plotDistribution removed)
+
   
   
   

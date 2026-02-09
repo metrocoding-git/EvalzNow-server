@@ -128,27 +128,34 @@ function extractFieldValues(results, fieldName) {
         const allResults = competencyData.results || [];
         const allAverages = competencyData.averages || [];
 
-        let sourceRows = [];
+        // Process each candidate individually
+        const sourceRows = [];
 
-        if (hasPpFilter) {
-            // ✅ PP-level filtering
-            const ppMap = new Map();
-            candidatePpList.forEach(({ candidateId, ppId }) => {
-                if (ppId !== null && ppId !== undefined && ppId !== "") {
-                    ppMap.set(`${candidateId}_${ppId}`, true);
-                }
-            });
-
-            sourceRows = allResults.filter(r =>
-                ppMap.has(`${r.candidateId}_${r.ppId}`)
+        candidatePpList.forEach(({ candidateId, ppId }) => {
+        if (ppId !== null && ppId !== undefined && ppId !== "") {
+            // Fetch specific PP result for this candidate
+            const ppResult = allResults.find(
+            r => r.candidateId === String(candidateId) && r.ppId === ppId
             );
+            if (ppResult) {
+            sourceRows.push(ppResult);
+            }
         } else {
-            // ✅ Candidate-level averages
-            sourceRows = allAverages;
+            // Fetch average for this candidate
+            const avgResult = allAverages.find(
+            r => r.candidateId === String(candidateId)
+            );
+            if (avgResult) {
+            sourceRows.push(avgResult);
+            }
         }
+        });
 
-        console.log("Weibull CDF - Source rows count:", sourceRows.length);
-        console.log("Mode:", hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE");
+        console.log("Source rows selected:", sourceRows.length);
+        console.log("Details:", sourceRows.map(r => ({ 
+        candidateId: r.candidateId, 
+        ppId: r.ppId 
+        })));
 
         // ✅ Safe collector function (same as normal distribution)
         const collect = (k) =>

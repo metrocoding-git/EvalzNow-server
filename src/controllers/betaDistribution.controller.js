@@ -239,28 +239,34 @@ exports.getBetaDistributionData = async (req, res) => {
         const allResults = competencyData.results || [];
         const allAverages = competencyData.averages || [];
 
-        let sourceRows = [];
-        
-        // ✅ Apply PP filtering if needed (same logic as normal distribution)
-        if (hasPpFilter) {
-            // PP-level filtering
-            const ppMap = new Map();
-            candidatePpList.forEach(({ candidateId, ppId }) => {
-                if (ppId !== null && ppId !== undefined && ppId !== "") {
-                    ppMap.set(`${candidateId}_${ppId}`, true);
-                }
-            });
+        // Process each candidate individually
+        const sourceRows = [];
 
-            sourceRows = allResults.filter(r =>
-                ppMap.has(`${r.candidateId}_${r.ppId}`)
+        candidatePpList.forEach(({ candidateId, ppId }) => {
+        if (ppId !== null && ppId !== undefined && ppId !== "") {
+            // Fetch specific PP result for this candidate
+            const ppResult = allResults.find(
+            r => r.candidateId === String(candidateId) && r.ppId === ppId
             );
+            if (ppResult) {
+            sourceRows.push(ppResult);
+            }
         } else {
-            // ✅ Use candidate-level averages if available
-            sourceRows = allAverages.length > 0 ? allAverages : allResults;
+            // Fetch average for this candidate
+            const avgResult = allAverages.find(
+            r => r.candidateId === String(candidateId)
+            );
+            if (avgResult) {
+            sourceRows.push(avgResult);
+            }
         }
+        });
 
-        console.log("Beta distribution - Source rows count:", sourceRows.length);
-        console.log("Mode:", hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE");
+        console.log("Source rows selected:", sourceRows.length);
+        console.log("Details:", sourceRows.map(r => ({ 
+        candidateId: r.candidateId, 
+        ppId: r.ppId 
+        })));
 
         // ✅ Process STAG and STAP values from filtered source rows
         const processStabilityValues = (key) => {
@@ -281,6 +287,9 @@ exports.getBetaDistributionData = async (req, res) => {
         const stagPatterns = processStabilityValues("STAG");
         const stapPatterns = processStabilityValues("STAP");
 
+        console.log("Extracted STAG patterns:", stagPatterns);
+        console.log("Extracted STAP patterns:", stapPatterns);
+        
         // ✅ Calculate beta distributions (if data exists)
         let stagDistribution = null;
         let stapDistribution = null;

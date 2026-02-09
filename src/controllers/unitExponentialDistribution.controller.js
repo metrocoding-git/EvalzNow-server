@@ -23,172 +23,210 @@ const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.con
 
 // Standalone helpers for Exponential
 function generateRange(start, end, step = 1) {
-    const arr = [];
-    const nSteps = Math.floor((end - start) / step);
-    for (let i = 0; i <= nSteps; i++) arr.push(Number((start + i * step).toFixed(10)));
-    if (arr.length === 0 || arr[arr.length - 1] < end) arr.push(Number(end.toFixed(10)));
-    return arr;
+  if (!isFinite(start) || !isFinite(end) || !isFinite(step) || step <= 0) {
+    return [];
   }
-  function meanFn(arr) {
-    if (!arr || arr.length === 0) return 0;
-    return arr.reduce((a, b) => a + b, 0) / arr.length;
+
+  const maxSteps = 10000;
+  const nSteps = Math.min(
+    Math.floor((end - start) / step),
+    maxSteps
+  );
+
+  const arr = [];
+  for (let i = 0; i <= nSteps; i++) {
+    arr.push(Number((start + i * step).toFixed(10)));
   }
-  function exponentialPdf(x, lambda) {
-    if (x < 0) return 0;
-    return lambda * Math.exp(-lambda * x);
-  }
+
+  return arr;
+}
+
+function meanFn(arr) {
+  if (!arr || arr.length === 0) return 0;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+function exponentialPdf(x, lambda) {
+  if (x < 0) return 0;
+  return lambda * Math.exp(-lambda * x);
+}
   // No plotting – tabular only
   
-  function calculateDistribution(params = {}) {
-    const data = params.data;
-    const fallbackMean = params.meanValue ?? 5; // dummy consistent default
-    const mu = Array.isArray(data) && data.length ? meanFn(data) : fallbackMean;
-    const lambda = 1 / mu;
-    const step = params.step ?? 0.05;
-    // Spec says 0 to 10λ; ensure reasonable extent
-    const end = Math.max(10 * lambda, 10 / lambda);
-    const x = generateRange(0, end, step);
-    const y = x.map((xi) => exponentialPdf(xi, lambda));
-  
-    const table = x.map((xi, i) => ({ x: parseFloat(xi.toFixed(4)), y: parseFloat(y[i].toFixed(4)) }));
-  
-    return {
-      x,
-      y,
-      mean: mu,
-      variance: mu * mu,
-      params: { lambda, step },
-      table,
-      name: 'Exponential Distribution',
-    };
-  }
-  
+function calculateDistribution(params = {}) {
+  const data = params.data;
+  const fallbackMean = params.meanValue ?? 5; // dummy consistent default
+  const mu = Array.isArray(data) && data.length ? meanFn(data) : fallbackMean;
+  const lambda = 1 / mu;
+  const step = params.step ?? 0.05;
+  // Spec says 0 to 10λ; ensure reasonable extent
+  const end = Math.max(10 * lambda, 10 / lambda);
+  const x = generateRange(0, end, step);
+  const y = x.map((xi) => exponentialPdf(xi, lambda));
 
-  exports.getExponetialDistributionData = async (req, res) => {
-    try {
-      const {
-        unitId,
-        candidate_id,
-        ppIdFrom,
-        ppIdTo,
-        criticalRefDateFrom,
-        criticalRefDateTo
-      } = req.query;
-  
-      if (!unitId || !candidate_id) {
-        return res.status(400).json({
-          message: "unitId and candidate_id are required"
-        });
-      }
-  
-      // Mock legacy request
-      const mockReq = {
-        query: {
-          unitId,
-          candidate_id,
-          ppIdFrom: ppIdFrom || null,
-          ppIdTo: ppIdTo || null,
-          criticalRefDateFrom: criticalRefDateFrom || null,
-          criticalRefDateTo: criticalRefDateTo || null
-        }
-      };
-  
-      let competencyData = null;
-  
-      const mockRes = {
-        status(code) {
-          this.statusCode = code;
-          return this;
-        },
-        json(data) {
-          competencyData = data;
-          return this;
-        }
-      };
-  
-      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-  
-      if (!competencyData || !Array.isArray(competencyData.averages)) {
-        return res.status(404).json({
-          message: "No averaged competency data found"
-        });
-      }
-  
-      const averages = competencyData.averages;
-  
-      // Helper to safely collect numeric values
-      const collect = (key) =>
-        averages
-          .map(a => {
-            const v = a[key];
-            return v !== null && v !== undefined ? Number(v) : null;
-          })
-          .filter(v => v !== null && !isNaN(v));
-  
-      // --- Extract PER-CANDIDATE AVERAGES ---
-      const rrArray = collect("RRN");
-      const prArray = collect("PRN");
-      const arArray = collect("ARN");
-      const xeqArray = collect("XEP");
-      const deltaGEQArray = collect("GEQ");
-  
-      // Debug (optional)
-      console.log("Averaged arrays:");
-      console.log("RR:", rrArray);
-      console.log("PR:", prArray);
-      console.log("AR:", arArray);
-      console.log("XEQ:", xeqArray);
-      console.log("deltaGEQ:", deltaGEQArray);
-  
-      // --- Distributions ---
-      const rrDistribution = rrArray.length
-        ? calculateDistribution({ data: rrArray, step: 0.05 })
-        : null;
-  
-      const prDistribution = prArray.length
-        ? calculateDistribution({ data: prArray, step: 0.05 })
-        : null;
-  
-      const arDistribution = arArray.length
-        ? calculateDistribution({ data: arArray, step: 0.05 })
-        : null;
-  
-      const xeqDistribution = xeqArray.length
-        ? calculateDistribution({ data: xeqArray, step: 0.05 })
-        : null;
-  
-      const deltaGEQDistribution = deltaGEQArray.length
-        ? calculateDistribution({ data: deltaGEQArray, step: 0.05 })
-        : null;
-  
-      res.status(200).json({
-        distributions: {
-          RR: rrDistribution,
-          PR: prDistribution,
-          AR: arDistribution,
-          XEQ: xeqDistribution,
-          deltaGEQ: deltaGEQDistribution
-        },
-        sourceData: {
-          candidateCount: averages.length,
-          extractedAverages: {
-            RR: rrArray,
-            PR: prArray,
-            AR: arArray,
-            XEQ: xeqArray,
-            deltaGEQ: deltaGEQArray
-          }
-        }
-      });
-  
-    } catch (error) {
-      console.error("Error in getExponetialDistributionData:", error);
-      res.status(500).json({
-        message: "Error computing exponential distribution",
-        error: error.message
+  const table = x.map((xi, i) => ({ x: parseFloat(xi.toFixed(4)), y: parseFloat(y[i].toFixed(4)) }));
+
+  return {
+    x,
+    y,
+    mean: mu,
+    variance: mu * mu,
+    params: { lambda, step },
+    table,
+    name: 'Exponential Distribution',
+  };
+}
+
+
+exports.getExponetialDistributionData = async (req, res) => {
+  try {
+    const { candidatePpList, unitId } = req.body;
+
+    if (!unitId || !Array.isArray(candidatePpList)) {
+      return res.status(400).json({
+        message: "unitId and candidatePpList required"
       });
     }
-  };
+
+    const candidateIds = candidatePpList
+      .map(x => x.candidateId)
+      .join(",");
+
+    const mockReq = {
+      query: {
+        unitId,
+        candidate_id: candidateIds
+      }
+    };
+
+    let competencyData = null;
+
+    const mockRes = {
+      status(code) { this.statusCode = code; return this; },
+      json(data) { competencyData = data; return this; }
+    };
+
+    await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+
+    const allResults = competencyData.results || [];
+    const allAverages = competencyData.averages || [];
+
+    // Process each candidate individually
+    const sourceRows = [];
+
+    candidatePpList.forEach(({ candidateId, ppId }) => {
+      if (ppId !== null && ppId !== undefined && ppId !== "") {
+        // Fetch specific PP result for this candidate
+        const ppResult = allResults.find(
+          r => r.candidateId === String(candidateId) && r.ppId === ppId
+        );
+        if (ppResult) {
+          sourceRows.push(ppResult);
+        }
+      } else {
+        // Fetch average for this candidate
+        const avgResult = allAverages.find(
+          r => r.candidateId === String(candidateId)
+        );
+        if (avgResult) {
+          sourceRows.push(avgResult);
+        }
+      }
+    });
+
+    console.log("Source rows selected:", sourceRows.length);
+    console.log("Details:", sourceRows.map(r => ({ 
+      candidateId: r.candidateId, 
+      ppId: r.ppId 
+    })));
+
+    // --- Safe collector ---
+    const collect = (k) =>
+      sourceRows
+        .map(r => {
+          const v = r[k];
+          return v !== null && v !== undefined ? Number(v) : null;
+        })
+        .filter(v => v !== null && !isNaN(v));
+
+    // --- BUILD ARRAYS ---
+    const rrArray = collect("RRN");
+    const prArray = collect("PRN");
+    const arArray = collect("ARN");
+
+    const deltaRRArray = collect("deltaRRN");
+    const deltaPRArray = collect("deltaPRN");
+    const deltaARArray = collect("deltaARN");
+
+    const xeqArray = collect("XEP");
+    const xcpArray = collect("XCP");
+    const xbpArray = collect("XBP");
+
+    const deltaGEQArray = collect("GEQ");
+
+    console.log("Collected arrays:");
+    console.log("RR:", rrArray);
+    console.log("PR:", prArray);
+    console.log("AR:", arArray);
+    console.log("delta RR:", deltaRRArray);
+    console.log("delta PR:", deltaPRArray);
+    console.log("delta AR:", deltaARArray);
+    console.log("XEQ:", xeqArray);
+    console.log("XCP:", xcpArray);
+    console.log("XBP:", xbpArray);
+    console.log("deltaGEQ:", deltaGEQArray);
+
+    // --- DISTRIBUTIONS ---
+    const rrDistribution = calculateDistribution({ data: rrArray, step: 0.05 });
+    const prDistribution = calculateDistribution({ data: prArray, step: 0.05 });
+    const arDistribution = calculateDistribution({ data: arArray, step: 0.05 });
+
+    const deltaRRDistribution = calculateDistribution({ data: deltaRRArray, step: 0.05 });
+    const deltaPRDistribution = calculateDistribution({ data: deltaPRArray, step: 0.05 });
+    const deltaARDistribution = calculateDistribution({ data: deltaARArray, step: 0.05 });
+
+    const xeqDistribution = calculateDistribution({ data: xeqArray, step: 0.05 });
+    const xcpDistribution = calculateDistribution({ data: xcpArray, step: 0.05 });
+    const xbpDistribution = calculateDistribution({ data: xbpArray, step: 0.05 });
+
+    const deltaGEQDistribution = calculateDistribution({ data: deltaGEQArray, step: 0.05 });
+
+    res.status(200).json({
+      mode: "MIXED", // Can be mix of PP-level and candidate averages
+      distributions: {
+        RR: rrDistribution,
+        PR: prDistribution,
+        AR: arDistribution,
+
+        deltaRR: deltaRRDistribution,
+        deltaPR: deltaPRDistribution,
+        deltaAR: deltaARDistribution,
+
+        XEQ: xeqDistribution,
+        XCP: xcpDistribution,
+        XBP: xbpDistribution,
+
+        deltaGEQ: deltaGEQDistribution
+      },
+      sourceStats: {
+        rowsUsed: sourceRows.length,
+        breakdown: candidatePpList.map(({ candidateId, ppId }) => ({
+          candidateId,
+          ppId: ppId !== null && ppId !== undefined && ppId !== "" ? ppId : "Average",
+          found: sourceRows.some(r => 
+            r.candidateId === String(candidateId) && 
+            (ppId !== null && ppId !== undefined && ppId !== "" ? r.ppId === ppId : r.ppId === "Average")
+          )
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error("Error in getExponetialDistributionData:", error);
+    res.status(500).json({
+      message: "Error computing exponential distribution",
+      error: error.message
+    });
+  }
+};
   
   // (plotDistribution removed)
   
