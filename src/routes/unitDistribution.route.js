@@ -13,7 +13,7 @@ const weibullDistributionRISK = require('../controllers/weibullDistributionRISK.
 
 router.post('/normal-dist', unitDistribution.getNormalDistributionData);
 router.post('/t-dist', unitTDistribution.getTDistributionData);
-router.get('/exponential-dist', unitExponentialDistribution.getExponetialDistributionData);
+router.post('/exponential-dist', unitExponentialDistribution.getExponetialDistributionData);
 router.post('/chi-dist', chiSquareDistribution.getChiDistributionData);
 router.post('/f-dist', unitFDistribution.getFDistributionData);
 router.post('/beta-dist', unitbetaDistribution.getBetaDistributionData);
