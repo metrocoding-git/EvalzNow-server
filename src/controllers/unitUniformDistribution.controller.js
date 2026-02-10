@@ -118,28 +118,34 @@ function generateRange(start, end, step = 1) {
         const allResults = competencyData.results || [];
         const allAverages = competencyData.averages || [];
 
-        let sourceRows = [];
-        
-        // ✅ Apply PP filtering if needed (same logic as beta distribution)
-        if (hasPpFilter) {
-            // PP-level filtering
-            const ppMap = new Map();
-            candidatePpList.forEach(({ candidateId, ppId }) => {
-                if (ppId !== null && ppId !== undefined && ppId !== "") {
-                    ppMap.set(`${candidateId}_${ppId}`, true);
-                }
-            });
+        // Process each candidate individually
+        const sourceRows = [];
 
-            sourceRows = allResults.filter(r =>
-                ppMap.has(`${r.candidateId}_${r.ppId}`)
+        candidatePpList.forEach(({ candidateId, ppId }) => {
+        if (ppId !== null && ppId !== undefined && ppId !== "") {
+            // Fetch specific PP result for this candidate
+            const ppResult = allResults.find(
+            r => r.candidateId === String(candidateId) && r.ppId === ppId
             );
+            if (ppResult) {
+            sourceRows.push(ppResult);
+            }
         } else {
-            // ✅ Use candidate-level averages if available
-            sourceRows = allAverages.length > 0 ? allAverages : allResults;
+            // Fetch average for this candidate
+            const avgResult = allAverages.find(
+            r => r.candidateId === String(candidateId)
+            );
+            if (avgResult) {
+            sourceRows.push(avgResult);
+            }
         }
+        });
 
-        console.log("Uniform distribution - Source rows count:", sourceRows.length);
-        console.log("Mode:", hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE");
+        console.log("Source rows selected:", sourceRows.length);
+        console.log("Details:", sourceRows.map(r => ({ 
+        candidateId: r.candidateId, 
+        ppId: r.ppId 
+        })));
 
         // ✅ Extract stability patterns from filtered source rows
         const extractPattern = (key) => {
@@ -159,6 +165,9 @@ function generateRange(start, end, step = 1) {
         // ✅ Create separate arrays for STAG and STAP from filtered data
         const stagArray = extractPattern("STAG"); // e.g. ['S','U','S','S']
         const stapArray = extractPattern("STAP"); // e.g. ['U','U','S']
+
+        console.log("Extracted STAG pattern:", stagArray);
+        console.log("Extracted STAP pattern:", stapArray);
 
         // ✅ Calculate uniform distributions (if data exists)
         const stagDistribution = stagArray.length > 0 

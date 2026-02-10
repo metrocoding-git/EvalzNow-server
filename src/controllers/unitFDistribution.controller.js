@@ -162,214 +162,6 @@ function calculateDistributionTPRM(params = {}) {
     name: 'F Distribution (df1 derived)'
   };
 }
-  
-// exports.getFDistributionData = async (req, res) => {
-//     try {
-//         const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
-
-//         if (!unitId || !candidate_id) {
-//             return res.status(400).json({ message: "unitId and candidate_id are required" });
-//         }
-
-//         // Step 1: Get unit data to fetch threshold values
-//         let unitData;
-//         try {
-//             const unitReq = { params: { id: unitId } };
-//             const unitRes = {
-//                 status: function(code) {
-//                     this.statusCode = code;
-//                     return this;
-//                 },
-//                 json: function(data) {
-//                     unitData = data;
-//                     return this;
-//                 }
-//             };
-//             await getUnitById(unitReq, unitRes);
-            
-//             if (!unitData) {
-//                 return res.status(404).json({ message: "Unit not found" });
-//             }
-//         } catch (unitError) {
-//             console.error("Error fetching unit data:", unitError);
-//             return res.status(500).json({ message: "Error fetching unit threshold data" });
-//         }
-
-//         // Step 2: Get competency data
-//         const mockReq = {
-//             query: {
-//                 unitId,
-//                 candidate_id,
-//                 ppIdFrom: ppIdFrom || null,
-//                 ppIdTo: ppIdTo || null,
-//                 criticalRefDateFrom: criticalRefDateFrom || null,
-//                 criticalRefDateTo: criticalRefDateTo || null
-//             }
-//         };
-
-//         let competencyData = null;
-
-//         const mockRes = {
-//             status: function(code) {
-//                 this.statusCode = code;
-//                 return this;
-//             },
-//             json: function(data) {
-//                 competencyData = data;
-//                 return this;
-//             }
-//         };
-
-//         await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-        
-//         if (!competencyData || !competencyData.results) {
-//             return res.status(404).json({ message: "No competency data found" });
-//         }
-
-//         const allResults = competencyData.results;
-
-//         // Determine unit type from unit data (more reliable than competency data)
-//         const unitType = unitData.unitType;
-        
-//         if (!unitType) {
-//             return res.status(400).json({ message: "No unitType found in unit data" });
-//         }
-
-//         // Helper function to calculate average of valid numeric values
-//         const calculateAverage = (values) => {
-//             const validValues = values.filter(v => v !== null && v !== undefined && !isNaN(v));
-//             if (validValues.length === 0) return null;
-//             return validValues.reduce((sum, val) => sum + val, 0) / validValues.length;
-//         };
-
-//         // Collect values from the actual field names in your response
-//         const collect = (key) =>
-//             allResults
-//                 .map(r => {
-//                     const value = r[key];
-//                     // Handle null/undefined values and convert to number
-//                     return value !== null && value !== undefined ? Number(value) : null;
-//                 })
-//                 .filter(v => v !== null && !isNaN(v));
-
-//         // Extract arrays using the correct field names
-//         const rrArray = collect("RRN");
-//         const prArray = collect("PRN");
-//         const arArray = collect("ARN");
-//         const deltaRRArray = collect("deltaRRN");
-//         const deltaPRArray = collect("deltaPRN");
-//         const deltaARArray = collect("deltaARN");
-//         const deltaGEQArray = collect("GEQ");
-//         const xeqArray = collect("XEQ");
-//         const xcpArray = collect("XCP");
-//         const xbpArray = collect("XBP");
-        
-//         // Calculate averages for s1 values
-//         const avgRR = calculateAverage(rrArray);
-//         const avgPR = calculateAverage(prArray);
-//         const avgAR = calculateAverage(arArray);
-//         const avgDeltaRR = calculateAverage(deltaRRArray);
-//         const avgDeltaPR = calculateAverage(deltaPRArray);
-//         const avgDeltaAR = calculateAverage(deltaARArray);
-//         const avgDeltaGEQ = calculateAverage(deltaGEQArray);
-//         const avgXEQ = calculateAverage(xeqArray);
-//         const avgXCP = calculateAverage(xcpArray);
-//         const avgXBP = calculateAverage(xbpArray);
-
-//         let s1 = [];
-//         let s2 = [];
-//         let distributionFunction = null;
-//         let distributionName = '';
-
-       
-       
-
-//         if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-//             // For CICO_TP: Use RR, PR, deltaRR, deltaPR
-//             s1 = [avgRR, avgPR, avgXEQ, avgXCP, avgXBP].filter(val => val !== null);
-//             s2 = [avgDeltaRR, avgDeltaPR, avgDeltaGEQ].slice(0, s1.length);
-//             distributionFunction = calculateDistributionCICO_TP;
-//             distributionName = 'Chi-Square (k=4) - CICO/TP';
-//         } else if (unitType === "Third Parameter") {
-//             // For TPRM: Use RR, PR, AR, deltaRR, deltaPR, deltaAR
-//             s1 = [avgRR, avgPR, avgAR, avgDeltaRR, avgDeltaPR, avgDeltaAR].filter(val => val !== null);
-//             s2 = [avgDeltaRR, avgDeltaPR, , avgAR, avgDeltaGEQ].slice(0, s1.length);
-//             distributionFunction = calculateDistributionTPRM;
-//             distributionName = 'Chi-Square (k=6) - TPRM';
-//         } else {
-//             return res.status(400).json({ message: `Unknown unit type: ${unitType}` });
-//         }
-
-//         // Ensure s1 and s2 arrays have the same length
-//         if (s1.length !== s2.length) {
-//             // Trim s2 to match s1 length
-//             s2 = s2.slice(0, s1.length);
-//         }
-
-//         // Calculate the distribution
-//         const distribution = distributionFunction({
-//             s1,
-//             s2,
-//             step: 0.1
-//         });
-
-//         // Prepare response
-//         const response = {
-//             unitType,
-//             distribution: {
-//                 name: distributionName,
-//                 table: distribution.table,
-//                 parameters: distribution.params,
-//                 mean: distribution.mean,
-//                 variance: distribution.variance
-//             },
-//             averages: {
-//                 RR: avgRR,
-//                 PR: avgPR,
-//                 AR: avgAR,
-//                 XEQ: avgXEQ,
-//                 XCP: avgXCP,
-//                 XBP: avgXBP,
-//                 deltaRR: avgDeltaRR,
-//                 deltaPR: avgDeltaPR,
-//                 deltaAR: avgDeltaAR,
-//                 deltaGEQ: avgDeltaGEQ
-//             },
-//             s1Values: s1,
-//             s2Values: s2,
-//             sourceData: {
-//                 counts: {
-//                     totalResults: allResults.length,
-//                     RR: rrArray.length,
-//                     PR: prArray.length,
-//                     AR: arArray.length,
-//                     deltaRR: deltaRRArray.length,
-//                     deltaPR: deltaPRArray.length,
-//                     deltaAR: deltaARArray.length
-//                 },
-//                 extractedValues: {
-//                     RR: rrArray,
-//                     PR: prArray,
-//                     AR: arArray,
-//                     deltaRR: deltaRRArray,
-//                     deltaPR: deltaPRArray,
-//                     deltaAR: deltaARArray
-//                 }
-//             }
-//         };
-
-//         res.status(200).json(response);
-
-//     } catch(error) {
-//         console.error("Error in getChiDistributionData:", error);
-//         res.status(500).json({ 
-//             message: "Error computing chi-square distribution", 
-//             error: error.message 
-//         });
-//     }
-// };
-  
-  // (plotDistribution removed)
 
 
   exports.getFDistributionData = async (req, res) => {
@@ -443,33 +235,37 @@ function calculateDistributionTPRM(params = {}) {
 
         await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
         
-        if (!competencyData || !competencyData.results) {
-            return res.status(404).json({ message: "No competency data found" });
-        }
+        const allResults = competencyData.results || [];
+        const allAverages = competencyData.averages || [];
 
-        let sourceRows = [];
-        
-        // ✅ Apply PP filtering if needed (same logic as other distributions)
-        if (hasPpFilter) {
-            // PP-level filtering
-            const ppMap = new Map();
-            candidatePpList.forEach(({ candidateId, ppId }) => {
-                if (ppId !== null && ppId !== undefined && ppId !== "") {
-                    ppMap.set(`${candidateId}_${ppId}`, true);
-                }
-            });
+        // Process each candidate individually
+        const sourceRows = [];
 
-            sourceRows = competencyData.results.filter(r =>
-                ppMap.has(`${r.candidateId}_${r.ppId}`)
+        candidatePpList.forEach(({ candidateId, ppId }) => {
+        if (ppId !== null && ppId !== undefined && ppId !== "") {
+            // Fetch specific PP result for this candidate
+            const ppResult = allResults.find(
+            r => r.candidateId === String(candidateId) && r.ppId === ppId
             );
+            if (ppResult) {
+            sourceRows.push(ppResult);
+            }
         } else {
-            // ✅ Use candidate-level averages if available, otherwise all results
-            if (competencyData.averages && competencyData.averages.length > 0) {
-                sourceRows = competencyData.averages;
-            } else {
-                sourceRows = competencyData.results;
+            // Fetch average for this candidate
+            const avgResult = allAverages.find(
+            r => r.candidateId === String(candidateId)
+            );
+            if (avgResult) {
+            sourceRows.push(avgResult);
             }
         }
+        });
+
+        console.log("Source rows selected:", sourceRows.length);
+        console.log("Details:", sourceRows.map(r => ({ 
+        candidateId: r.candidateId, 
+        ppId: r.ppId 
+        })));
 
         // ✅ Determine unit type from unit data
         const unitType = unitData.unitType;
@@ -507,10 +303,12 @@ function calculateDistributionTPRM(params = {}) {
         const xbpArray = collect("XBP");
         
         console.log("Source rows count:", sourceRows.length);
+        console.log("Extracted arrays - RR:", rrArray, "PR:", prArray, "AR:", arArray);
         console.log("Extracted arrays - XEQ:", xeqArray, "XCP:", xcpArray, "XBP:", xbpArray);
         console.log("Extracted deltas - deltaGEQ:", deltaGEQArray);
 
         // ✅ Calculate averages for F-distribution
+      
         const avgRR = calculateAverage(rrArray);
         const avgPR = calculateAverage(prArray);
         const avgAR = calculateAverage(arArray);
@@ -522,77 +320,42 @@ function calculateDistributionTPRM(params = {}) {
         const avgXCP = calculateAverage(xcpArray);
         const avgXBP = calculateAverage(xbpArray);
 
-        // ✅ For F-distribution, we need ALL raw values (not just averages)
-        // These will be used for variance calculation
-        let s1RawValues = [];
-        let s2RawValues = [];
+        // ✅ Construct s1 and s2 arrays using averages
+        let s1Values = [];
+        let s2Values = [];
         let distributionFunction = null;
         let distributionName = '';
 
-        // ✅ Unit-type specific logic for F-distribution
+        console.log("Extracted arrays - RR:", avgRR, "PR:", avgPR, "AR:", avgAR);
+        console.log("Extracted arrays - XEQ:", avgXEQ  , "XCP:", avgXCP, "XBP:", avgXBP);
+        console.log("Extracted deltas - deltaRR:", avgDeltaRR, "deltaPR:", avgDeltaPR, "deltaAR:", avgDeltaAR);
+        console.log("Extracted deltas - deltaGEQ:", avgDeltaGEQ);
+
         if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
-            // For CICO_TP F-distribution:
-            // s1 = [RR, PR, XEQ, XCP, XBP] - Level metrics
-            // s2 = [deltaRR, deltaPR, deltaGEQ] - Change metrics
-            
-            // Collect ALL raw values for each metric (not just averages)
-            s1RawValues = [
-                ...rrArray,       // All RR values
-                ...prArray,       // All PR values
-                ...xeqArray,      // All XEQ values
-                ...xcpArray,      // All XCP values
-                ...xbpArray       // All XBP values
-            ];
-            
-            s2RawValues = [
-                ...deltaRRArray,  // All deltaRR values
-                ...deltaPRArray,  // All deltaPR values
-                ...deltaGEQArray  // All deltaGEQ values
-            ];
-            
+            // CICO/TP unit
+            s1Values = [avgRR, avgPR, avgXEQ, avgXCP, avgXBP];
+            s2Values = [avgDeltaRR, avgDeltaPR, avgDeltaGEQ];
             distributionFunction = calculateDistributionCICO_TP;
-            distributionName = 'F Distribution (CICO/TP) - s1: Level metrics, s2: Change metrics';
-            
+            distributionName = 'F Distribution (CICO/TP) - averages used';
         } else if (unitType === "Third Parameter") {
-            // For TPRM F-distribution:
-            // s1 = [RR, PR, AR, deltaRR, deltaPR, deltaAR] - Core metrics
-            // s2 = [deltaGEQ, XEQ, XCP, XBP] - Additional metrics
-            
-            s1RawValues = [
-                ...rrArray,       // All RR values
-                ...prArray,       // All PR values
-                ...arArray,       // All AR values
-                ...deltaRRArray,  // All deltaRR values
-                ...deltaPRArray,  // All deltaPR values
-                ...deltaARArray   // All deltaAR values
-            ];
-            
-            s2RawValues = [
-                ...deltaGEQArray, // All deltaGEQ values
-                ...xeqArray,      // All XEQ values
-                ...xcpArray,      // All XCP values
-                ...xbpArray       // All XBP values
-            ];
-            
+            // TPRM unit
+            s1Values = [avgRR, avgPR, avgAR, avgDeltaRR, avgDeltaPR, avgDeltaAR];
+            s2Values = [avgDeltaGEQ, avgXEQ, avgXCP, avgXBP];
             distributionFunction = calculateDistributionTPRM;
-            distributionName = 'F Distribution (TPRM) - s1: Core metrics, s2: Additional metrics';
+            distributionName = 'F Distribution (TPRM) - averages used';
         } else {
             return res.status(400).json({ message: `Unknown unit type: ${unitType}` });
         }
 
-        // ✅ Ensure we have enough data for F-distribution calculation
-        // F-distribution needs at least 2 values in each sample for variance calculation
-        if (s1RawValues.length < 2 || s2RawValues.length < 2) {
-            return res.status(400).json({ 
-                message: "Insufficient data for F-distribution. Need at least 2 values in each sample." 
-            });
-        }
+        // ⚠️ Duplicate values if length < 2 to allow variance calculation
+        if (s1Values.length < 2) s1Values = [...s1Values, ...s1Values];
+        if (s2Values.length < 2) s2Values = [...s2Values, ...s2Values];
 
-        // ✅ Calculate the F-distribution
+        // ✅ Calculate the F-distribution using averages
         const distribution = distributionFunction({
-            s1: s1RawValues,
-            s2: s2RawValues,
-            step: 0.02  // Smaller step for smoother F-distribution curve
+            s1: s1Values,
+            s2: s2Values,
+            step: 0.02
         });
 
         // ✅ Prepare response
@@ -616,7 +379,6 @@ function calculateDistributionTPRM(params = {}) {
                 mean: distribution.mean,
                 variance: distribution.variance
             },
-            // ✅ Also include averages for reference
             averages: {
                 levelMetrics: {
                     RR: avgRR,
@@ -632,48 +394,11 @@ function calculateDistributionTPRM(params = {}) {
                     deltaAR: avgDeltaAR,
                     deltaGEQ: avgDeltaGEQ
                 }
-            },
-            // ✅ Sample information
-            samples: {
-                s1: {
-                    description: unitType.includes("Communicative") || unitType.includes("Theory") 
-                        ? "Level metrics (RR, PR, XEQ, XCP, XBP)" 
-                        : "Core metrics (RR, PR, AR, ΔRR, ΔPR, ΔAR)",
-                    values: s1RawValues,
-                    count: s1RawValues.length,
-                    variance: distribution.params.s1Var
-                },
-                s2: {
-                    description: unitType.includes("Communicative") || unitType.includes("Theory")
-                        ? "Change metrics (ΔRR, ΔPR, ΔGEQ)"
-                        : "Additional metrics (ΔGEQ, XEQ, XCP, XBP)",
-                    values: s2RawValues,
-                    count: s2RawValues.length,
-                    variance: distribution.params.s2Var
-                }
-            },
-            sourceData: {
-                counts: {
-                    totalRows: sourceRows.length,
-                    RR: rrArray.length,
-                    PR: prArray.length,
-                    AR: arArray.length,
-                    deltaRR: deltaRRArray.length,
-                    deltaPR: deltaPRArray.length,
-                    deltaAR: deltaARArray.length,
-                    deltaGEQ: deltaGEQArray.length,
-                    XEQ: xeqArray.length,
-                    XCP: xcpArray.length,
-                    XBP: xbpArray.length
-                },
-                filtering: {
-                    ppFilterApplied: hasPpFilter,
-                    candidatesProcessed: candidatePpList.length
-                }
             }
         };
 
         res.status(200).json(response);
+
 
     } catch(error) {
         console.error("Error in getFDistributionData:", error);

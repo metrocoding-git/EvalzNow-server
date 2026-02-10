@@ -135,30 +135,34 @@ exports.getNormalDistributionData = async (req, res) => {
     const allResults = competencyData.results || [];
     const allAverages = competencyData.averages || [];
 
-    // 🔍 Do we actually need PP filtering?
-    const hasPpFilter = candidatePpList.some(
-      x => x.ppId !== null && x.ppId !== undefined && x.ppId !== ""
-    );
+    // Process each candidate individually
+    const sourceRows = [];
 
-    let sourceRows = [];
-
-    if (hasPpFilter) {
-      // ✅ PP-level distributions
-      const ppMap = new Map();
-      candidatePpList.forEach(({ candidateId, ppId }) => {
-        if (ppId !== null && ppId !== undefined && ppId !== "") {
-          ppMap.set(`${candidateId}_${ppId}`, true);
+    candidatePpList.forEach(({ candidateId, ppId }) => {
+      if (ppId !== null && ppId !== undefined && ppId !== "") {
+        // Fetch specific PP result for this candidate
+        const ppResult = allResults.find(
+          r => r.candidateId === String(candidateId) && r.ppId === ppId
+        );
+        if (ppResult) {
+          sourceRows.push(ppResult);
         }
-      });
+      } else {
+        // Fetch average for this candidate
+        const avgResult = allAverages.find(
+          r => r.candidateId === String(candidateId)
+        );
+        if (avgResult) {
+          sourceRows.push(avgResult);
+        }
+      }
+    });
 
-      sourceRows = allResults.filter(r =>
-        ppMap.has(`${r.candidateId}_${r.ppId}`)
-      );
-
-    } else {
-      // ✅ Candidate-level averages
-      sourceRows = allAverages;
-    }
+    console.log("Source rows selected:", sourceRows.length);
+    console.log("Details:", sourceRows.map(r => ({ 
+      candidateId: r.candidateId, 
+      ppId: r.ppId 
+    })));
 
     // --- Safe collector ---
     const collect = (k) =>
@@ -184,14 +188,16 @@ exports.getNormalDistributionData = async (req, res) => {
 
     const deltaGEQArray = collect("GEQ");
 
-    console.log("Averaged arrays:");
+    console.log("Collected arrays:");
     console.log("RR:", rrArray);
     console.log("PR:", prArray);
     console.log("AR:", arArray);
     console.log("delta RR:", deltaRRArray);
-    console.log(" detla PR:", deltaPRArray);
+    console.log("delta PR:", deltaPRArray);
     console.log("delta AR:", deltaARArray);
     console.log("XEQ:", xeqArray);
+    console.log("XCP:", xcpArray);
+    console.log("XBP:", xbpArray);
     console.log("deltaGEQ:", deltaGEQArray);
 
     // --- DISTRIBUTIONS ---
@@ -210,7 +216,7 @@ exports.getNormalDistributionData = async (req, res) => {
     const deltaGEQDistribution = calculateDistribution({ data: deltaGEQArray, step: 0.05 });
 
     res.status(200).json({
-      mode: hasPpFilter ? "PP_LEVEL" : "CANDIDATE_AVERAGE",
+      mode: "MIXED", // Can be mix of PP-level and candidate averages
       distributions: {
         RR: rrDistribution,
         PR: prDistribution,
@@ -228,7 +234,14 @@ exports.getNormalDistributionData = async (req, res) => {
       },
       sourceStats: {
         rowsUsed: sourceRows.length,
-        usedAverages: !hasPpFilter
+        breakdown: candidatePpList.map(({ candidateId, ppId }) => ({
+          candidateId,
+          ppId: ppId !== null && ppId !== undefined && ppId !== "" ? ppId : "Average",
+          found: sourceRows.some(r => 
+            r.candidateId === String(candidateId) && 
+            (ppId !== null && ppId !== undefined && ppId !== "" ? r.ppId === ppId : r.ppId === "Average")
+          )
+        }))
       }
     });
 
