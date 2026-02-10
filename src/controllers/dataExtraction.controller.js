@@ -11,70 +11,106 @@ const { getNeuroScienceRmsValues } = require('./neuroScience.controller');
 /// <param name="xArray">array data - covers the range of Performance Point IDs (+PP ID only)</param>
 /// <param name="yArray">array data - represents the RMS for each +PP ID.</param>
 function cognitiveNS(xArray, yArray) {
-  var areasub = 0;
+  let areasub = 0;
 
-  for (var i = 0; i < xArray.length; i++) {
-    if (i <= xArray.length - 2 && yArray[i] != 0 && yArray[i + 1] != 0) {
-      areasub +=
-        (yArray[i] + yArray[i + 1]) / 2;
-    } else {
-      continue;
+  for (let i = 0; i < xArray.length - 1; i++) {
+    if (yArray[i] !== 0 && yArray[i + 1] !== 0) {
+      areasub += (yArray[i] + yArray[i + 1]) / 2;
     }
   }
 
-  return parseFloat(areasub).toFixed(3);
-} 
+  return (areasub / 100).toFixed(3);
+}
+ 
 
 
 function calculateCognitiveLoadPerLobe(neuroRmsData) {
-  const lobeMap = {};
-  const sortedData = [...neuroRmsData].sort((a, b) => a.ppId - b.ppId);
+  const result = {};
 
-  // Build cumulative RMS arrays per lobe
-  sortedData.forEach(({ ppId, lobes }) => {
-    Object.entries(lobes).forEach(([lobeName, values]) => {
-      if (!lobeMap[lobeName]) {
-        lobeMap[lobeName] = {
-          ppIds: [],
-          rms: [],
-          deltaRms: []
+  // Sort PP once
+  const sorted = [...neuroRmsData].sort((a, b) => a.ppId - b.ppId);
+
+  sorted.forEach((row, index) => {
+    Object.entries(row.lobes).forEach(([lobeName, values]) => {
+      if (!result[lobeName]) {
+        result[lobeName] = {
+          proficiency: [],
+          growth: []
         };
       }
 
-      lobeMap[lobeName].ppIds.push(ppId);
-      lobeMap[lobeName].rms.push(values.RMS);
-      lobeMap[lobeName].deltaRms.push(values.deltaRMS);
-    });
-  });
+      // ---- PROFICIENCY ----
+      const profSlice = sorted
+        .slice(0, index + 1)
+        .map(r => r.lobes[lobeName]?.RMS ?? 0);
 
-  const result = {};
-
-  Object.entries(lobeMap).forEach(([lobeName, arrays]) => {
-    result[lobeName] = {
-      proficiency: [],
-      growth: []
-    };
-
-    //  Compute cognitive load PER PP (cumulative)
-    for (let i = 0; i < arrays.ppIds.length; i++) {
-      const xSlice = arrays.ppIds.slice(0, i + 1);
-      const rmsSlice = arrays.rms.slice(0, i + 1);
-      const deltaSlice = arrays.deltaRms.slice(0, i + 1);
+      const profValue =
+        profSlice.length < 2
+          ? "0.000"
+          : cognitiveNS(
+              sorted.slice(0, index + 1).map(r => r.ppId),
+              profSlice
+            );
 
       result[lobeName].proficiency.push({
-        ppId: arrays.ppIds[i],
-        value: xSlice.length < 2 ? "0.000" : cognitiveNS(xSlice, rmsSlice)
+        ppId: row.ppId,
+        value: profValue
       });
 
+      // ---- GROWTH ----
+      const growthSlice = sorted
+        .slice(0, index + 1)
+        .map(r => r.lobes[lobeName]?.deltaRMS ?? 0);
+
+      const growthValue =
+        growthSlice.length < 2
+          ? "0.000"
+          : cognitiveNS(
+              sorted.slice(0, index + 1).map(r => r.ppId),
+              growthSlice
+            );
+
       result[lobeName].growth.push({
-        ppId: arrays.ppIds[i],
-        value: xSlice.length < 2 ? "0.000" : cognitiveNS(xSlice, deltaSlice)
+        ppId: row.ppId,
+        value: growthValue
       });
-    }
+    });
   });
 
   return result;
 }
+
+const formatCompetencyNumbers = (competency) => {
+  // Fields that should have 3 decimal places
+  const threeDecimalFields = [
+    'XLR', 'XRR', 'XSR', 'XWR', 'XTR', 'XPR',
+    'XRVSR', 'XPVSR', 'XAVSR',
+    'RRN', 'PRN', 'ARN',
+    'XEP', 'XCP', 'XBP',
+    'MSIP',
+    'deltaRRN', 'deltaPRN', 'deltaARN',
+    'GEQ',
+    'RRGT1', 'PRGT1', 'ARGT1',
+    'RRGT2', 'PRGT2', 'ARGT2',
+    'RRGT3', 'PRGT3', 'ARGT3',
+    'RRGT4', 'PRGT4', 'ARGT4',
+    'RRGT5', 'PRGT5', 'ARGT5',
+    'Productivity_CSD', 'Productivity_USD'
+  ];
+
+  const formatted = { ...competency };
+
+  threeDecimalFields.forEach(field => {
+    if (formatted[field] !== undefined && formatted[field] !== null && formatted[field] !== '-') {
+      const num = parseFloat(formatted[field]);
+      if (!isNaN(num)) {
+        formatted[field] = num.toFixed(3);
+      }
+    }
+  });
+
+  return formatted;
+};
 
 
 // GET Insert Scores by Unit ID
@@ -207,7 +243,8 @@ exports.getDataExtractionByUnitId = async (req, res) => {
 
       //  Attach only results to each candidate
       grouped.candidates.forEach(candidate => {
-          candidate.competencyResults = competencyByCandidate[candidate.candidateId] || [];
+        candidate.competencyResults = (competencyByCandidate[candidate.candidateId] || [])
+          .map(c => formatCompetencyNumbers(c)); // ✅ Apply formatting here
       });
 
 
@@ -452,9 +489,14 @@ exports.getDataExtractionByClientId = async (req, res) => {
       });
 
       grouped.candidates.forEach(candidate => {
-        candidate.competencyResults =
-          competencyByCandidate[candidate.candidateId] || [];
+        const rawResults = competencyByCandidate[candidate.candidateId] || [];
+      
+        candidate.competencyResults = rawResults.map(result =>
+          formatCompetencyNumbers(result)
+        );
       });
+      
+      
 
       // ---------------------------
       // Need Assessments
@@ -667,8 +709,10 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
       };
       await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
       grouped.candidates.forEach(candidate => {
-        candidate.competencyResults = competencyData?.results || [];
+        candidate.competencyResults = (competencyData?.results || [])
+          .map(c => formatCompetencyNumbers(c));
       });
+      
 
       // Need Assessments
       const needAssessments = await needAssessment.findAll({
