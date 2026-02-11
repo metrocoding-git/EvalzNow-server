@@ -1399,14 +1399,15 @@ exports.getAssessmentChainData = async (req, res) => {
 
         let actionStatus = "Open";
 
-        if (benchmarkIds.length > 1 && observation) {
+        if (benchmarkIds.length > 0 && observation) {
           actionStatus = "Closed";
         } else if (
-          (benchmarkIds.length > 1 && !observation) ||
+          (benchmarkIds.length > 0 && !observation) ||
           (benchmarkIds.length === 0 && observation)
         ) {
           actionStatus = "Pending";
         }
+        
         // else → Open (no benchmarks + no observation)
 
         selections.push({
