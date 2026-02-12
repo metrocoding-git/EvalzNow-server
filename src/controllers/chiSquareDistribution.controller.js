@@ -528,6 +528,7 @@ exports.getChiDistributionData = async (req, res) => {
 
       console.log("Source rows count:", sourceRows.length);
       console.log("Extracted values - RR:", rrArray, "PR:", prArray, "AR:", arArray);
+      console.log("Extracted values - deltaRRN:", deltaRRArray, "deltaPRN:", deltaPRArray, "deltaARN:", deltaARArray);
 
       // ✅ Calculate averages for observed values
       const avgRR = calculateAverage(rrArray);
@@ -538,6 +539,7 @@ exports.getChiDistributionData = async (req, res) => {
       const avgDeltaAR = calculateAverage(deltaARArray);
 
       console.log("Averages - RR:", avgRR, "PR:", avgPR, "AR:", avgAR);
+      console.log("Averages - deltaRRN:", avgDeltaRR, "deltaPRN:", avgDeltaPR, "deltaARN:", avgDeltaAR);
       
       let observed = [];
       let expected = [];
@@ -551,6 +553,9 @@ exports.getChiDistributionData = async (req, res) => {
       const thresDeltaRR = unitData.ΔRRN ? Number(unitData.ΔRRN) : 0;
       const thresDeltaPR = unitData.ΔPRN ? Number(unitData.ΔPRN) : 0;
       const thresDeltaAR = unitData.ΔARN ? Number(unitData.ΔARN) : 0;
+
+      // console.log("Averages - RR:", avgRR, "PR:", avgPR, "AR:", avgAR);
+      console.log("Threshold - deltaRRN:", thresDeltaRR, "deltaPRN:", thresDeltaPR, "deltaARN:", thresDeltaAR);
 
       // ✅ Apply unit-type specific logic
       if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
