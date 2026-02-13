@@ -110,11 +110,11 @@ const calculateRosterPercentages = (roster) => {
   }
 
   return {
-    present: +(presentCount / total * 100).toFixed(2),
-    excusedAbsences: +(excusedAbsences / total * 100).toFixed(2),
-    unexcusedAbsences: +(unexcusedAbsences / total * 100).toFixed(2),
-    excusedTardies: +(excusedTardies / total * 100).toFixed(2),
-    unexcusedTardies: +(unexcusedTardies / total * 100).toFixed(2)
+    present: +(presentCount / total ).toFixed(3),
+    excusedAbsences: +(excusedAbsences / total).toFixed(3),
+    unexcusedAbsences: +(unexcusedAbsences / total).toFixed(3),
+    excusedTardies: +(excusedTardies / total).toFixed(3),
+    unexcusedTardies: +(unexcusedTardies / total).toFixed(3)
   };
 };
 
@@ -141,7 +141,7 @@ const calculateEngageLevelPercentages = (scores) => {
   const percentages = {};
   levels.forEach(level => {
     percentages[level] = total
-      ? +(counts[level] / total * 100).toFixed(2)
+      ? +(counts[level] / total).toFixed(3)
       : 0;
   });
 
@@ -152,7 +152,7 @@ const calculateEngageLevelPercentages = (scores) => {
   };
 };
 
-const calculateUnitTabulationAverages = (candidates) => {
+const calculateUnitTabulationAverages = (candidates, unitType, signatureProfile) => {
   const bucket = {};
 
   const EXCLUDE_KEYS = new Set([
@@ -163,6 +163,7 @@ const calculateUnitTabulationAverages = (candidates) => {
     "STAG"
   ]);
 
+  // 1️⃣ Collect all numeric values from candidate competencyAverages
   candidates.forEach(candidate => {
     const avgRow = candidate.competencyAverages?.[0];
     if (!avgRow) return;
@@ -171,138 +172,196 @@ const calculateUnitTabulationAverages = (candidates) => {
       if (EXCLUDE_KEYS.has(key)) return;
       if (value === null || typeof value !== "number") return;
 
-      if (!bucket[key]) {
-        bucket[key] = [];
-      }
-
+      if (!bucket[key]) bucket[key] = [];
       bucket[key].push(value);
     });
   });
 
-  return Object.entries(bucket).map(([metric, values]) => ({
+  // 2️⃣ Compute averages for each metric
+  const averages = Object.entries(bucket).map(([metric, values]) => ({
     metric,
     value: +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(3),
     candidatesCount: values.length
   }));
-};  
-  
 
-async function buildUnitReport(unitId) {
-  const unitRosterAccumulator = {
-    presentCount: 0,
-    excusedAbsences: 0,
-    unexcusedAbsences: 0,
-    excusedTardies: 0,
-    unexcusedTardies: 0
-  };
+  // 3️⃣ Derived indicators: STAP and STAG
+  const stapStatus = calculateAverageSTAP(averages, unitType);
+  const stagStatus = calculateAverageSTAG(averages, unitType);
+  const count = averages[0]?.candidatesCount ?? 0;
 
-  const unit = await Unit.findOne({
-    where: { id: unitId },
-    include: [
-      {
-        model: db.StaffLookup,
-        as: "staffAssignments",
-        required: false,
-        include: [
-          {
-            model: db.Staff,
-            as: "staff",
-            attributes: ["id", "firstName", "lastName"]
-          }
-        ]
-      },
-      {
-        model: db.Benchmark,
-        as: "benchmarks",
-        required: false
-      }
-    ]
+  averages.push(
+    {
+      metric: "STAP",
+      value: stapStatus,
+      candidatesCount: count
+    },
+    {
+      metric: "STAG",
+      value: stagStatus,
+      candidatesCount: count
+    }
+  );
+
+  // 4️⃣ Compute average IC and add it to tabulationAverages
+  const getMetricValue = (name) => averages.find(a => a.metric === name)?.value ?? 0;
+  const avgRR = getMetricValue("RRN");
+  const avgPR = getMetricValue("PRN");
+  const avgAR = getMetricValue("ARN");
+
+  const avgIC = calculateInteractionClass(avgRR, avgPR, avgAR, unitType, signatureProfile);
+
+  averages.push({
+    metric: "IC",
+    value: avgIC,
+    candidatesCount: count
   });
 
-  if (!unit) return null;
+  return averages;
+};
 
-  const rosterCandidates = await UnitRoster.findAll({
-    where: { unitId },
-    attributes: [
-      [Sequelize.fn("DISTINCT", Sequelize.col("candidateId")), "candidateId"]
-    ],
-    raw: true
-  });
 
-  let candidateIds = rosterCandidates.map(r => r.candidateId);
 
-  if (!candidateIds.length) return { ...unit.toJSON(), candidates: [] };
+// Case 1
+function GetInteractionClassForCase1(rr, pr) {
+  const eqn = Math.sqrt(Math.pow(rr, 2) + Math.pow(pr, 2));
+  return GetInteractionClassAreaCase1(eqn);
+}
 
-  const candidateIdList = candidateIds.join(",");
-  const unitScoreBucket = [];
+// Case 2
+function GetInteractionClassForCase2(rr, pr) {
+  const eqn = Math.sqrt(Math.pow(rr, 3) + Math.pow(pr, 3));
+  return GetInteractionClassAreaCase2(eqn);
+}
 
-  const candidates = [];
+// Case 3a
+function GetInteractionClassForCase3a(rr, pr) {
+  const eqn = Math.sqrt(Math.pow(rr, 3) + Math.pow(pr, 2));
+  return GetInteractionClassAreaCase3a(eqn);
+}
 
-  for (const candidateId of candidateIds) {
-    const scores = await InsertScore.findAll({
-      where: { unitId, candidate_id: candidateId },
-      include: [
-        { model: AssessmentBlockManager, as: "assessmentBlock" },
-        { model: Candidate, as: "candidate" }
-      ],
-      order: [["ppId", "ASC"], ["criticalRefDate", "ASC"]]
-    });
+// Case 3b
+function GetInteractionClassForCase3b(rr, pr) {
+  const eqn = Math.sqrt(Math.pow(rr, 2) + Math.pow(pr, 3));
+  return GetInteractionClassAreaCase3b(eqn);
+}
 
-    if (!scores.length) continue;
+// Third Parameter (3D)
+function GetInteractionClassForThird(rr, pr, ar) {
+  const eqn = Math.sqrt(Math.pow(rr, 2) + Math.pow(pr, 2) + Math.pow(ar, 2));
+  return GetInteractionClassAreaThird(eqn);
+}
 
-    const rosterData = await UnitRoster.findAll({ where: { unitId, candidateId } });
-    const marks = await CandidateMarks.findAll({ where: { unitId, candidateId } });
-    const leaderMarks = await LeaderMarks.findAll({ where: { unitId, candidateId } });
-    const unitImprovement = await UnitImprovement.findAll({ where: { unitId, candidateId } });
+// --- Area lookup tables ---
 
-    rosterData.forEach(r => {
-      unitRosterAccumulator.presentCount += r.presentCount || 0;
-      unitRosterAccumulator.excusedAbsences += r.excusedAbsences || 0;
-      unitRosterAccumulator.unexcusedAbsences += r.unexcusedAbsences || 0;
-      unitRosterAccumulator.excusedTardies += r.excusedTardies || 0;
-      unitRosterAccumulator.unexcusedTardies += r.unexcusedTardies || 0;
-    });
+function GetInteractionClassAreaCase1(eqn) {
+  if (eqn < 0.6) return "0R0P";
+  else if (eqn < 0.7) return "1R1P";
+  else if (eqn < 0.8) return "2R2P";
+  else if (eqn < 0.9) return "3R3P";
+  else if (eqn < 1.0) return "4R4P";
+  else return "5R5P";
+}
 
-    const candidate = {
-      candidateId: scores[0].candidate.id,
-      candidateCode: scores[0].candidate.candidateId,
-      firstName: scores[0].candidate.firstName,
-      lastName: scores[0].candidate.lastName,
-      scores: scores.map(s => s.toJSON()),
-      roster: rosterData.map(r => ({
-        ...r.toJSON(),
-        percentages: calculateRosterPercentages(r.toJSON())
-      })),
-      candidateMarks: marks.map(m => m.toJSON()),
-      leaderMarks: leaderMarks.map(l => l.toJSON()),
-      unitImprovement: unitImprovement.map(u => u.toJSON()),
-      effortBu: []
-    };
+function GetInteractionClassAreaCase2(eqn) {
+  if (eqn < 0.71138) return "0R0P";
+  else if (eqn < 0.78837) return "1R1P";
+  else if (eqn < 0.86177) return "2R2P";
+  else if (eqn < 0.93217) return "3R3P";
+  else if (eqn < 1.0) return "4R4P";
+  else return "5R5P";
+}
 
-    unitScoreBucket.push(...candidate.scores);
+function GetInteractionClassAreaCase3a(eqn) {
+  if (eqn < 0.6) return "0R0P";
+  else if (eqn < 0.7) return "0R1P";
+  else if (eqn < 0.711379) return "0R2P";
+  else if (eqn < 0.788374) return "1R2P";
+  else if (eqn < 0.8) return "2R2P";
+  else if (eqn < 0.86177) return "2R3P";
+  else if (eqn < 0.9) return "3R3P";
+  else if (eqn < 0.93217) return "3R4P";
+  else if (eqn < 1.0) return "4R4P";
+  else return "5R5P";
+}
 
-    // Effort BU
-    const effortReq = { params: { unitId: String(unitId), candidate_id: String(candidateId) }, query: {} };
-    let effortData = null;
+function GetInteractionClassAreaCase3b(eqn) {
+  if (eqn < 0.6) return "0R0P";
+  else if (eqn < 0.7) return "1R0P";
+  else if (eqn < 0.711379) return "2R0P";
+  else if (eqn < 0.788374) return "2R1P";
+  else if (eqn < 0.8) return "2R2P";
+  else if (eqn < 0.86177) return "3R2P";
+  else if (eqn < 0.9) return "3R3P";
+  else if (eqn < 0.93217) return "4R3P";
+  else if (eqn < 1.0) return "4R4P";
+  else return "5R5P";
+}
 
-    await getEffortBu(effortReq, {
-      status() { return this; },
-      json(d) { effortData = d; }
-    });
+// function GetInteractionClassAreaThird(eqn) {
+//   if (eqn < 0.6) return 0;
+//   else if (eqn < 0.7) return 1;
+//   else if (eqn < 0.8) return 2;
+//   else if (eqn < 0.9) return 3;
+//   else if (eqn < 1.0) return 4;
+//   else return 5;
+// }
+function GetInteractionClassAreaThird(eqn) {
+  if (eqn < 0.6) return '0R0P';
+  else if (eqn >= 0.6 && eqn < 0.7) return '1R1P';
+  else if (eqn >= 0.7 && eqn < 0.8) return '2R2P';
+  else if (eqn >= 0.8 && eqn < 0.9) return '3R3P';
+  else if (eqn >= 0.9 && eqn < 1.0) return '4R4P';
+  else return '5R5P';
+}
 
-    candidate.effortBu = effortData;
+// --- Unified router function ---
+function calculateInteractionClass(rr, pr, ar, unitType, signatureProfile) {
+  const rrVal = rr ?? 0;
+  const prVal = pr ?? 0;
+  const arVal = ar ?? 0;
 
-    candidates.push(candidate);
+  if (unitType === "Third Parameter") {
+    return GetInteractionClassForThird(rrVal, prVal, arVal);
   }
 
-  return {
-    ...unit.toJSON(),
-    candidates,
-    engageLevelStats: calculateEngageLevelPercentages(unitScoreBucket),
-    rosterPercentages: calculateRosterPercentages(unitRosterAccumulator),
-    tabulationAverages: calculateUnitTabulationAverages(candidates)
-  };
+  if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+    switch (signatureProfile) {
+      case "Case 1: Solid Balanced":
+        return GetInteractionClassForCase1(rrVal, prVal);
+      case "Case 2: Rigorous Balanced":
+        return GetInteractionClassForCase2(rrVal, prVal);
+      case "Case 3a: Productive-Weighted":
+        return GetInteractionClassForCase3a(rrVal, prVal);
+      case "Case 3b: Receptive-Weighed":
+        return GetInteractionClassForCase3b(rrVal, prVal);
+      default:
+        return null;
+    }
+  }
+
+  return null;
 }
+  
+async function buildAssessmentSummary(unitId, candidateIds) {
+  const req = {
+    params: {
+      unitId,
+      candidate_id: candidateIds.map(String).join(",")
+    }
+  };
+
+  let result = null;
+
+  const res = {
+    status() { return this; },
+    json(data) { result = data; }
+  };
+
+  await getNeedAssessmentStatusSummary(req, res);
+  return result;
+}
+
+
 
   
 exports.getDataReportByUnitCandidate = async (req, res) => {
@@ -346,6 +405,14 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
         where: { unitId, candidateId}
       });
   
+      const unitRosterTotalCount = await UnitRoster.count({
+        where: { unitId }
+      });
+      
+      const unitRosterAll = await UnitRoster.findAll({
+        where: { unitId }
+      });
+      
       // 2️⃣ Fetch scores for ONE unit + ONE candidate
       const scores = await InsertScore.findAll({
         where: {
@@ -375,6 +442,11 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
           candidates: []
         }
       };
+
+      response.unit.rosterStats = {
+        totalCount: unitRosterTotalCount
+      };
+      
   
       if (!scores.length) {
         return res.status(200).json(response);
@@ -427,7 +499,22 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
   
       scores.forEach(row => {
         if (!candidate.pps.find(p => p.ppId === row.ppId)) {
-          candidate.pps.push({
+          candidate.pps.sort((a, b) => {
+            const aId = a.ppId;
+            const bId = b.ppId;
+          
+            // negatives first
+            if (aId < 0 && bId > 0) return -1;
+            if (aId > 0 && bId < 0) return 1;
+          
+            // both negative → sort by absolute value
+            if (aId < 0 && bId < 0) {
+              return Math.abs(aId) - Math.abs(bId);
+            }
+          
+            // both positive → normal ascending
+            return aId - bId;
+          }).push({
             ppId: row.ppId,
             shortDescription: row.assessmentBlock?.shortDescription,
             periodType: row.assessmentBlock?.periodType,
@@ -453,6 +540,40 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       candidate.competencyCumalative = competencyData?.cumulativeSums || [];
       candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
   
+      candidate.competencyResults.sort((a, b) => {
+        const aId = a.ppId;
+        const bId = b.ppId;
+      
+        // negatives first
+        if (aId < 0 && bId > 0) return -1;
+        if (aId > 0 && bId < 0) return 1;
+      
+        // both negative → sort by absolute value
+        if (aId < 0 && bId < 0) {
+          return Math.abs(aId) - Math.abs(bId);
+        }
+      
+        // both positive → normal ascending
+        return aId - bId;
+      });
+
+      candidate.scores.sort((a, b) => {
+        const aId = a.ppId;
+        const bId = b.ppId;
+      
+        // negatives first
+        if (aId < 0 && bId > 0) return -1;
+        if (aId > 0 && bId < 0) return 1;
+      
+        // both negative → sort by absolute value
+        if (aId < 0 && bId < 0) {
+          return Math.abs(aId) - Math.abs(bId);
+        }
+      
+        // both positive → normal ascending
+        return aId - bId;
+      });
+      
       //  Need assessments
       const needAssessments = await needAssessment.findAll({
         where: { unitId, candidateId },
@@ -466,6 +587,23 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
         observation: na.observation
       }));
   
+      candidate.needAssessments.sort((a, b) => {
+        const aId = a.ppId;
+        const bId = b.ppId;
+      
+        // negatives first
+        if (aId < 0 && bId > 0) return -1;
+        if (aId > 0 && bId < 0) return 1;
+      
+        // both negative → sort by absolute value
+        if (aId < 0 && bId < 0) {
+          return Math.abs(aId) - Math.abs(bId);
+        }
+      
+        // both positive → normal ascending
+        return aId - bId;
+      });
+
       //  Neuro science RMS + cognitive load
       const neuroReq = {
         params: { unitId, candidateId },
@@ -756,6 +894,260 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
     }
   };
 
+  function calculateSTAP(RRNValue, PRNValue, ARNValue, MSIPValue, unitType) {
+    const rrn = RRNValue ?? 0;
+    const prn = PRNValue ?? 0;
+    const arn = ARNValue ?? 0;
+    const msip = MSIPValue ?? 0;
+  
+    if (
+      rrn >= 0.7 &&
+      prn >= 0.7 &&
+      (unitType !== "Third Parameter" || arn >= 0.7) &&
+      msip < 0
+    ) {
+      return "STABLE";
+    } else {
+      return "UNSTABLE";
+    }
+  }
+  
+  
+  const calculateSTAG = (deltaRRN, deltaPRN, deltaARN, msipValue, type) => {
+
+    if (deltaRRN > 0 && deltaPRN > 0 && (type !== "Third Parameter" || deltaARN > 0) && msipValue < 0) {
+      return 'STABLE'
+    }
+    else {
+      return 'UNSTABLE'
+    }
+  }
+
+  const calculateAverageSTAP = (tabulationAverages, unitType) => {
+    const getMetric = (name) =>
+      tabulationAverages.find(a => a.metric === name)?.value ?? null;
+  
+    const avgRRN  = getMetric("RRN");
+    const avgPRN  = getMetric("PRN");
+    const avgARN  = getMetric("ARN");
+    const avgMSIP = getMetric("MSIP");
+  
+    return calculateSTAP(
+      avgRRN,
+      avgPRN,
+      avgARN,
+      avgMSIP,
+      unitType
+    );
+  };
+  
+
+  const calculateAverageSTAG = (tabulationAverages, unitType) => {
+    const getMetric = (name) =>
+      tabulationAverages.find(a => a.metric === name)?.value ?? null;
+  
+    const avgDeltaRRN = getMetric("deltaRRN");
+    const avgDeltaPRN = getMetric("deltaPRN");
+    const avgDeltaARN = getMetric("deltaARN");
+    const avgMSIP     = getMetric("MSIP");
+  
+    return calculateSTAG(
+      avgDeltaRRN,
+      avgDeltaPRN,
+      avgDeltaARN,
+      avgMSIP,
+      unitType
+    );
+  };
+  
+
+  
+  async function buildUnitReport(unitId) {
+    const unitRosterAccumulator = {
+      presentCount: 0,
+      excusedAbsences: 0,
+      unexcusedAbsences: 0,
+      excusedTardies: 0,
+      unexcusedTardies: 0
+    };
+  
+    const unit = await Unit.findOne({
+      where: { id: unitId },
+      include: [
+        {
+          model: db.StaffLookup,
+          as: "staffAssignments",
+          required: false,
+          include: [
+            {
+              model: db.Staff,
+              as: "staff",
+              attributes: ["id", "firstName", "lastName"]
+            }
+          ]
+        },
+        {
+          model: db.Benchmark,
+          as: "benchmarks",
+          required: false
+        }
+      ]
+    });
+  
+    if (!unit) return null;
+  
+    // Get distinct candidate IDs from UnitRoster
+    let rosterCandidates = await UnitRoster.findAll({
+      where: { unitId },
+      attributes: [[Sequelize.fn("DISTINCT", Sequelize.col("candidateId")), "candidateId"]],
+      raw: true
+    });
+  
+    let candidateIds = rosterCandidates.map(r => r.candidateId);
+  
+    // Fallback: get candidate IDs from InsertScore
+    if (!candidateIds.length) {
+      const scoreCandidates = await InsertScore.findAll({
+        where: { unitId },
+        attributes: [[Sequelize.fn("DISTINCT", Sequelize.col("candidate_id")), "candidateId"]],
+        raw: true
+      });
+      candidateIds = scoreCandidates.map(s => s.candidateId);
+    }
+  
+    if (!candidateIds.length) return { ...unit.toJSON(), candidates: [], tabulationAverages: [], averageInteractionClass: 0 };
+  
+    const candidateIdList = candidateIds.join(",");
+    const unitScoreBucket = [];
+    const candidates = [];
+  
+    // Build candidates
+    for (const candidateId of candidateIds) {
+      const scores = await InsertScore.findAll({
+        where: { unitId, candidate_id: candidateId },
+        include: [
+          { model: AssessmentBlockManager, as: "assessmentBlock" },
+          { model: Candidate, as: "candidate" }
+        ],
+        order: [["ppId", "ASC"], ["criticalRefDate", "ASC"]]
+      });
+  
+      if (!scores.length) continue;
+  
+      // Roster
+      const rosterData = await UnitRoster.findAll({ where: { unitId, candidateId } });
+      rosterData.forEach(r => {
+        unitRosterAccumulator.presentCount += r.presentCount || 0;
+        unitRosterAccumulator.excusedAbsences += r.excusedAbsences || 0;
+        unitRosterAccumulator.unexcusedAbsences += r.unexcusedAbsences || 0;
+        unitRosterAccumulator.excusedTardies += r.excusedTardies || 0;
+        unitRosterAccumulator.unexcusedTardies += r.unexcusedTardies || 0;
+      });
+  
+      // Marks
+      const marks = await CandidateMarks.findAll({ where: { unitId, candidateId } });
+      const leaderMarks = await LeaderMarks.findAll({ where: { unitId, candidateId } });
+      const unitImprovement = await UnitImprovement.findAll({ where: { unitId, candidateId } });
+  
+      // Base candidate object
+      const candidate = {
+        candidateId: scores[0].candidate.id,
+        candidateCode: scores[0].candidate.candidateId,
+        firstName: scores[0].candidate.firstName,
+        lastName: scores[0].candidate.lastName,
+        nationality: scores[0].candidate.nationality,
+        gender: scores[0].candidate.gender,
+        ethnicity: scores[0].candidate.ethnicity,
+        income: scores[0].candidate.income,
+        religion: scores[0].candidate.religion,
+        maritalStatus: scores[0].candidate.maritalStatus,
+        jobType: scores[0].candidate.jobType,
+        dateOfBirth: scores[0].candidate.dateOfBirth,
+        candidateStartDate: scores[0].candidate.startDate,
+        specialIdNo: scores[0].candidate.specialIdNo,
+        pps: [],
+        roster: rosterData.map(r => ({ ...r.toJSON(), percentages: calculateRosterPercentages(r.toJSON()) })),
+        scores: scores.map(s => s.toJSON()),
+        candidateMarks: marks.map(m => m.toJSON()),
+        leaderMarks: leaderMarks.map(l => l.toJSON()),
+        unitImprovement: unitImprovement.map(u => u.toJSON()),
+        effortBu: [],
+        competencyResults: [],
+        competencyAverages: [],
+        competencyCumalative: [],
+        competencycumulativeAverages: [],
+        needAssessments: [],
+        engageLevelStats: calculateEngageLevelPercentages(scores.map(s => s.toJSON()))
+      };
+  
+      unitScoreBucket.push(...candidate.scores);
+  
+      // PP list
+      scores.forEach(row => {
+        if (!candidate.pps.find(p => p.ppId === row.ppId)) {
+          candidate.pps.push({
+            ppId: row.ppId,
+            shortDescription: row.assessmentBlock?.shortDescription,
+            periodType: row.assessmentBlock?.periodType,
+            delivery: row.assessmentBlock?.delivery
+          });
+        }
+      });
+  
+      // Competency
+      const mockReq = { query: { unitId: String(unitId), candidate_id: String(candidateId) } };
+      const mockRes = { status() { return this; }, json(data) { Object.assign(candidate, {
+        competencyResults: data?.results || [],
+        competencyAverages: data?.averages || [],
+        competencyCumalative: data?.cumulativeSums || [],
+        competencycumulativeAverages: data?.cumulativeAverages || []
+      }); }};
+  
+      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+  
+      // Effort BU
+      const effortReq = { params: { unitId: String(unitId), candidate_id: String(candidateId) } };
+      let effortBU = null;
+      await getEffortBu(effortReq, { status() { return this; }, json(d) { effortBU = d; } });
+      candidate.effortBu = effortBU || [];
+  
+      // Need assessment
+      const needAssessments = await needAssessment.findAll({
+        where: { unitId, candidateId },
+        attributes: ["ppId", "benchmarkIds", "bIds", "observation"]
+      });
+      candidate.needAssessments = needAssessments.map(na => ({
+        ppId: na.ppId,
+        benchmarkIds: JSON.parse(na.benchmarkIds || "[]"),
+        bIds: JSON.parse(na.bIds || "[]"),
+        observation: na.observation
+      }));
+  
+      candidates.push(candidate);
+    }
+  
+    // Build tabulation averages
+    const tabulationAverages = calculateUnitTabulationAverages(candidates, unit.unitType, unit.signatureProfile);
+  
+    // Compute unit-level average Interaction Class
+    const avgRR = tabulationAverages.find(t => t.metric === "RRN")?.value ?? 0;
+    const avgPR = tabulationAverages.find(t => t.metric === "PRN")?.value ?? 0;
+    const avgAR = tabulationAverages.find(t => t.metric === "ARN")?.value ?? 0;
+    const averageInteractionClass = calculateInteractionClass(avgRR, avgPR, avgAR, unit.unitType, unit.signatureProfile);
+  
+    const rosterTotalCount = await UnitRoster.count({ where: { unitId } });
+    return {
+      ...unit.toJSON(),
+      candidates,
+      engageLevelStats: calculateEngageLevelPercentages(unitScoreBucket),
+      rosterPercentages: calculateRosterPercentages(unitRosterAccumulator),
+      tabulationAverages,
+      rosterStats: { totalCount: rosterTotalCount },
+      averageInteractionClass
+    };
+  }
+  
+
   exports.getDataReportByUnit = async (req, res) => {
     try {
       const { unitId } = req.params;
@@ -838,6 +1230,14 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       if (!candidateIds.length) {
         return res.status(200).json(response);
       }
+
+      const unitRosterTotalCount = await UnitRoster.count({
+        where: { unitId }
+      });
+
+      response.unit.rosterStats = {
+        totalCount: unitRosterTotalCount
+      };
   
       const unitScoreBucket = [];
 
@@ -1025,9 +1425,24 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
 
       response.unit.rosterPercentages = calculateRosterPercentages(unitRosterAccumulator);
 
-      response.unit.tabulationAverages = calculateUnitTabulationAverages(response.unit.candidates);
+      response.unit.tabulationAverages = calculateUnitTabulationAverages(response.unit.candidates, unit.unitType, unit.signatureProfile);
 
   
+      // 4️⃣ Compute average Interaction Class (IC) for the unit
+      const tabAvgs = response.unit.tabulationAverages;
+
+      const avgRR  = tabAvgs.find(t => t.metric === "RRN")?.value ?? 0;
+      const avgPR  = tabAvgs.find(t => t.metric === "PRN")?.value ?? 0;
+      const avgAR  = tabAvgs.find(t => t.metric === "deltaARN")?.value ?? 0;
+
+      response.unit.averageInteractionClass = calculateInteractionClass(
+        avgRR,
+        avgPR,
+        avgAR,
+        unit.unitType,
+        unit.signatureProfile
+      );
+
       return res.status(200).json(response);
   
     } catch (error) {
@@ -1080,49 +1495,6 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       });
     }
   };
-    
-  
-  exports.getDataReportByClient = async (req, res) => {
-    try {
-      const { clientId } = req.params;
-  
-      if (!clientId) {
-        return res.status(400).json({ message: "clientId is required" });
-      }
-  
-      const units = await Unit.findAll({
-        where: { clientId },
-        attributes: ["id"]
-      });
-  
-      if (!units.length) {
-        return res.status(200).json({
-          clientId,
-          units: []
-        });
-      }
-  
-      const reports = [];
-  
-      for (const unit of units) {
-        const unitReport = await buildUnitReport(unit.id);
-        if (unitReport) reports.push(unitReport);
-      }
-  
-      return res.status(200).json({
-        clientId,
-        units: reports
-      });
-  
-    } catch (error) {
-      console.error("Error fetching client report:", error);
-      return res.status(500).json({
-        message: "Error fetching client report",
-        error: error.message
-      });
-    }
-  };
-
 
   exports.getGlobalDataReportByClient = async (req, res) => {
     try {
@@ -1131,54 +1503,78 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       if (!clientId) {
         return res.status(400).json({ message: "clientId is required" });
       }
-
-      const globalAnalyticsReq = {
-        params: { clientId: String(clientId) },
-      };
-
-      let globalAnalytics = null;
-      let globalAnalyticsThreshold = null;
-
-      const globalAnalyticsRes = {
-        status() { return this; },
-        json(payload) {
-          globalAnalytics = payload;
-          return this;
-        }
-      };
-
-      const globalAnalyticsThresholdRes = {
-        status() { return this; },
-        json(payload) {
-          globalAnalyticsThreshold = payload;
-          return this;
-        }
-      };
-
-      await getGlobalAnalyticsDataByUnit(globalAnalyticsReq, globalAnalyticsRes);
-      await getUnitSuccessRatesByThreshold(globalAnalyticsReq, globalAnalyticsThresholdRes);
   
+      // 1️⃣ Fetch all units under this client
+      const units = await Unit.findAll({
+        where: { clientId },
+        attributes: ["id"]
+      });
+  
+      if (!units.length) {
+        return res.status(200).json({
+          client: null,
+          summary: [],
+          totalUniqueCandidates: 0
+        });
+      }
+  
+      const unitIds = units.map(u => u.id);
+  
+      // 2️⃣ Fetch all candidate IDs from UnitRoster and InsertScore
+      const rosterCandidates = await UnitRoster.findAll({
+        where: { unitId: unitIds },
+        attributes: [[db.Sequelize.fn("DISTINCT", db.Sequelize.col("candidateId")), "candidateId"]],
+        raw: true
+      });
+  
+      const scoreCandidates = await InsertScore.findAll({
+        where: { unitId: unitIds },
+        attributes: [[db.Sequelize.fn("DISTINCT", db.Sequelize.col("candidate_id")), "candidateId"]],
+        raw: true
+      });
+  
+      // Merge and get unique candidate IDs
+      const allCandidateIds = new Set([
+        ...rosterCandidates.map(r => r.candidateId),
+        ...scoreCandidates.map(s => s.candidateId)
+      ]);
+  
+      const totalUniqueCandidates = allCandidateIds.size;
+  
+      // 3️⃣ Fetch client details
       const client = await Client.findAll({
         where: { id: clientId },
         attributes: ["id", "executiveId", "companyName", "institutionalType", "companyContactNumber", "country", "companySizeId"],
         include: [
           {
             model: db.CompanySize,
-            as: "companySize",
+            as: "companySize"
           }
         ]
       });
   
-      const reports = [];
-
-      reports.push({
-        globalAnalytics,
-        globalAnalyticsThreshold,
+      // 4️⃣ Fetch global analytics & thresholds
+      const globalAnalyticsReq = { params: { clientId: String(clientId) } };
+  
+      let globalAnalytics = null;
+      let globalAnalyticsThreshold = null;
+  
+      await getGlobalAnalyticsDataByUnit(globalAnalyticsReq, {
+        status() { return this; },
+        json(payload) { globalAnalytics = payload; return this; }
+      });
+  
+      await getUnitSuccessRatesByThreshold(globalAnalyticsReq, {
+        status() { return this; },
+        json(payload) { globalAnalyticsThreshold = payload; return this; }
       });
   
       return res.status(200).json({
         client: client.length ? client[0].toJSON() : null,
-        summary: reports
+        totalUniqueCandidates,
+        summary: [
+          { globalAnalytics, globalAnalyticsThreshold }
+        ]
       });
   
     } catch (error) {
@@ -1189,3 +1585,4 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       });
     }
   };
+  
