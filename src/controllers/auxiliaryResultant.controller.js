@@ -1511,7 +1511,7 @@ exports.getNeedAssessmentStatusSummary = async (req, res) => {
           [Op.in]: candidateIds
         }
       },
-      attributes: ["candidateId", "ppId", "benchmarkIds"]
+      attributes: ["candidateId", "ppId", "benchmarkIds", "observation"]
     });
 
     // ----------------------------------------
@@ -1539,15 +1539,18 @@ exports.getNeedAssessmentStatusSummary = async (req, res) => {
     ppKeys.forEach(({ candidateId, ppId }) => {
       const key = `${candidateId}_${ppId}`;
       const assessment = assessmentMap.get(key);
-
-      // 🚨 NO ROW = OPEN
+    
+      // NO ROW AT ALL = OPEN
       if (!assessment) {
         statusCounts.Open += 1;
         return;
       }
-
+    
+      // -----------------------------
+      // Normalize benchmarks
+      // -----------------------------
       let benchmarks = [];
-
+    
       if (Array.isArray(assessment.benchmarkIds)) {
         benchmarks = assessment.benchmarkIds;
       } else if (typeof assessment.benchmarkIds === "string") {
@@ -1557,17 +1560,35 @@ exports.getNeedAssessmentStatusSummary = async (req, res) => {
           benchmarks = [];
         }
       }
-
-      const count = benchmarks.length;
-
-      if (count === 0) {
+    
+      const hasBenchmarks = benchmarks.length > 0;
+    
+      // -----------------------------
+      // Normalize observation
+      // -----------------------------
+      const hasObservation =
+        assessment.observation != null &&
+        String(assessment.observation).trim().length > 0;
+    
+      // -----------------------------
+      // Status Rules
+      // -----------------------------
+      if (!hasBenchmarks && !hasObservation) {
         statusCounts.Open += 1;
-      } else if (count < 5) {
-        statusCounts.Pending += 1;
-      } else {
+      } else if (hasBenchmarks && hasObservation) {
         statusCounts.Closed += 1;
+      } else {
+        statusCounts.Pending += 1;
       }
-    });
+    });  
+    
+    const total = Object.values(statusCounts).reduce((sum, v) => sum + v, 0);
+
+    const statusPercentages = {
+      Open: total ? +(statusCounts.Open / total).toFixed(3) : 0,
+      Pending: total ? +(statusCounts.Pending / total).toFixed(3) : 0,
+      Closed: total ? +(statusCounts.Closed / total).toFixed(3) : 0
+    };
 
     // ----------------------------------------
     // RESPONSE
@@ -1575,7 +1596,9 @@ exports.getNeedAssessmentStatusSummary = async (req, res) => {
     return res.status(200).json({
       unitId,
       candidates: candidateIds,
-      statusCounts
+      statusCounts,
+      statusPercentages
+
     });
 
   } catch (error) {
