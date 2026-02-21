@@ -889,8 +889,8 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     };
 
     const unitTypeSummary = {
-      "Theory & Practice": 0,
       "Communicative I/O": 0,
+      "Theory & Practice": 0,
       "Third Parameter": 0,
     };
 
@@ -1122,21 +1122,21 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
             "SUM",
             literal(`CASE WHEN unitOutcome = 'Ongoing' THEN 1 ELSE 0 END`)
           ),
-          "ongoing",
+          "Ongoing",
         ],
         [
           fn(
             "SUM",
             literal(`CASE WHEN unitOutcome = 'Pass' THEN 1 ELSE 0 END`)
           ),
-          "pass",
+          "Pass",
         ],
         [
           fn(
             "SUM",
             literal(`CASE WHEN unitOutcome = 'Fail' THEN 1 ELSE 0 END`)
           ),
-          "fail",
+          "Fail",
         ],
       ],
       include: [
@@ -1152,9 +1152,9 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     });
 
     const unitOutcomeSummary = {
-      ongoing: Number(unitOutcomeTotals[0]?.ongoing) || 0,
-      pass: Number(unitOutcomeTotals[0]?.pass) || 0,
-      fail: Number(unitOutcomeTotals[0]?.fail) || 0,
+      Pass: Number(unitOutcomeTotals[0]?.Pass) || 0,
+      Fail: Number(unitOutcomeTotals[0]?.Fail) || 0,
+      Ongoing: Number(unitOutcomeTotals[0]?.Ongoing) || 0,
     };
     
     const unitsOfClient = await Unit.findAll({
