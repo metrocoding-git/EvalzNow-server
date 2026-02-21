@@ -961,7 +961,23 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
   };
   
 
+  function calculateStableFraction(data, key) {
+    if (!Array.isArray(data) || !data.length) return 0;
   
+    let stable = 0;
+    let total = 0;
+  
+    data.forEach(item => {
+      const value = item[key];
+      if (value === "STABLE" || value === "UNSTABLE") {
+        total++;
+        if (value === "STABLE") stable++;
+      }
+    });
+  
+    return total === 0 ? 0 : stable / total;
+  }
+
   async function buildUnitReport(unitId) {
     const unitRosterAccumulator = {
       presentCount: 0,
@@ -1019,6 +1035,10 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
   
     const candidateIdList = candidateIds.join(",");
     const unitScoreBucket = [];
+
+    let unitStapStableCount = 0;
+    let unitStagStableCount = 0;
+    let unitCompetencyCandidateCount = 0;
     const candidates = [];
   
     // Build candidates
@@ -1104,6 +1124,16 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       }); }};
   
       await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+
+      // ✅ Unit-level STAP / STAG aggregation
+      if (candidate.competencyAverages.length) {
+        unitCompetencyCandidateCount++;
+
+        const avg = candidate.competencyAverages[0]; // one average per candidate
+
+        if (avg.STAP === "STABLE") unitStapStableCount++;
+        if (avg.STAG === "STABLE") unitStagStableCount++;
+      }
   
       // Effort BU
       const effortReq = { params: { unitId: String(unitId), candidate_id: String(candidateId) } };
@@ -1126,6 +1156,37 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       candidates.push(candidate);
     }
   
+    let assessmentSummary = null;
+
+    const assessmentTrackReq = {
+      params: {
+        unitId: String(unitId),
+        candidate_id: candidateIdList
+      }
+    };
+
+    const assessmentTrackRes = {
+      status() { return this; },
+      json(payload) {
+        assessmentSummary = payload;
+        return this;
+      }
+    };
+
+    await getNeedAssessmentStatusSummary(assessmentTrackReq, assessmentTrackRes);
+
+    const competencyStability = {
+      stapStableFraction:
+        unitCompetencyCandidateCount === 0
+          ? 0
+          : unitStapStableCount / unitCompetencyCandidateCount,
+    
+      stagStableFraction:
+        unitCompetencyCandidateCount === 0
+          ? 0
+          : unitStagStableCount / unitCompetencyCandidateCount
+    };
+
     // Build tabulation averages
     const tabulationAverages = calculateUnitTabulationAverages(candidates, unit.unitType, unit.signatureProfile);
   
@@ -1143,7 +1204,9 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       rosterPercentages: calculateRosterPercentages(unitRosterAccumulator),
       tabulationAverages,
       rosterStats: { totalCount: rosterTotalCount },
-      averageInteractionClass
+      averageInteractionClass,
+      assessmentSummary,
+      competencyStability
     };
   }
   
@@ -1240,6 +1303,10 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       };
   
       const unitScoreBucket = [];
+
+      let unitStapStableCount = 0;
+let unitStagStableCount = 0;
+let unitCompetencyCandidateCount = 0;
 
       // 3️⃣ Iterate candidates
       for (const candidateId of candidateIds) {
@@ -1375,6 +1442,15 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
         candidate.competencyCumalative = competencyData?.cumulativeSums || [];
         candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
   
+        if (candidate.competencyAverages.length) {
+          unitCompetencyCandidateCount++;
+        
+          const avg = candidate.competencyAverages[0]; // ← ONE average per candidate
+        
+          if (avg.STAP === "STABLE") unitStapStableCount++;
+          if (avg.STAG === "STABLE") unitStagStableCount++;
+        }
+
         // effort BU - USD, CSD
         const effortBUReq = { params: { unitId: String(unitId), candidate_id: String(candidateId) } };
         let effortBU = null;
@@ -1423,6 +1499,18 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
         response.unit.engageLevelStats = calculateEngageLevelPercentages(unitScoreBucket);
       }
 
+      response.unit.competencyStability = {
+        stapStableFraction:
+          unitCompetencyCandidateCount === 0
+            ? 0
+            : unitStapStableCount / unitCompetencyCandidateCount,
+      
+        stagStableFraction:
+          unitCompetencyCandidateCount === 0
+            ? 0
+            : unitStagStableCount / unitCompetencyCandidateCount
+      };
+      
       response.unit.rosterPercentages = calculateRosterPercentages(unitRosterAccumulator);
 
       response.unit.tabulationAverages = calculateUnitTabulationAverages(response.unit.candidates, unit.unitType, unit.signatureProfile);

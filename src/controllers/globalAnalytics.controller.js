@@ -660,8 +660,11 @@ exports.getCandidateStableCounts = async (req, res) => {
       raw: true
     });
 
-    const results = [];
-    const totalStableByCandidate = {};
+    // ✅ Global counters
+    let STAP_STABLE = 0;
+    let STAP_UNSTABLE = 0;
+    let STAG_STABLE = 0;
+    let STAG_UNSTABLE = 0;
 
     for (const unit of units) {
       const rosters = await UnitRoster.findAll({
@@ -672,71 +675,35 @@ exports.getCandidateStableCounts = async (req, res) => {
 
       if (!rosters.length) continue;
 
-      const candidates = [];
-
       for (const { candidateId } of rosters) {
         const tabulationData = await callTabulationFunction(unit.id, candidateId);
 
         if (!tabulationData?.results) continue;
 
-        let stableSTAPCount = 0;
-        let stableSTAGCount = 0;
-
         for (const record of tabulationData.results) {
           // ✅ STAP (no ppId rule)
-          if (
-            record.STAP === "STABLE" &&
-            record.candidateId?.toString() === candidateId.toString()
-          ) {
-            stableSTAPCount++;
-          }
+          if (record.STAP === "STABLE") STAP_STABLE++;
+          if (record.STAP === "UNSTABLE") STAP_UNSTABLE++;
 
           // ✅ STAG (ppId > 0 REQUIRED)
-          if (
-            record.STAG === "STABLE" &&
-            record.ppId > 0 &&
-            record.candidateId?.toString() === candidateId.toString()
-          ) {
-            stableSTAGCount++;
+          if (record.ppId > 0) {
+            if (record.STAG === "STABLE") STAG_STABLE++;
+            if (record.STAG === "UNSTABLE") STAG_UNSTABLE++;
           }
         }
-
-        candidates.push({
-          candidateId,
-          stableSTAPCount,
-          stableSTAGCount
-        });
-
-        // ✅ global aggregation
-        if (!totalStableByCandidate[candidateId]) {
-          totalStableByCandidate[candidateId] = {
-            totalStableSTAPCount: 0,
-            totalStableSTAGCount: 0
-          };
-        }
-
-        totalStableByCandidate[candidateId].totalStableSTAPCount += stableSTAPCount;
-        totalStableByCandidate[candidateId].totalStableSTAGCount += stableSTAGCount;
       }
-
-      results.push({
-        unitId: unit.unitId,
-        unitName: unit.unitName,
-        candidates
-      });
     }
 
-    const totalStableCounts = Object.entries(totalStableByCandidate).map(
-      ([candidateId, counts]) => ({
-        candidateId: Number(candidateId),
-        ...counts
-      })
-    );
-
     return res.status(200).json({
-      message: "STAP & STAG stable counts per candidate per unit and total",
-      unitWiseData: results,
-      totalByCandidate: totalStableCounts
+      message: "Global STAP & STAG stability counts",
+      STAP: {
+        STABLE: STAP_STABLE,
+        UNSTABLE: STAP_UNSTABLE
+      },
+      STAG: {
+        STABLE: STAG_STABLE,
+        UNSTABLE: STAG_UNSTABLE
+      }
     });
 
   } catch (error) {
@@ -944,19 +911,8 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     // ===================================================
     // 4️⃣ Need Assessments Aggregation
     // ===================================================
-    const needAssessmentTotals = await NeedAssessments.findAll({
-      attributes: [
-        "unitId",
-        [fn("COUNT", col("CandidateNeedAssessment.id")), "totalNeedAssessments"],
-        [
-          literal(`
-            SUM(
-              CASE WHEN JSON_LENGTH(CandidateNeedAssessment.benchmarkIds) = 0 THEN 1 ELSE 0 END
-            )
-          `),
-          "openNeedAssessments",
-        ],
-      ],
+    // Fetch all NeedAssessments for the client
+    const needAssessments = await NeedAssessments.findAll({
       include: [
         {
           model: Unit,
@@ -966,9 +922,34 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
           required: true,
         },
       ],
-      group: ["CandidateNeedAssessment.unitId"],
       raw: true,
     });
+
+    // Initialize counters
+    const needAssessmentSummary = {
+      Open: 0,
+      Pending: 0,
+      Closed: 0,
+    };
+
+    for (const na of needAssessments) {
+      let bIds = [];
+      try {
+        bIds = JSON.parse(na.bIds || "[]");
+      } catch (err) {
+        bIds = [];
+      }
+
+      const observation = (na.observation || "").trim();
+
+      if (bIds.length === 0 && !observation) {
+        needAssessmentSummary.Open++;
+      } else if (bIds.length > 0 && observation) {
+        needAssessmentSummary.Closed++;
+      } else {
+        needAssessmentSummary.Pending++;
+      }
+    }
 
     // for (const row of needAssessmentTotals) {
     //   needAssessmentSummary.total += Number(row.totalNeedAssessments) || 0;
@@ -1205,10 +1186,10 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     }
     
     // 3️⃣ Calculate open
-    const needAssessmentSummary = {
-      total: totalNeedAssessmentCount,
-      open: totalNeedAssessmentCount - existingNeedAssessmentCount,
-    };
+    // const needAssessmentSummary = {
+    //   total: totalNeedAssessmentCount,
+    //   open: totalNeedAssessmentCount - existingNeedAssessmentCount,
+    // };
 
     // ===================================================
     //  Final Response
