@@ -1393,6 +1393,7 @@ exports.getAssessmentChainData = async (req, res) => {
         const PRN = comp.PRN || null;
         const ARN = comp.ARN || null;
         const criticalRefDate = comp.criticalRefDate || null;
+        const IC = comp.IC || null; 
 
         // Get benchmark ids
         const { benchmarkIds, observation } = await getNeedAssessmentData(unitId, candidateId, ppId);
@@ -1416,6 +1417,7 @@ exports.getAssessmentChainData = async (req, res) => {
           RRN,
           PRN,
           ARN,
+          IC,
           criticalRefDate,
           benchmarkIds,
           actionStatus

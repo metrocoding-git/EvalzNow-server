@@ -547,9 +547,9 @@ exports.getChiDistributionData = async (req, res) => {
       let distributionName = '';
 
       // ✅ Get threshold values from unit data
-      const thresRR = 0; // As per requirement, set to 0
-      const thresPR = 0; // As per requirement, set to 0
-      const thresAR = 0; // As per requirement, set to 0
+      const thresRR = 0.700; // As per requirement, set to 0
+      const thresPR = 0.700; // As per requirement, set to 0
+      const thresAR = 0.700; // As per requirement, set to 0
       const thresDeltaRR = unitData.ΔRRN ? Number(unitData.ΔRRN) : 0;
       const thresDeltaPR = unitData.ΔPRN ? Number(unitData.ΔPRN) : 0;
       const thresDeltaAR = unitData.ΔARN ? Number(unitData.ΔARN) : 0;
