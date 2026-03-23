@@ -109,6 +109,10 @@ exports.createUnit = async (req, res) => {
     // `staffLookup` = array of { staffId, roleType } objects
     // Example: [{ staffId: 1, roleType: "Leader" }, { staffId: 1, roleType: "Assessor" }, { staffId: 2, roleType: "Assessor" }]
 
+    if (!unitData.scoringSystem) {
+      unitData.scoringSystem = null;
+    }
+
     // Step 1: Create the unit
     const newUnit = await Unit.create({ ...unitData, clientId }, { transaction });
 
