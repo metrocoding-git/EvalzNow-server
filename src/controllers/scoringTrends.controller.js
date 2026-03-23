@@ -63,6 +63,7 @@ exports.getInsertScoreSequential = async (req, res) => {
         return {
           serialNo: index + 1,
           ppId: row.ppId,
+          competency: row.competency,
           mcValues,
           ccValues,
           attainedScore: row.attainedScore,
@@ -129,9 +130,11 @@ exports.getInsertScoreSummary = async (req, res) => {
       const grouped = {};
       rows.forEach(row => {
         const ppId = row.ppId;
+        const competency = row.competency;
         if (!grouped[ppId]) {
           grouped[ppId] = {
             ppId,
+            competency,
             totalRows: 0,
             mcCounts: {},
             ccCounts: {},
@@ -201,7 +204,7 @@ exports.getAttainedScoreSummary = async (req, res) => {
     // 🔹 Fetch all rows sorted by ppId
     const rows = await InsertScore.findAll({
       where,
-      attributes: ["ppId", "attainedScore", "maxScore"],
+      attributes: ["ppId", "attainedScore", "maxScore", "competency"],
       order: [["criticalRefDate", "ASC"]],
       raw: true,
     });
@@ -214,6 +217,7 @@ exports.getAttainedScoreSummary = async (req, res) => {
     const positiveResult = positiveRows.map((row, i) => ({
       serialNo: i + 1,
       ppId: row.ppId,
+      competency: row.competency,
       attainedScore: Number(row.attainedScore ?? 0),
       maxScore: Number(row.maxScore ?? 0),
     }));
@@ -221,6 +225,7 @@ exports.getAttainedScoreSummary = async (req, res) => {
     const negativeResult = negativeRows.map((row, i) => ({
       serialNo: i + 1,
       ppId: row.ppId,
+      competency: row.competency,
       attainedScore: Number(row.attainedScore ?? 0),
       maxScore: Number(row.maxScore ?? 0),
     }));

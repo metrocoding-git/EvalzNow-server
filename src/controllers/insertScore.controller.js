@@ -537,13 +537,16 @@ exports.getPpSummary = async (req, res) => {
 
 exports.getScoresByUnitGrouped = async (req, res) => {
   try {
-    const { unitId } = req.params;
+    const { unitId, candidateId } = req.params;
 
     if (!unitId) {
       return res.status(400).json({ message: "unitId is required" });
     }
 
-    // Define competency types mapping
+    if (!candidateId) {
+      return res.status(400).json({ message: " candidateId are required" });
+    }
+
     const competencyTypes = {
       "Communicative I/O": [
         { attained: "Attained Listening Score", max: "Maximum Listening Score", dataKey: "Listening" },
@@ -562,7 +565,6 @@ exports.getScoresByUnitGrouped = async (req, res) => {
       ]
     };
 
-    // Step 1: Fetch grouped raw data
     const rows = await InsertScore.findAll({
       attributes: [
         "competency",
@@ -574,19 +576,21 @@ exports.getScoresByUnitGrouped = async (req, res) => {
         [Sequelize.fn("SUM", Sequelize.col("InsertScore.attainedScore")), "totalAttained"],
         [Sequelize.fn("SUM", Sequelize.col("InsertScore.maxScore")), "totalMax"]
       ],
-      where: { unitId },
+      where: { 
+        unitId,
+        candidate_id: candidateId   
+      },
       include: [
         {
           model: Unit,
           as: "unit",
-          attributes: [], // prevent duplicating in SELECT since we use col()
+          attributes: [],
         },
       ],
-      group: ["competency", "ppId", "unitId", "unit.unitName", "unit.unitType"],
+      group: ["competency", "ppId", "InsertScore.unitId", "unit.unitName", "unit.unitType"],
       raw: true,
     });
 
-    // Step 2: Pivot rows by ppId and competency
     const pivoted = {};
     rows.forEach(row => {
       const { ppId, competency, totalAttained, totalMax, unitName, unitId, unitType } = row;
@@ -594,7 +598,6 @@ exports.getScoresByUnitGrouped = async (req, res) => {
         pivoted[ppId] = { ppId, unitName, unitId, unitType };
       }
 
-      // Find matching column mapping
       Object.values(competencyTypes).forEach(typeArr => {
         typeArr.forEach(type => {
           if (type.dataKey === competency) {
@@ -605,7 +608,6 @@ exports.getScoresByUnitGrouped = async (req, res) => {
       });
     });
 
-    // Step 3: Convert object to array and sort by ppId
     const result = Object.values(pivoted).sort((a, b) => a.ppId - b.ppId);
 
     res.status(200).json(result);
