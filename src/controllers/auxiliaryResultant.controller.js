@@ -1446,6 +1446,236 @@ exports.getAssessmentChainData = async (req, res) => {
   }
 };
 
+
+exports.getAssessmentChainById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ message: "Chain ID is required" });
+    }
+
+    const chain = await AssessmentChain.findOne({
+      where: { id },
+      include: [
+        { model: Unit, as: "unit", attributes: ["id", "unitName"] },
+        { model: Candidate, as: "candidate", attributes: ["id", "firstName", "lastName"] },
+        { model: AssessmentBlockManager, as: "block1" },
+        { model: AssessmentBlockManager, as: "block2" },
+        { model: AssessmentBlockManager, as: "block3" },
+        { model: AssessmentBlockManager, as: "block4" },
+        { model: AssessmentBlockManager, as: "block5" },
+      ]
+    });
+
+    if (!chain) {
+      return res.status(404).json({ message: "AssessmentChain not found" });
+    }
+
+    const unitId = chain.unitId;
+    const candidateId = chain.candidateId;
+
+    //  Get tabulation data
+    const mockReq = { query: { unitId, candidate_id: candidateId } };
+    let tabData = null;
+
+    const mockRes = {
+      status() { return this; },
+      json(data) { tabData = data; return this; }
+    };
+
+    await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+
+    const competencyResults = tabData?.results || [];
+
+    //  Helper
+    const getNeedAssessmentData = async (unitId, candidateId, ppId) => {
+      const assessment = await CandidateNeedAssessment.findOne({
+        where: { unitId, candidateId, ppId }
+      });
+
+      return {
+        benchmarkIds: assessment?.benchmarkIds
+          ? JSON.parse(assessment.benchmarkIds)
+          : [],
+        observation: assessment?.observation?.trim() || ""
+      };
+    };
+
+    const selections = [];
+
+    for (let i = 1; i <= 5; i++) {
+      const block = chain[`block${i}`];
+      if (!block) continue;
+
+      const ppId = block.ppId;
+
+      const comp = competencyResults.find(
+        c => String(c.ppId) === String(ppId) &&
+             String(c.candidateId) === String(candidateId)
+      ) || {};
+
+      const { benchmarkIds, observation } =
+        await getNeedAssessmentData(unitId, candidateId, ppId);
+
+      let actionStatus = "Open";
+
+      if (benchmarkIds.length > 0 && observation) {
+        actionStatus = "Closed";
+      } else if (
+        (benchmarkIds.length > 0 && !observation) ||
+        (benchmarkIds.length === 0 && observation)
+      ) {
+        actionStatus = "Pending";
+      }
+
+      selections.push({
+        selectionNumber: i,
+        blockId: block.id,
+        ppId,
+        RRN: comp.RRN || null,
+        PRN: comp.PRN || null,
+        ARN: comp.ARN || null,
+        IC: comp.IC || null,
+        criticalRefDate: comp.criticalRefDate || null,
+        benchmarkIds,
+        actionStatus
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        chainId: chain.id,
+        unitId,
+        candidateId,
+        selections
+      }
+    });
+
+  } catch (error) {
+    console.error("Error in getAssessmentChainById:", error);
+    return res.status(500).json({
+      message: "Error fetching assessment chain",
+      error: error.message
+    });
+  }
+};
+
+exports.updateAssessmentChain = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      selection1,
+      selection2,
+      selection3,
+      selection4,
+      selection5
+    } = req.body;
+
+    // ----------------------------
+    //  Validate ID
+    // ----------------------------
+    if (!id) {
+      return res.status(400).json({ message: "Chain ID is required" });
+    }
+
+    const chain = await AssessmentChain.findByPk(id);
+
+    if (!chain) {
+      return res.status(404).json({ message: "AssessmentChain not found" });
+    }
+
+    // ----------------------------
+    //  Validate required selection1
+    // ----------------------------
+    if (!selection1) {
+      return res.status(400).json({
+        message: "selection1 is required"
+      });
+    }
+
+    // ----------------------------
+    //  Validate blocks
+    // ----------------------------
+    const block1Exists = await AssessmentBlockManager.findByPk(selection1);
+    if (!block1Exists) {
+      return res.status(404).json({ message: "selection1 block not found" });
+    }
+
+    const optionalSelections = {
+      selection2,
+      selection3,
+      selection4,
+      selection5
+    };
+
+    for (const [key, val] of Object.entries(optionalSelections)) {
+      if (val) {
+        const blockExists = await AssessmentBlockManager.findByPk(val);
+        if (!blockExists) {
+          return res.status(404).json({ message: `${key} block not found` });
+        }
+      }
+    }
+
+    // ----------------------------
+    //  Prevent duplicates 
+    // ----------------------------
+    const selections = [selection1, selection2, selection3, selection4, selection5]
+      .filter(Boolean);
+
+    const uniqueSelections = new Set(selections);
+
+    if (selections.length !== uniqueSelections.size) {
+      return res.status(400).json({
+        message: "Duplicate selections are not allowed"
+      });
+    }
+
+    // ----------------------------
+    //  Update chain
+    // ----------------------------
+    await chain.update({
+      selection1,
+      selection2: selection2 || null,
+      selection3: selection3 || null,
+      selection4: selection4 || null,
+      selection5: selection5 || null
+    });
+
+    // ----------------------------
+    //  Return updated chain
+    // ----------------------------
+    const updatedChain = await AssessmentChain.findOne({
+      where: { id },
+      include: [
+        { model: Unit, as: 'unit', attributes: ['id', 'unitName'] },
+        { model: Candidate, as: 'candidate', attributes: ['id', 'firstName', 'lastName'] },
+        { model: AssessmentBlockManager, as: 'block1' },
+        { model: AssessmentBlockManager, as: 'block2' },
+        { model: AssessmentBlockManager, as: 'block3' },
+        { model: AssessmentBlockManager, as: 'block4' },
+        { model: AssessmentBlockManager, as: 'block5' },
+      ]
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "AssessmentChain updated successfully",
+      data: updatedChain
+    });
+
+  } catch (error) {
+    console.error("Error in updateAssessmentChain:", error);
+    return res.status(500).json({
+      message: "Error updating AssessmentChain",
+      error: error.message
+    });
+  }
+};
+
 exports.getNeedAssessmentStatusSummary = async (req, res) => {
   try {
     const { unitId, candidate_id } = req.params;

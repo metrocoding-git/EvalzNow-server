@@ -10,6 +10,7 @@ router.get('/lesson/:unitId/:candidate_id', auxiliaryResultant.getLessonImprovem
 router.get('/leader/:unitId/:candidate_id', auxiliaryResultant.getLeaderMarks);
 router.get('/effort/:unitId/:candidate_id', auxiliaryResultant.getEffortBu);
 router.get('/chain/:unitId/:candidateId', auxiliaryResultant.getAssessmentChainData);
+router.get('/chain/:id', auxiliaryResultant.getAssessmentChainById);
 router.put('/lesson/:id', auxiliaryResultant.updateLessonImprovement);
 router.post('/marks', auxiliaryResultant.createCandidateMarks);
 router.post('/assessment', auxiliaryResultant.createCandidateNeedAssessment);
@@ -17,6 +18,7 @@ router.post('/lesson', auxiliaryResultant.createLessonImprovement);
 router.post('/leader', auxiliaryResultant.createLeaderMarks);
 router.post('/chain', auxiliaryResultant.createAssessmentChain);
 router.put('/assessment/:id', auxiliaryResultant.updateCandidateNeedAssessment);
+router.put('/chain/:id', auxiliaryResultant.updateAssessmentChain);
 router.delete('/assessment/:id', auxiliaryResultant.deleteCandidateNeedAssessment);
 router.delete('/lesson/:id', auxiliaryResultant.deleteUnitImprovement);
 
