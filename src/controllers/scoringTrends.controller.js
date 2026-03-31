@@ -163,7 +163,7 @@ exports.getInsertScoreSummary = async (req, res) => {
   
 
 
- // GET Insert Score summary for Attained Score vs Insert Score Row Counter 
+// GET Insert Score summary for Attained Score vs Insert Score Row Counter 
 exports.getAttainedScoreSummary = async (req, res) => {
   try {
     const {
@@ -179,7 +179,7 @@ exports.getAttainedScoreSummary = async (req, res) => {
       return res.status(400).json({ message: "unitId and candidate_id are required" });
     }
 
-    // 🔹 Build filter conditions
+    //  Build filter conditions
     const where = {
       unitId,
       candidate_id,
@@ -201,43 +201,77 @@ exports.getAttainedScoreSummary = async (req, res) => {
         where.criticalRefDate[Sequelize.Op.lte] = new Date(criticalRefDateTo);
     }
 
-    // 🔹 Fetch all rows sorted by ppId
+    //  Fetch all rows
     const rows = await InsertScore.findAll({
       where,
-      attributes: ["ppId", "attainedScore", "maxScore", "competency"],
-      order: [["criticalRefDate", "ASC"]],
+      attributes: ["ppId", "subPpId", "attainedScore", "maxScore", "competency"],
+      order: [["ppId", "ASC"], ["subPpId", "ASC"]],
       raw: true,
     });
 
-    // 🔹 Separate into positive and negative ppIds
-    const positiveRows = rows.filter(r => r.ppId >= 0);
-    const negativeRows = rows.filter(r => r.ppId < 0);
+    //  Group by ppId and competency, summing attainedScore and maxScore
+    const groups = new Map();
 
-    // 🔹 Assign serial numbers starting from 1 in each group
-    const positiveResult = positiveRows.map((row, i) => ({
-      serialNo: i + 1,
-      ppId: row.ppId,
-      competency: row.competency,
-      attainedScore: Number(row.attainedScore ?? 0),
-      maxScore: Number(row.maxScore ?? 0),
+    rows.forEach(row => {
+      const key = `${row.ppId}|${row.competency || 'null'}`;
+      
+      if (!groups.has(key)) {
+        groups.set(key, {
+          ppId: row.ppId,
+          competency: row.competency,
+          totalAttainedScore: 0,
+          totalMaxScore: 0,
+          subPpIds: [],
+        });
+      }
+      
+      const group = groups.get(key);
+      group.totalAttainedScore += Number(row.attainedScore ?? 0);
+      group.totalMaxScore += Number(row.maxScore ?? 0);
+      group.subPpIds.push(row.subPpId);
+    });
+
+    //  Convert Map to array
+    const groupedRows = Array.from(groups.values()).map((group) => ({
+      ppId: group.ppId,
+      competency: group.competency,
+      attainedScore: group.totalAttainedScore,
+      maxScore: group.totalMaxScore,
+      subPpIds: group.subPpIds,
+      count: group.subPpIds.length,
     }));
 
-    const negativeResult = negativeRows.map((row, i) => ({
-      serialNo: i + 1,
-      ppId: row.ppId,
-      competency: row.competency,
-      attainedScore: Number(row.attainedScore ?? 0),
-      maxScore: Number(row.maxScore ?? 0),
+    //  Separate into positive and negative ppIds
+    let positiveResult = groupedRows.filter(r => r.ppId >= 0);
+    let negativeResult = groupedRows.filter(r => r.ppId < 0);
+
+    //  Sort positive ppIds in ascending order
+    positiveResult.sort((a, b) => a.ppId - b.ppId);
+    
+    //  Sort negative ppIds in descending order
+    negativeResult.sort((a, b) => b.ppId - a.ppId);
+
+    //  Assign serial numbers for each group separately
+    positiveResult = positiveResult.map((item, idx) => ({
+      ...item,
+      serialNo: idx + 1,
+    }));
+    
+    negativeResult = negativeResult.map((item, idx) => ({
+      ...item,
+      serialNo: idx + 1,
     }));
 
-    // 🔹 Merge both results for frontend compatibility
+    //  Merge both results for frontend compatibility 
     const result = [...negativeResult, ...positiveResult];
 
     return res.status(200).json({
-      total: result.length,
+      totalGroups: groupedRows.length,
+      positiveCount: positiveResult.length,
+      negativeCount: negativeResult.length,
       positiveData: positiveResult,
       negativeData: negativeResult,
-      data: result, // full combined list if needed
+      data: result,
     });
 
   } catch (error) {
@@ -248,7 +282,6 @@ exports.getAttainedScoreSummary = async (req, res) => {
     });
   }
 };
-
 
 
   // GET Insert Score summary for Max Score vs Insert Score Row Counter
