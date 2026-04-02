@@ -67,9 +67,13 @@ function calculateXEP_CIO(rrn, prn) {
 
 function calculateXEP_TP(rrn, prn, arn) {
   if (rrn == null || prn == null || arn == null) return null;
-  const val = Math.sqrt(
-    0.5 * (Math.pow(rrn - prn, 2) + Math.pow(prn - arn, 2) + Math.pow(arn - rrn, 2))
-  );
+
+  const term1 = Math.sqrt(rrn ** 2 + prn ** 2 - rrn * prn);
+  const term2 = Math.sqrt(rrn ** 2 + arn ** 2 - rrn * arn);
+  const term3 = Math.sqrt(prn ** 2 + arn ** 2 - prn * arn);
+
+  const val = (term1 + term2 + term3) / 3;
+
   return isNaN(val) ? null : +val.toFixed(3);
 }
 
@@ -298,9 +302,15 @@ function calculateGEQ_CIO(deltaRRN, deltaPRN) {
 
 function calculateGEQ_TP(deltaRRN, deltaPRN, deltaARN) {
   if (deltaRRN == null || deltaPRN == null || deltaARN == null) return null;
-  const val = Math.sqrt(
-    0.5 * (Math.pow(deltaRRN - deltaPRN, 2) + Math.pow(deltaPRN - deltaARN, 2) + Math.pow(deltaARN - deltaRRN, 2))
-  );
+
+  const safeSqrt = (x) => Math.sqrt(Math.max(0, x));
+
+  const term1 = safeSqrt(deltaRRN ** 2 + deltaPRN ** 2 - deltaRRN * deltaPRN);
+  const term2 = safeSqrt(deltaRRN ** 2 + deltaARN ** 2 - deltaRRN * deltaARN);
+  const term3 = safeSqrt(deltaPRN ** 2 + deltaARN ** 2 - deltaPRN * deltaARN);
+
+  const val = (term1 + term2 + term3) / 3;
+
   return isNaN(val) ? null : +val.toFixed(3);
 }
 
