@@ -1,0 +1,29 @@
+const express = require('express');
+const router = express.Router();
+
+router.use('/users', require('./user.routes'));
+router.use('/clients', require('./client.routes'));
+router.use('/company', require('./companySize.routes'));
+router.use('/staffs', require('./staff.routes'));
+router.use('/candidates', require('./candidate.routes'));
+router.use('/irregulaties', require('./irregularity.routes'));
+router.use('/units', require('./unit.routes'));
+router.use('/benchmark', require('./benchmark.routes'));
+router.use('/unit_roster', require('./unitRoster.routes'));
+router.use('/assessment_block_manager', require('./assessmentBlockManager.routes'));
+router.use('/ethinicity', require('./ethinicity.routes'));
+router.use('/income', require('./income.routes'));
+router.use('/insert-score', require('./insertScore.routes'));
+router.use('/scoring-criteria', require('./scoringCriteria.routes'));
+router.use('/scoring-trends', require('./scoringTrends.routes'));
+router.use('/tabulation', require('./tabulationTable.routes'));
+router.use('/account', require('./account.routes'));
+router.use('/projection', require('./projection.routes'));
+router.use('/unit-distribution', require('./unitDistribution.route'));
+router.use('/auxiliary', require('./auxiliary.routes'));
+router.use('/neuro-science', require('./neuroScience.routes'));
+router.use('/global-analytics', require('./globalAnalytic.routes'));
+router.use('/data-extract', require('./dataExtraction.routes'));
+router.use('/data-report', require('./dataReport.routes'));
+
+module.exports = router;

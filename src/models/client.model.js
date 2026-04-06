@@ -1,0 +1,118 @@
+const crypto = require("crypto");
+
+module.exports = (sequelize, DataTypes) => {
+  const Client = sequelize.define('Client', {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    executiveId: {
+      type: DataTypes.STRING(15),  // VARCHAR(15)
+      allowNull: false,
+      unique: true,
+      defaultValue: () =>
+        Array.from({ length: 15 }, () =>
+          Math.floor(Math.random() * 36).toString(36).toUpperCase()
+        ).join("")
+    },
+    lastName: { type: DataTypes.STRING, allowNull: false },
+    firstName: { type: DataTypes.STRING, allowNull: false },
+    jobTitle: { type: DataTypes.STRING, allowNull: false },
+    emailAddress: {
+      type: DataTypes.STRING(150),
+      allowNull: false,
+      unique: true,
+      validate: { isEmail: true }
+    },
+    companyName: { type: DataTypes.STRING, allowNull: false },
+    companyContactNumber: { type: DataTypes.STRING, allowNull: true },
+    institutionalType: { type: DataTypes.STRING, allowNull: true },
+    businessRegistrationNo: { type: DataTypes.STRING, allowNull: true },
+    country: { type: DataTypes.STRING, allowNull: true },
+    companySizeId: { // Foreign key to CompanySize table
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'company_sizes',
+        key: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL'
+    },
+    status: {
+      type: DataTypes.ENUM("Activate", "Deactivate"),
+      defaultValue: "Activate"
+    },
+    accountId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'accounts',
+        key: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE'
+    }
+  }, {
+    tableName: 'clients',
+    timestamps: true,
+    hooks: {
+      beforeCreate: (exec) => {
+        if (!exec.executiveId) {
+          exec.executiveId = crypto.randomBytes(5).toString("hex").toUpperCase();
+        }
+      }
+    }
+  });
+
+  Client.associate = (models) => {
+    Client.belongsTo(models.CompanySize, { foreignKey: 'companySizeId', as: 'companySize' });
+  };
+
+  Client.associate = (models) => {
+    Client.belongsTo(models.Account, {
+      foreignKey: "accountId",
+      as: "account",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+    
+    Client.hasMany(models.Staff, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Client.hasMany(models.Candidate, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Client.hasMany(models.Unit, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Client.hasMany(models.Ethinicity, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    Client.hasMany(models.Income, {
+      foreignKey: "clientId",
+      as: "clients",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+  };
+
+  return Client;
+};
