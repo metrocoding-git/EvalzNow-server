@@ -463,18 +463,6 @@ db.CandidateNeedAssessment.belongsTo(db.Unit, {
 });
 
 
-// Candidate ↔ unitImprovement
-db.Candidate.hasMany(db.UnitImprovement, {
-  foreignKey: "candidateId",
-  as: "lessons",
-  onDelete: "CASCADE",
-  onUpdate: "CASCADE"
-});
-
-db.UnitImprovement.belongsTo(db.Candidate, {
-  foreignKey: "candidateId",
-  as: "candidate",
-});
 
 // Unit ↔ UnitImprovement
 db.Unit.hasMany(db.UnitImprovement, {
@@ -492,21 +480,6 @@ db.UnitImprovement.belongsTo(db.Unit, {
 
 // ================== LeaderMarks Associations ==================
 if (db.LeaderMarks) {
-
-  // LeaderMarks ↔ Candidate
-  db.Candidate.hasMany(db.LeaderMarks, {
-    foreignKey: "candidateId",
-    as: "leaderMarks",
-    onDelete: "CASCADE",
-    onUpdate: "CASCADE"
-  });
-
-  db.LeaderMarks.belongsTo(db.Candidate, {
-    foreignKey: "candidateId",
-    as: "candidate",
-    onDelete: "CASCADE",
-    onUpdate: "CASCADE"
-  });
 
   // LeaderMarks ↔ Unit
   db.Unit.hasMany(db.LeaderMarks, {

@@ -1053,7 +1053,6 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     const leaderImpactByUnit = await LeaderMarks.findAll({
       attributes: [
         "unitId",
-        "candidateId",
         [
           fn(
             "SUM",
@@ -1072,9 +1071,9 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
           required: true,
         },
       ],
-      group: ["LeaderMarks.unitId", "LeaderMarks.candidateId"],
+      group: ["LeaderMarks.unitId"], //  unitId
       raw: true,
-    });    
+    });
 
     
     const leaderMarks = {};

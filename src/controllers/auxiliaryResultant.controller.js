@@ -664,26 +664,20 @@ exports.deleteCandidateNeedAssessment = async (req, res) => {
 
 exports.getLessonImprovements = async (req, res) => {
   try {
-    const { unitId, candidate_id } = req.params;
+    const { unitId } = req.params;
 
-    if (!unitId || !candidate_id) {
+    if (!unitId) {
       return res.status(400).json({
-        message: "unitId and candidate_id are required"
+        message: "unitId are required"
       });
     }
 
     const assessments = await UnitImprovement.findAll({
       where: {
         unitId: unitId,
-        candidateId: candidate_id
       },
       order: [["createdAt", "DESC"]],
       include: [
-        {
-          model: db.Candidate,
-          as: "candidate",
-          attributes: ["id", "firstName", "lastName"]
-        },
         {
           model: db.Unit,
           as: "unit",
@@ -702,7 +696,6 @@ exports.getLessonImprovements = async (req, res) => {
     console.error("Error in getUnitImprovements:", error);
 
     return res.status(500).json({
-      message: "Error computing candidate need assessments",
       error: error.message
     });
   }
@@ -710,23 +703,14 @@ exports.getLessonImprovements = async (req, res) => {
 
 exports.createLessonImprovement = async (req, res) => {
   try {
-    const { unitId, candidateId, candidateIds, benchmarkIds, bIds, lesson } = req.body;
+    const { unitId, benchmarkIds, bIds, lesson } = req.body;
 
-    // Accept both single candidateId and array candidateIds
-    let candidatesArray = [];
-
-    if (Array.isArray(candidateIds)) {
-      candidatesArray = candidateIds;
-    } else if (Array.isArray(candidateId)) {
-      candidatesArray = candidateId;
-    } else if (candidateId) {
-      candidatesArray = [candidateId];
-    }
-
-    // Validate
-    if (!unitId || candidatesArray.length === 0 || !lesson) {
+    // ============================
+    // 1. Validate required fields
+    // ============================
+    if (!unitId || !lesson) {
       return res.status(400).json({
-        message: "unitId, candidateId(s), and lesson are required"
+        message: "unitId and lesson are required"
       });
     }
 
@@ -734,50 +718,40 @@ exports.createLessonImprovement = async (req, res) => {
     const normalizedBenchmarkIds = benchmarkIds || [];
     const normalizedBIds = bIds || [];
 
-    // Create all improvements in parallel
-    const createdEntries = await Promise.all(
-      candidatesArray.map(async (cid) => {
-        const entry = await UnitImprovement.create({
-          unitId,
-          candidateId: cid,
-          benchmarkIds: normalizedBenchmarkIds,
-          bIds: normalizedBIds,
-          lesson
-        });
+    // ============================
+    // 2. Create Unit Improvement
+    // ============================
+    const newImprovement = await db.UnitImprovement.create({
+      unitId,
+      benchmarkIds: normalizedBenchmarkIds,
+      bIds: normalizedBIds,
+      lesson
+    });
 
-        // fetch with associations
-        return await db.UnitImprovement.findOne({
-          where: { id: entry.id },
-          include: [
-            {
-              model: db.Candidate,
-              as: "candidate",
-              attributes: ["id", "firstName", "lastName"]
-            },
-            {
-              model: db.Unit,
-              as: "unit",
-              attributes: ["id", "unitName"]
-            }
-          ]
-        });
-      })
-    );
+    // ============================
+    // 3. Fetch full relational data
+    // ============================
+    const fullData = await db.UnitImprovement.findOne({
+      where: { id: newImprovement.id },
+      include: [
+        {
+          model: db.Unit,
+          as: "unit",
+          attributes: ["id", "unitName"]
+        }
+      ]
+    });
 
     return res.status(201).json({
       success: true,
-      count: createdEntries.length,
-      message:
-        createdEntries.length > 1
-          ? "Unit Improvements created for multiple candidates"
-          : "Candidate Unit Improvement created successfully",
-      data: createdEntries
+      message: "Unit Improvement created successfully",
+      data: fullData
     });
 
   } catch (error) {
-    console.error("Error in unit Improvement:", error);
+    console.error("Error in createLessonImprovement:", error);
     return res.status(500).json({
-      message: "Error creating candidate need assessment",
+      message: "Error creating unit improvement",
       error: error.message
     });
   }
@@ -888,9 +862,8 @@ exports.deleteUnitImprovement = async (req, res) => {
 
 exports.createLeaderMarks = async (req, res) => {
   try {
-    let {
+    const {
       unitId,
-      candidateId, // can be single ID or array of IDs
       staffLookupId,
       impactType,
       concernIdentified,
@@ -902,14 +875,11 @@ exports.createLeaderMarks = async (req, res) => {
     // ============================
     // 1. Required fields
     // ============================
-    if (!unitId || !candidateId || !staffLookupId || !impactType || !concernIdentified || !identityDate) {
+    if (!unitId || !staffLookupId || !impactType || !concernIdentified || !identityDate) {
       return res.status(400).json({
-        message: "unitId, candidateId, staffLookupId, impactType, concernIdentified, and identityDate are required"
+        message: "unitId, staffLookupId, impactType, concernIdentified, and identityDate are required"
       });
     }
-
-    // Ensure candidateId is an array
-    const candidateIds = Array.isArray(candidateId) ? candidateId : [candidateId];
 
     // Validate impact type
     if (!["Positive", "Negative"].includes(impactType)) {
@@ -917,67 +887,58 @@ exports.createLeaderMarks = async (req, res) => {
     }
 
     // ============================
-    // 2. Loop through each candidate and create marks
+    // 2. Auto-generate next entry number for this unit
     // ============================
-    const createdMarks = [];
+    const lastEntry = await db.LeaderMarks.findOne({
+      where: { unitId },
+      order: [["entryNumber", "DESC"]]
+    });
 
-    for (const id of candidateIds) {
-      // Auto-generate next entry number for this candidate
-      const lastEntry = await db.LeaderMarks.findOne({
-        where: { unitId, candidateId: id },
-        order: [["entryNumber", "DESC"]]
-      });
+    const nextEntryNumber = lastEntry ? lastEntry.entryNumber + 1 : 1;
 
-      const nextEntryNumber = lastEntry ? lastEntry.entryNumber + 1 : 1;
+    // ============================
+    // 3. Create leader mark
+    // ============================
+    const newMark = await db.LeaderMarks.create({
+      unitId,
+      staffLookupId,
+      entryNumber: nextEntryNumber,
+      impactType,
+      concernIdentified,
+      identityDate,
+      concernResolved,
+      resolutionDate: resolutionDate || null
+    });
 
-      const newMark = await db.LeaderMarks.create({
-        unitId,
-        candidateId: id,
-        staffLookupId,
-        entryNumber: nextEntryNumber,
-        impactType,
-        concernIdentified,
-        identityDate,
-        concernResolved,
-        resolutionDate: resolutionDate || null
-      });
-
-      // Fetch full relational data
-      const fullData = await db.LeaderMarks.findOne({
-        where: { id: newMark.id },
-        include: [
-          {
-            model: db.Candidate,
-            as: "candidate",
-            attributes: ["id", "firstName", "lastName"]
-          },
-          {
-            model: db.Unit,
-            as: "unit",
-            attributes: ["id", "unitName"]
-          },
-          {
-            model: db.StaffLookup,
-            as: "leaderLookup",
-            include: [
-              {
-                model: db.Staff,
-                as: "staff",
-                attributes: ["id", "firstName", "lastName", "emailAddress", "jobTitle"]
-              }
-            ]
-          }
-        ]
-      });
-
-      createdMarks.push(fullData);
-    }
+    // ============================
+    // 4. Fetch full relational data
+    // ============================
+    const fullData = await db.LeaderMarks.findOne({
+      where: { id: newMark.id },
+      include: [
+        {
+          model: db.Unit,
+          as: "unit",
+          attributes: ["id", "unitName"]
+        },
+        {
+          model: db.StaffLookup,
+          as: "leaderLookup",
+          include: [
+            {
+              model: db.Staff,
+              as: "staff",
+              attributes: ["id", "firstName", "lastName", "emailAddress", "jobTitle"]
+            }
+          ]
+        }
+      ]
+    });
 
     return res.status(201).json({
       success: true,
-      message: "Leader mark(s) created successfully",
-      count: createdMarks.length,
-      data: createdMarks
+      message: "Leader mark created successfully",
+      data: fullData
     });
 
   } catch (error) {
@@ -990,29 +951,23 @@ exports.createLeaderMarks = async (req, res) => {
 };
 
 
-
 exports.getLeaderMarks = async (req, res) => {
   try {
-    const { unitId, candidate_id } = req.params;
+    const { unitId } = req.params;
 
-    if (!unitId || !candidate_id) {
+    if (!unitId) {
       return res.status(400).json({
-        message: "unitId and candidate_id are required"
+        message: "unitId is required"
       });
     }
 
     const marks = await db.LeaderMarks.findAll({
-      where: {
-        unitId: unitId,
-        candidateId: candidate_id
-      },
-      order: [["entryNumber", "ASC"]],
+      where: { unitId },
+      order: [
+        ["entryNumber", "ASC"]
+      ],
       include: [
-        {
-          model: db.Candidate,
-          as: "candidate",
-          attributes: ["id", "firstName", "lastName"]
-        },
+        
         {
           model: db.Unit,
           as: "unit",
@@ -1033,9 +988,7 @@ exports.getLeaderMarks = async (req, res) => {
       ]
     });
 
-    // ======================================================
-    // Flatten the staff name into each record
-    // ======================================================
+    // Flatten staff name
     const formatted = marks.map((item) => {
       const staff = item.leaderLookup?.staff;
 
@@ -1056,7 +1009,7 @@ exports.getLeaderMarks = async (req, res) => {
     console.error("Error in getLeaderMarks:", error);
 
     return res.status(500).json({
-      message: "Error computing leader marks",
+      message: "Error fetching leader marks",
       error: error.message
     });
   }

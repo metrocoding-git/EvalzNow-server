@@ -6,8 +6,8 @@ router.get('/unit/:unitId/candidate/:candidate_id', auxiliaryResultant.getAuxili
 router.get('/marks/:unitId/:candidate_id', auxiliaryResultant.getCandidateMarks);
 router.get('/assessment/:unitId/:candidate_id', auxiliaryResultant.getCandidateNeedAssessments);
 router.get('/assessment/summary/:unitId/:candidate_id', auxiliaryResultant.getNeedAssessmentStatusSummary);
-router.get('/lesson/:unitId/:candidate_id', auxiliaryResultant.getLessonImprovements);
-router.get('/leader/:unitId/:candidate_id', auxiliaryResultant.getLeaderMarks);
+router.get('/lesson/:unitId', auxiliaryResultant.getLessonImprovements);
+router.get('/leader/:unitId', auxiliaryResultant.getLeaderMarks);
 router.get('/effort/:unitId/:candidate_id', auxiliaryResultant.getEffortBu);
 router.get('/chain/:unitId/:candidateId', auxiliaryResultant.getAssessmentChainData);
 router.get('/chain/:id', auxiliaryResultant.getAssessmentChainById);

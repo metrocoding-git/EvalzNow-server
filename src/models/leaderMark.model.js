@@ -62,13 +62,6 @@ module.exports = (sequelize, DataTypes) => {
           onUpdate: "CASCADE"
         },
   
-        candidateId: {
-          type: DataTypes.INTEGER,
-          allowNull: false,
-          references: { model: "candidates", key: "id" },
-          onDelete: "CASCADE",
-          onUpdate: "CASCADE"
-        }
       },
       {
         tableName: "leader_marks",
@@ -77,11 +70,6 @@ module.exports = (sequelize, DataTypes) => {
     );
   
     LeaderMarks.associate = (models) => {
-      LeaderMarks.belongsTo(models.Candidate, {
-        foreignKey: "candidateId",
-        as: "candidate"
-      });
-  
       LeaderMarks.belongsTo(models.Unit, {
         foreignKey: "unitId",
         as: "unit"

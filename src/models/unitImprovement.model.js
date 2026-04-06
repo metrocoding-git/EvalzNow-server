@@ -19,17 +19,6 @@ module.exports = (sequelize, DataTypes) => {
           onDelete: "CASCADE",
         },
   
-        candidateId: {
-          type: DataTypes.INTEGER,
-          allowNull: false,
-          references: {
-            model: "candidates",
-            key: "id",
-          },
-          onUpdate: "CASCADE",
-          onDelete: "CASCADE",
-        },
-  
         //  Stores multiple benchmark IDs as JSON array
         benchmarkIds: {
           type: DataTypes.JSON,
@@ -63,12 +52,6 @@ module.exports = (sequelize, DataTypes) => {
         onUpdate: "CASCADE",
       });
   
-      UnitImprovement.belongsTo(models.Candidate, {
-        foreignKey: "candidateId",
-        as: "candidate",
-        onDelete: "CASCADE",
-        onUpdate: "CASCADE",
-      });
     };
   
     return UnitImprovement;
