@@ -260,6 +260,18 @@ exports.getDataExtractionByUnitId = async (req, res) => {
         ]
       });
       
+      const safeParse = (value) => {
+        try {
+          if (!value) return [];
+          if (typeof value === "string") return JSON.parse(value);
+          if (Array.isArray(value)) return value;
+          return [];
+        } catch (err) {
+          console.error("Invalid JSON:", value);
+          return [];
+        }
+      };
+      
       const needAssessmentByCandidate = {};
 
       // Group by candidateId
@@ -267,12 +279,29 @@ exports.getDataExtractionByUnitId = async (req, res) => {
         if (!needAssessmentByCandidate[na.candidateId]) {
           needAssessmentByCandidate[na.candidateId] = [];
         }
-
+      
+        const benchmarkIds = safeParse(na.benchmarkIds);
+        const bIds = safeParse(na.bIds);
+        const observation = na.observation?.trim() || "";
+      
+        //  STATUS LOGIC
+        let status = "Open";
+      
+        if (benchmarkIds.length > 0 && observation) {
+          status = "Closed";
+        } else if (
+          (benchmarkIds.length > 0 && !observation) ||
+          (benchmarkIds.length === 0 && observation)
+        ) {
+          status = "Pending";
+        }
+      
         needAssessmentByCandidate[na.candidateId].push({
           ppId: na.ppId,
-          benchmarkIds: JSON.parse(na.benchmarkIds || '[]'),
-          bIds: JSON.parse(na.bIds || '[]'),
-          observation: na.observation
+          benchmarkIds,
+          bIds,
+          observation,
+          status 
         });
       });
 
