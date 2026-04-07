@@ -799,7 +799,6 @@ exports.updateLessonImprovement = async (req, res) => {
     const fullData = await UnitImprovement.findOne({
       where: { id: improvement.id },
       include: [
-        { model: db.Candidate, as: "candidate", attributes: ["id", "firstName", "lastName"] },
         { model: db.Unit, as: "unit", attributes: ["id", "unitName"] }
       ]
     });
