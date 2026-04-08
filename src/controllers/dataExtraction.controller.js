@@ -535,17 +535,48 @@ exports.getDataExtractionByClientId = async (req, res) => {
         attributes: ['candidateId', 'ppId', 'benchmarkIds', 'bIds', 'observation']
       });
 
+      const safeParse = (value) => {
+        try {
+          if (!value) return [];
+          if (typeof value === "string") return JSON.parse(value);
+          if (Array.isArray(value)) return value;
+          return [];
+        } catch (err) {
+          console.error("Invalid JSON:", value);
+          return [];
+        }
+      };
+      
       const needAssessmentByCandidate = {};
+
+      // Group by candidateId
       needAssessments.forEach(na => {
         if (!needAssessmentByCandidate[na.candidateId]) {
           needAssessmentByCandidate[na.candidateId] = [];
         }
-
+      
+        const benchmarkIds = safeParse(na.benchmarkIds);
+        const bIds = safeParse(na.bIds);
+        const observation = na.observation?.trim() || "";
+      
+        //  STATUS LOGIC
+        let status = "Open";
+      
+        if (benchmarkIds.length > 0 && observation) {
+          status = "Closed";
+        } else if (
+          (benchmarkIds.length > 0 && !observation) ||
+          (benchmarkIds.length === 0 && observation)
+        ) {
+          status = "Pending";
+        }
+      
         needAssessmentByCandidate[na.candidateId].push({
           ppId: na.ppId,
-          benchmarkIds: JSON.parse(na.benchmarkIds || '[]'),
-          bIds: JSON.parse(na.bIds || '[]'),
-          observation: na.observation
+          benchmarkIds,
+          bIds,
+          observation,
+          status 
         });
       });
 
@@ -722,8 +753,6 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
         candidate.pps.sort(sortPpIds);
       });
       
-      
-      
       // Competency ratios
       const mockReq = {
         query: {
@@ -747,14 +776,46 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
       const needAssessments = await needAssessment.findAll({
         where: { unitId, candidateId },
         attributes: ['candidateId', 'ppId', 'benchmarkIds', 'bIds', 'observation']
-      });
+      }); 
+      
+      const safeParse = (value) => {
+        try {
+          if (!value) return [];
+          if (typeof value === "string") return JSON.parse(value);
+          if (Array.isArray(value)) return value;
+          return [];
+        } catch (err) {
+          console.error("Invalid JSON:", value);
+          return [];
+        }
+      };
+      
       grouped.candidates.forEach(candidate => {
-        candidate.needAssessments = needAssessments.map(na => ({
-          ppId: na.ppId,
-          benchmarkIds: JSON.parse(na.benchmarkIds || '[]'),
-          bIds: JSON.parse(na.bIds || '[]'),
-          observation: na.observation
-        }));
+        candidate.needAssessments = needAssessments.map(na => {
+          const benchmarkIds = safeParse(na.benchmarkIds);
+          const bIds = safeParse(na.bIds);
+          const observation = na.observation?.trim() || "";
+      
+          // 
+          let status = "Open";
+      
+          if (benchmarkIds.length > 0 && observation) {
+            status = "Closed";
+          } else if (
+            (benchmarkIds.length > 0 && !observation) ||
+            (benchmarkIds.length === 0 && observation)
+          ) {
+            status = "Pending";
+          }
+      
+          return {
+            ppId: na.ppId,
+            benchmarkIds,
+            bIds,
+            observation,
+            status
+          };
+        });
       });
 
       // Neuro Science RMS + Cognitive Load
