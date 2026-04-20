@@ -109,7 +109,13 @@ function CalcBandProficiencyTP(xtr, xpr) {
 }
 
 function CalcButlerIntProfTP(xtr, xpr) {
-  return +(Math.pow(Math.pow(xtr, 2) + Math.pow(xpr, 2), -0.5) - 1).toFixed(3);
+  let value = Math.pow(Math.pow(xtr, 2) + Math.pow(xpr, 2), -0.5) - 1;
+
+  if (value > 5 || value === Number.POSITIVE_INFINITY) {
+    value = 5;
+  }
+
+  return +value.toFixed(3);
 }
 
 // --- Third Parameter ---
@@ -122,9 +128,19 @@ function CalcBandProficiency3P(xrvsr, xpvsr, xavsr) {
 }
 
 function CalcButlerIntProf3P(xrvsr, xpvsr, xavsr) {
-  return +(
-    Math.pow(Math.pow(xrvsr, 2) + Math.pow(xpvsr, 2) + Math.pow(xavsr, 2), -0.5) - 1
-  ).toFixed(3);
+  let value =
+    Math.pow(
+      Math.pow(xrvsr, 2) +
+      Math.pow(xpvsr, 2) +
+      Math.pow(xavsr, 2),
+      -0.5
+    ) - 1;
+
+  if (value > 5 || value === Number.POSITIVE_INFINITY) {
+    value = 5;
+  }
+
+  return +value.toFixed(3);
 }
 
 // ------------------------------------------------------------------
