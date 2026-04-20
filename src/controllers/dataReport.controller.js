@@ -1066,8 +1066,8 @@ async function buildUnitReport(unitId) {
 
     // Marks
     const marks = await CandidateMarks.findAll({ where: { unitId, candidateId } });
-    const leaderMarks = await LeaderMarks.findAll({ where: { unitId, candidateId } });
-    const unitImprovement = await UnitImprovement.findAll({ where: { unitId, candidateId } });
+    const leaderMarks = await LeaderMarks.findAll({ where: { unitId } });
+    const unitImprovement = await UnitImprovement.findAll({ where: { unitId } });
 
     // Base candidate object
     const candidate = {
@@ -1353,16 +1353,14 @@ exports.getDataReportByUnit = async (req, res) => {
 
       const leaderMarks = await LeaderMarks.findAll({
         where: {
-          unitId,
-          candidateId
+          unitId
         },
         order: [["entryNumber", "ASC"]]
       });
 
       const unitImprovement = await UnitImprovement.findAll({
         where: {
-          unitId,
-          candidateId
+          unitId
         },
 
       });
