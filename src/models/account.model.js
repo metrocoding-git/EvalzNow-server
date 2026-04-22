@@ -8,6 +8,8 @@ module.exports = (sequelize, DataTypes) => {
       password: { type: DataTypes.STRING(100), allowNull: false},
       acc_id: { type: DataTypes.INTEGER, allowNull: false},
       role: { type: DataTypes.ENUM("super admin", "admin", "staff"), allowNull: false},
+      resetToken: { type: DataTypes.STRING, allowNull: true },
+      resetTokenExpiry: { type: DataTypes.DATE, allowNull: true },
     }, {
       tableName: 'accounts',
       timestamps: true,
