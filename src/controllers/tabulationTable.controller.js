@@ -281,7 +281,7 @@ function calculateInteractionClass(rr, pr, ar, unitType, signatureProfile) {
         return GetInteractionClassForCase2(rrVal, prVal);
       case "Case 3a: Productive-Weighted":
         return GetInteractionClassForCase3a(rrVal, prVal);
-      case "Case 3b: Receptive-Weighed":
+      case "Case 3b: Receptive-Weighted":
         return GetInteractionClassForCase3b(rrVal, prVal);
       default:
         return null;
@@ -3099,7 +3099,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
             [rr, pr] = PerformancePointCICOCase2(out.XRR, out.XLR, out.XSR, out.XWR);
           else if (signatureProfile === "Case 3a: Productive-Weighted")
             [rr, pr] = PerformancePointCICOCase3a(out.XRR, out.XLR, out.XSR, out.XWR);
-          else if (signatureProfile === "Case 3b: Receptive-Weighed")
+          else if (signatureProfile === "Case 3b: Receptive‑Weighed")
             [rr, pr] = PerformancePointCICOCase3b(out.XRR, out.XLR, out.XSR, out.XWR);
         } else if (unitType === "Third Parameter" && signatureProfile === "Case 1: Solid Balanced") {
           [rr, pr, ar] = PerformancePointTPRM(out.XRVSR, out.XPVSR, out.XAVSR);
@@ -3511,7 +3511,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
               [rr, pr] = PerformancePointCICOCase2(out.XRR, out.XLR, out.XSR, out.XWR);
             else if (signatureProfile === "Case 3a: Productive-Weighted")
               [rr, pr] = PerformancePointCICOCase3a(out.XRR, out.XLR, out.XSR, out.XWR);
-            else if (signatureProfile === "Case 3b: Receptive-Weighed")
+            else if (signatureProfile === "Case 3b: Receptive-Weighted")
               [rr, pr] = PerformancePointCICOCase3b(out.XRR, out.XLR, out.XSR, out.XWR);
           } else if (unitType === "Third Parameter" && signatureProfile === "Case 1: Solid Balanced") {
             [rr, pr, ar] = PerformancePointTPRM(out.XRVSR, out.XPVSR, out.XAVSR);

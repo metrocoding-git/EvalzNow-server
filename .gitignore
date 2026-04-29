@@ -32,7 +32,6 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
 
 # vercel
 .vercel
@@ -54,7 +53,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # Environment variables
-.env
 
 # OS files
 .DS_Store
@@ -67,3 +65,4 @@ build/
 # Sequelize or database files
 *.sqlite
 >>>>>>> origin/faizan-04/06
+config.bat
