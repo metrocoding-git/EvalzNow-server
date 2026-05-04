@@ -195,6 +195,11 @@ exports.updateUnit = async (req, res) => {
     const { id } = req.params;
     const { benchmarks, staffLookup, ...unitData } = req.body;
 
+
+    if (!["3-Point", "5-Point"].includes(unitData.scoringSystem)) {
+      unitData.scoringSystem = null;
+    }
+    
     const unit = await Unit.findByPk(id, { transaction });
     if (!unit) {
       await transaction.rollback();

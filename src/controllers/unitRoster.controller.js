@@ -220,18 +220,50 @@ exports.deleteUnitRoster = async (req, res) => {
     const { id } = req.params;
 
     const roster = await UnitRoster.findByPk(id, { transaction });
+
     if (!roster) {
       await transaction.rollback();
       return res.status(404).json({ message: "UnitRoster not found" });
     }
 
+    const { unitId, candidateId } = roster;
+
+    // Find all related assessment blocks
+    const blocks = await db.AssessmentBlockManager.findAll({
+      where: {
+        unitId,
+        candidate_id: candidateId,
+      },
+      transaction,
+    });
+
+    // Delete related InsertScores + Blocks
+    for (const block of blocks) {
+      await db.InsertScore.destroy({
+        where: {
+          assessmentBlockId: block.id,
+        },
+        transaction,
+      });
+
+      await block.destroy({ transaction });
+    }
+
+    // Delete UnitRoster
     await roster.destroy({ transaction });
+
     await transaction.commit();
 
-    res.status(200).json({ message: "UnitRoster deleted successfully" });
+    res.status(200).json({
+      message: "UnitRoster and related AssessmentBlocks deleted successfully",
+    });
+
   } catch (error) {
     await transaction.rollback();
     console.error("Error deleting unit roster:", error);
-    res.status(500).json({ message: "Error deleting unit roster", error: error.message });
+    res.status(500).json({
+      message: "Error deleting unit roster",
+      error: error.message,
+    });
   }
 };
