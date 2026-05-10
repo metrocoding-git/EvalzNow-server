@@ -1,6 +1,13 @@
-const db = require('../models');
+const db = require("../models");
+
 const { Op, Sequelize } = require("sequelize");
+
+const sequelize = db.sequelize;
+
 const InsertScore = db.InsertScore;
+const InsertScoreCriteria = db.InsertScoreCriteria;
+const ScoringCriteria = db.ScoringCriteria;
+
 const AssessmentBlockManager = db.AssessmentBlockManager;
 const Unit = db.Unit;
 const Candidate = db.Candidate;
@@ -64,11 +71,14 @@ exports.getInsertScoresByUnitId = async (req, res) => {
   }
 };
 
-// POST create a new Insert Score
+
 // POST create a new Insert Score
 exports.createInsertScore = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
   try {
     const payload = Array.isArray(req.body) ? req.body : [req.body];
+
     const results = [];
 
     for (const item of payload) {
@@ -87,40 +97,96 @@ exports.createInsertScore = async (req, res) => {
         competency,
         attainedScore,
         maxScore,
+
+        // frontend sends this
+        customCriteria = [],
+
+        // fixed mc1-mc20
         ...rest
       } = item;
 
-      if (!assessmentBlockId)
-        return res.status(400).json({ message: "assessmentBlockId is required" });
-      if (!unitId)
-        return res.status(400).json({ message: "unitId is required" });
-      if (!candidate_id)
-        return res.status(400).json({ message: "candidateId is required" });
+      // =========================
+      // VALIDATIONS
+      // =========================
 
-      const blockExists = await AssessmentBlockManager.findByPk(assessmentBlockId);
-      if (!blockExists)
-        return res.status(400).json({ message: "AssessmentBlockManager not found" });
+      if (!assessmentBlockId) {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: "assessmentBlockId is required",
+        });
+      }
 
-      const unit = await Unit.findByPk(unitId);
-      if (!unit)
-        return res.status(400).json({ message: "Unit not found" });
+      if (!unitId) {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: "unitId is required",
+        });
+      }
 
-      // AUTO SCORE (workforce)
+      if (!candidate_id) {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: "candidate_id is required",
+        });
+      }
+
+      const blockExists = await AssessmentBlockManager.findByPk(
+        assessmentBlockId,
+        { transaction }
+      );
+
+      if (!blockExists) {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: "AssessmentBlockManager not found",
+        });
+      }
+
+      const unit = await Unit.findByPk(unitId, { transaction });
+
+      if (!unit) {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: "Unit not found",
+        });
+      }
+
+      // =========================
+      // AUTO SCORE CALCULATION
+      // =========================
+
       if (unit.environment === "Workforce") {
         let total = 0;
         let filledCount = 0;
-        const maxAllowed = unit.scoringSystem === "3-Point" ? 3 : 5;
 
+        const maxAllowed =
+          unit.scoringSystem === "3-Point" ? 3 : 5;
+
+        // Fixed mc1-mc20
         for (let i = 1; i <= 20; i++) {
           const mcVal = rest[`mc${i}`];
-          if (mcVal !== null && mcVal !== undefined && mcVal !== "") {
+
+          if (
+            mcVal !== null &&
+            mcVal !== undefined &&
+            mcVal !== ""
+          ) {
             total += parseFloat(mcVal);
             filledCount++;
           }
-          const ccVal = rest[`cc${i}`];
-          if (ccVal !== null && ccVal !== undefined && ccVal !== "") {
-            total += parseFloat(ccVal);
-            filledCount++;
+        }
+
+        // Custom Criteria
+        if (Array.isArray(customCriteria)) {
+          for (const cc of customCriteria) {
+            if (
+              cc.value !== null &&
+              cc.value !== undefined &&
+              cc.value !== ""
+            ) {
+              total += parseFloat(cc.value);
+              filledCount++;
+            }
           }
         }
 
@@ -128,64 +194,153 @@ exports.createInsertScore = async (req, res) => {
         maxScore = filledCount * maxAllowed;
       }
 
-      // AUTOGENERATE subPpId
+      // =========================
+      // GENERATE subPpId
+      // =========================
+
       let subPpId;
+
       const existingScores = await InsertScore.findAll({
-        where: { unitId, candidate_id, ppId },
+        where: {
+          unitId,
+          candidate_id,
+          ppId,
+        },
         attributes: ["subPpId"],
+        transaction,
       });
 
-      if (existingScores.length === 0)
+      if (existingScores.length === 0) {
         subPpId = ppId > 0 ? 1 : -1;
-      else
+      } else {
         subPpId =
           ppId > 0
-            ? Math.max(...existingScores.map((s) => s.subPpId)) + 1
-            : Math.min(...existingScores.map((s) => s.subPpId)) - 1;
+            ? Math.max(
+                ...existingScores.map((s) => s.subPpId)
+              ) + 1
+            : Math.min(
+                ...existingScores.map((s) => s.subPpId)
+              ) - 1;
+      }
 
-      // Create
-      const newScore = await InsertScore.create({
-        unitId,
-        assessmentBlockId,
-        candidate_id,
-        ppId,
-        subPpId,
-        durationHrs,
-        criticalRefDate,
-        remarks,
-        workflowStage,
-        assessmentType,
-        scheduleImpact,
-        engageLevel,
-        competency,
-        attainedScore,
-        maxScore,
-        ...rest,
-      });
+      // =========================
+      // CREATE INSERT SCORE
+      // =========================
 
-      const scoreWithRelations = await InsertScore.findOne({
-        where: { id: newScore.id },
-        include: [
-          { model: AssessmentBlockManager, as: "assessmentBlock" },
-          { model: Unit, as: "unit" },
-          { model: Candidate, as: "candidate" },
-        ],
-      });
+      const newScore = await InsertScore.create(
+        {
+          unitId,
+          assessmentBlockId,
+          candidate_id,
+          ppId,
+          subPpId,
+          durationHrs,
+          criticalRefDate,
+          remarks,
+          workflowStage,
+          assessmentType,
+          scheduleImpact,
+          engageLevel,
+          competency,
+          attainedScore,
+          maxScore,
+
+          // ONLY mc1-mc20 remain here
+          ...rest,
+        },
+        { transaction }
+      );
+
+      // =========================
+      // CREATE CUSTOM CRITERIA
+      // =========================
+
+      const criteriaRows = [];
+
+      if (
+        Array.isArray(customCriteria) &&
+        customCriteria.length > 0
+      ) {
+        for (const cc of customCriteria) {
+          // skip empty values
+          if (
+            cc.value === null ||
+            cc.value === undefined ||
+            cc.value === ""
+          ) {
+            continue;
+          }
+
+          criteriaRows.push({
+            insertScoreId: newScore.id,
+            scoringCriteriaId: cc.scoringCriteriaId,
+            value: cc.value,
+          });
+        }
+
+        if (criteriaRows.length > 0) {
+          await InsertScoreCriteria.bulkCreate(
+            criteriaRows,
+            { transaction }
+          );
+        }
+      }
+
+      // =========================
+      // FETCH COMPLETE RECORD
+      // =========================
+
+      const scoreWithRelations =
+        await InsertScore.findOne({
+          where: { id: newScore.id },
+
+          include: [
+            {
+              model: AssessmentBlockManager,
+              as: "assessmentBlock",
+            },
+            {
+              model: Unit,
+              as: "unit",
+            },
+            {
+              model: Candidate,
+              as: "candidate",
+            },
+            {
+              model: InsertScoreCriteria,
+              as: "customCriteria",
+
+              include: [
+                {
+                  model: ScoringCriteria,
+                  as: "criteria",
+                },
+              ],
+            },
+          ],
+
+          transaction,
+        });
 
       results.push(scoreWithRelations);
     }
 
-    res.status(201).json(results);
+    await transaction.commit();
+
+    return res.status(201).json(results);
+
   } catch (error) {
+    await transaction.rollback();
+
     console.error(error);
-    res.status(500).json({
+
+    return res.status(500).json({
       message: "Error creating insert score",
       error: error.message,
     });
   }
 };
-
-
 
 
 // PUT update an Insert Score
@@ -406,41 +561,106 @@ exports.getInsertScoresByUnitAndCandidate = async (req, res) => {
     const { unitId, candidate_id } = req.params;
 
     const scores = await InsertScore.findAll({
-      where: { unitId, candidate_id },
+      where: {
+        unitId,
+        candidate_id,
+      },
+
       include: [
-        { model: AssessmentBlockManager, as: 'assessmentBlock' },
-        { model: Unit, as: 'unit' },
-        { model: Candidate, as: 'candidate' }
+        {
+          model: AssessmentBlockManager,
+          as: "assessmentBlock",
+        },
+
+        {
+          model: Unit,
+          as: "unit",
+        },
+
+        {
+          model: Candidate,
+          as: "candidate",
+        },
+
+        {
+          model: InsertScoreCriteria,
+          as: "customCriteria",
+
+          include: [
+            {
+              model: ScoringCriteria,
+              as: "criteria",
+            },
+          ],
+        },
       ],
+
       order: [
-        // First order positives ASC and negatives DESC
         [
           Sequelize.literal(`
             CASE 
-              WHEN "ppId" >= 0 THEN "ppId" 
-            END ASC
+              WHEN "ppId" >= 0 THEN "ppId"
+            END
           `),
+          "ASC",
         ],
+
         [
           Sequelize.literal(`
             CASE 
-              WHEN "ppId" < 0 THEN "ppId" 
-            END DESC
+              WHEN "ppId" < 0 THEN "ppId"
+            END
           `),
+          "DESC",
         ],
-        // Then within each ppId, order by criticalRefDate ASC
+
         ["criticalRefDate", "ASC"],
       ],
     });
 
-    
+    // =========================================
+    // MAP customCriteria -> cc1, cc2, cc3...
+    // =========================================
 
-    res.status(200).json(scores);
+    const formattedScores = scores.map((score) => {
+      const plainScore = score.toJSON();
+    
+      // initialize cc1-cc20
+      for (let i = 1; i <= 20; i++) {
+        plainScore[`cc${i}`] = null;
+        plainScore[`cc${i}Label`] = null;
+        plainScore[`cc${i}Id`] = null;
+      }
+    
+      // map using criteriaId (NOT index)
+      plainScore.customCriteria.forEach((cc) => {
+        const criteriaId = cc.criteria?.criteriaId;
+    
+        if (!criteriaId || criteriaId > 20) return;
+    
+        const key = `cc${criteriaId}`;
+    
+        plainScore[key] = cc.value;
+    
+        plainScore[`${key}Label`] =
+          cc.criteria?.criteria || null;
+    
+        plainScore[`${key}Id`] =
+          criteriaId;
+      });
+    
+      return plainScore;
+    });
+
+    return res.status(200).json(formattedScores);
+
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: 'Error fetching insert scores by unitId and candidateId',
-      error: error.message
+
+    return res.status(500).json({
+      message:
+        "Error fetching insert scores by unitId and candidateId",
+      error: error.message,
     });
   }
 };
