@@ -1,6 +1,9 @@
 const db = require("../models");
+const sequelize = db.sequelize;
 const ScoringCriteria = db.ScoringCriteria;
+const InsertScoreCriteria = db.InsertScoreCriteria;
 const Unit = db.Unit;
+
 
 //  Get all scoring criteria
 exports.getAllScoringCriteria = async (req, res) => {
@@ -135,19 +138,39 @@ exports.updateScoringCriteria = async (req, res) => {
 
 //  Delete scoring criteria
 exports.deleteScoringCriteria = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
   try {
     const { id } = req.params;
 
-    const deleted = await ScoringCriteria.destroy({ where: { id } });
+    // 1. delete related insert score criteria first
+    await InsertScoreCriteria.destroy({
+      where: { scoringCriteriaId: id },
+      transaction,
+    });
+
+    // 2. delete scoring criteria
+    const deleted = await ScoringCriteria.destroy({
+      where: { id },
+      transaction,
+    });
 
     if (deleted === 0) {
+      await transaction.rollback();
       return res.status(404).json({ message: "Scoring criteria not found" });
     }
 
-    res.status(200).json({ message: "Scoring criteria deleted successfully" });
+    await transaction.commit();
+
+    return res.status(200).json({
+      message: "Scoring criteria and related insert score data deleted successfully",
+    });
+
   } catch (error) {
+    await transaction.rollback();
+
     console.error(error);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Error deleting scoring criteria",
       error: error.message,
     });

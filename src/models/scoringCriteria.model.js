@@ -35,11 +35,18 @@ module.exports = (sequelize, DataTypes) => {
 
   ScoringCriteria.associate = function (models) {
     InsertScore.belongsTo(models.Unit, {
-        foreignKey: "unitId",
-        as: "unit",
-        onDelete: "CASCADE",
-        onUpdate: "CASCADE",
-      });
+      foreignKey: "unitId",
+      as: "unit",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+
+    ScoringCriteria.hasMany(models.InsertScoreCriteria, {
+      foreignKey: "scoringCriteriaId",
+      as: "scores",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
 
     };
 

@@ -32,7 +32,7 @@ db.LeaderMarks = require("./leaderMark.model")(sequelize, Sequelize);
 db.AssessmentChain = require("./assessmentChain.model")(sequelize, Sequelize);
 db.NeuroScienceSession = require("./neuroScienceSession.model")(sequelize, Sequelize);
 db.NeuroScienceResponse = require("./neuroScienceResponse.model")(sequelize, Sequelize);
-
+db.InsertScoreCriteria = require("./insertScoreCriteria.model")(sequelize, Sequelize);
 
 
 
@@ -218,6 +218,26 @@ db.InsertScore.belongsTo(db.Candidate, {
   onUpdate: "CASCADE",
 })
 
+db.InsertScore.hasMany(db.InsertScoreCriteria, {
+  foreignKey: "insertScoreId",
+  as: "customCriteria",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+})
+
+db.InsertScoreCriteria.belongsTo(db.InsertScore, {
+  foreignKey: "insertScoreId",
+  as: "insertScore",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+})
+
+db.InsertScoreCriteria.belongsTo(db.ScoringCriteria, {
+  foreignKey: "scoringCriteriaId",
+  as: "criteria",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+})
 
 db.Unit.hasMany(db.ScoringCriteria, {
   foreignKey: "unitId",
