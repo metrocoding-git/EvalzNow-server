@@ -350,6 +350,9 @@ exports.updateInsertScore = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const {
+      customCriteria = [], ...updateData } = req.body;
+
     const existingScore = await InsertScore.findByPk(id, { transaction: t });
     if (!existingScore) {
       await t.rollback();
@@ -357,15 +360,15 @@ exports.updateInsertScore = async (req, res) => {
     }
 
     // If assessmentBlockId is updated, check existence
-    if (req.body.assessmentBlockId) {
-      const blockExists = await AssessmentBlockManager.findByPk(req.body.assessmentBlockId);
+    if (updateData.assessmentBlockId) {
+      const blockExists = await AssessmentBlockManager.findByPk(updateData.assessmentBlockId);
       if (!blockExists) {
         await t.rollback();
         return res.status(400).json({ message: "AssessmentBlockManager not found" });
       }
     }
 
-    let newPpId = req.body.ppId ?? existingScore.ppId;
+    let newPpId = updateData.ppId ?? existingScore.ppId;
 
     // If ppId is changed, need to update subPpId
     if (newPpId !== existingScore.ppId) {
@@ -413,10 +416,10 @@ exports.updateInsertScore = async (req, res) => {
         ? Math.max(...existingScores.map(s => s.subPpId)) + 1
         : Math.min(...existingScores.map(s => s.subPpId)) - 1;
 
-      req.body.subPpId = newSubPpId;
+      updateData.subPpId = newSubPpId;
 
 
-      // ✅ Step 3: also update assessmentBlockId to match new ppId
+      //  Step 3: also update assessmentBlockId to match new ppId
       const newBlock = await AssessmentBlockManager.findOne({
         where: {
           unitId,
@@ -431,7 +434,7 @@ exports.updateInsertScore = async (req, res) => {
         return res.status(400).json({ message: `No AssessmentBlockManager found for new ppId ${newPpId}` });
       }
 
-      req.body.assessmentBlockId = newBlock.id;
+      updateData.assessmentBlockId = newBlock.id;
     }
 
     const unit = await Unit.findByPk(existingScore.unitId, { transaction: t });
@@ -443,40 +446,149 @@ exports.updateInsertScore = async (req, res) => {
       // Use the new values from req.body if present, otherwise fall back to existing ones
       for (let i = 1; i <= 20; i++) {
         const mcKey = `mc${i}`;
-        const ccKey = `cc${i}`;
-
-        const mcVal = req.body.hasOwnProperty(mcKey)
-          ? req.body[mcKey]
+      
+        const mcVal = updateData.hasOwnProperty(mcKey)
+          ? updateData[mcKey]
           : existingScore[mcKey];
-        const ccVal = req.body.hasOwnProperty(ccKey)
-          ? req.body[ccKey]
-          : existingScore[ccKey];
-
+      
         if (mcVal !== null && mcVal !== undefined && mcVal !== "") {
           total += parseFloat(mcVal);
           filledCount++;
         }
-        if (ccVal !== null && ccVal !== undefined && ccVal !== "") {
-          total += parseFloat(ccVal);
-          filledCount++;
+      }
+      
+      //  HANDLE CCs SEPARATELY
+      if (Array.isArray(customCriteria) && customCriteria.length > 0) {
+        for (const cc of customCriteria) {
+          if (cc.value !== null && cc.value !== undefined && cc.value !== "") {
+            total += parseFloat(cc.value);
+            filledCount++;
+          }
+        }
+      } else {
+        // Fallback: use existing CC rows from DB if none sent in payload
+        const existingCCs = await InsertScoreCriteria.findAll({
+          where: { insertScoreId: id },
+          transaction: t,
+        });
+        for (const cc of existingCCs) {
+          if (cc.value !== null && cc.value !== "" && cc.value !== undefined) {
+            total += parseFloat(cc.value);
+            filledCount++;
+          }
         }
       }
 
-      req.body.attainedScore = total;
-      req.body.maxScore = filledCount * maxAllowed;
+      updateData.attainedScore = total;
+      updateData.maxScore = filledCount * maxAllowed;
     }
 
-    
+    // =========================================
+    // UPDATE CUSTOM CRITERIA
+    // =========================================
+
+    if (Array.isArray(customCriteria)) {
+
+      // existing DB rows
+      const existingCriteriaRows =
+        await InsertScoreCriteria.findAll({
+          where: {
+            insertScoreId: id,
+          },
+          transaction: t,
+        });
+
+      // map existing by scoringCriteriaId
+      const existingMap = new Map();
+
+      existingCriteriaRows.forEach((row) => {
+        existingMap.set(row.scoringCriteriaId, row);
+      });
+
+      // frontend ids
+      const incomingIds = [];
+
+      for (const cc of customCriteria) {
+
+        // skip empty values
+        if (
+          cc.value === null ||
+          cc.value === undefined ||
+          cc.value === ""
+        ) {
+          continue;
+        }
+
+        incomingIds.push(cc.scoringCriteriaId);
+
+        const existingRow =
+          existingMap.get(cc.scoringCriteriaId);
+
+        // =========================
+        // UPDATE existing
+        // =========================
+        if (existingRow) {
+
+          await existingRow.update(
+            {
+              value: cc.value,
+            },
+            { transaction: t }
+          );
+
+        } else {
+
+          // =========================
+          // CREATE new
+          // =========================
+          await InsertScoreCriteria.create(
+            {
+              insertScoreId: id,
+              scoringCriteriaId: cc.scoringCriteriaId,
+              value: cc.value,
+            },
+            { transaction: t }
+          );
+        }
+      }
+
+      // =========================
+      // DELETE removed criteria
+      // =========================
+
+      for (const existingRow of existingCriteriaRows) {
+
+        if (
+          !incomingIds.includes(
+            existingRow.scoringCriteriaId
+          )
+        ) {
+          await existingRow.destroy({
+            transaction: t,
+          });
+        }
+      }
+    }
 
     // Step 3: update the record
-    await InsertScore.update(req.body, { where: { id }, transaction: t });
+    await InsertScore.update(updateData, { where: { id }, transaction: t });
 
     const updatedScore = await InsertScore.findOne({
       where: { id },
       include: [
         { model: AssessmentBlockManager, as: 'assessmentBlock' },
         { model: Unit, as: 'unit' },
-        { model: Candidate, as: 'candidate' }
+        { model: Candidate, as: 'candidate' },
+        {
+          model: InsertScoreCriteria,
+          as: "customCriteria",
+          include: [
+            {
+              model: ScoringCriteria,
+              as: "criteria",
+            },
+          ],
+        },
       ],
       transaction: t,
     });
