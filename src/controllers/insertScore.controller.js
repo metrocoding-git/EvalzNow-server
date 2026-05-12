@@ -349,6 +349,7 @@ exports.updateInsertScore = async (req, res) => {
   const t = await db.sequelize.transaction();
   try {
     const { id } = req.params;
+    let { customCriteria, ...updateData } = req.body;
 
     const existingScore = await InsertScore.findByPk(id, { transaction: t });
     if (!existingScore) {
@@ -357,15 +358,15 @@ exports.updateInsertScore = async (req, res) => {
     }
 
     // If assessmentBlockId is updated, check existence
-    if (req.body.assessmentBlockId) {
-      const blockExists = await AssessmentBlockManager.findByPk(req.body.assessmentBlockId);
+    if (updateData.assessmentBlockId) {
+      const blockExists = await AssessmentBlockManager.findByPk(updateData.assessmentBlockId, { transaction: t });
       if (!blockExists) {
         await t.rollback();
         return res.status(400).json({ message: "AssessmentBlockManager not found" });
       }
     }
 
-    let newPpId = req.body.ppId ?? existingScore.ppId;
+    let newPpId = updateData.ppId ?? existingScore.ppId;
 
     // If ppId is changed, need to update subPpId
     if (newPpId !== existingScore.ppId) {
@@ -413,7 +414,7 @@ exports.updateInsertScore = async (req, res) => {
         ? Math.max(...existingScores.map(s => s.subPpId)) + 1
         : Math.min(...existingScores.map(s => s.subPpId)) - 1;
 
-      req.body.subPpId = newSubPpId;
+      updateData.subPpId = newSubPpId;
 
 
       // ✅ Step 3: also update assessmentBlockId to match new ppId
@@ -431,7 +432,7 @@ exports.updateInsertScore = async (req, res) => {
         return res.status(400).json({ message: `No AssessmentBlockManager found for new ppId ${newPpId}` });
       }
 
-      req.body.assessmentBlockId = newBlock.id;
+      updateData.assessmentBlockId = newBlock.id; //code change
     }
 
     const unit = await Unit.findByPk(existingScore.unitId, { transaction: t });
@@ -440,49 +441,73 @@ exports.updateInsertScore = async (req, res) => {
       let total = 0;
       let filledCount = 0;
 
-      // Use the new values from req.body if present, otherwise fall back to existing ones
+      // MC calculation
       for (let i = 1; i <= 20; i++) {
         const mcKey = `mc${i}`;
-        const ccKey = `cc${i}`;
-
-        const mcVal = req.body.hasOwnProperty(mcKey)
-          ? req.body[mcKey]
-          : existingScore[mcKey];
-        const ccVal = req.body.hasOwnProperty(ccKey)
-          ? req.body[ccKey]
-          : existingScore[ccKey];
-
+        const mcVal = updateData.hasOwnProperty(mcKey) ? updateData[mcKey] : existingScore[mcKey];
         if (mcVal !== null && mcVal !== undefined && mcVal !== "") {
           total += parseFloat(mcVal);
           filledCount++;
         }
-        if (ccVal !== null && ccVal !== undefined && ccVal !== "") {
-          total += parseFloat(ccVal);
-          filledCount++;
-        }
       }
 
-      req.body.attainedScore = total;
-      req.body.maxScore = filledCount * maxAllowed;
+      // CC calculation
+      let ccToUse = customCriteria;
+      if (!req.body.hasOwnProperty('customCriteria')) {
+        const existingCC = await InsertScoreCriteria.findAll({ where: { insertScoreId: id }, transaction: t });
+        ccToUse = existingCC.map(cc => ({ scoringCriteriaId: cc.scoringCriteriaId, value: cc.value }));
+      }
+
+      if (Array.isArray(ccToUse)) {
+        ccToUse.forEach(cc => {
+          if (cc.value !== null && cc.value !== undefined && cc.value !== "") {
+            total += parseFloat(cc.value);
+            filledCount++;
+          }
+        });
+      }
+
+      updateData.attainedScore = total;
+      updateData.maxScore = filledCount * maxAllowed;
     }
 
-    
+    // Step 3: update the record //methna mn code change kara
+    await InsertScore.update(updateData, { where: { id }, transaction: t });
 
-    // Step 3: update the record
-    await InsertScore.update(req.body, { where: { id }, transaction: t });
+    // Step 4: update custom criteria if provided
+    if (req.body.hasOwnProperty('customCriteria')) {
+      await InsertScoreCriteria.destroy({ where: { insertScoreId: id }, transaction: t });
+      if (Array.isArray(customCriteria) && customCriteria.length > 0) {
+        const criteriaRows = customCriteria
+          .filter(cc => cc.value !== null && cc.value !== undefined && cc.value !== "")
+          .map(cc => ({
+            insertScoreId: id,
+            scoringCriteriaId: cc.scoringCriteriaId,
+            value: cc.value,
+          }));
+        if (criteriaRows.length > 0) {
+          await InsertScoreCriteria.bulkCreate(criteriaRows, { transaction: t });
+        }
+      }
+    }
 
     const updatedScore = await InsertScore.findOne({
       where: { id },
       include: [
         { model: AssessmentBlockManager, as: 'assessmentBlock' },
         { model: Unit, as: 'unit' },
-        { model: Candidate, as: 'candidate' }
+        { model: Candidate, as: 'candidate' },
+        {
+          model: InsertScoreCriteria,
+          as: "customCriteria",
+          include: [{ model: ScoringCriteria, as: "criteria" }]
+        }
       ],
       transaction: t,
     });
 
     await t.commit();
-    res.status(200).json(updatedScore);
+    res.status(200).json(formatScore(updatedScore));
 
   } catch (error) {
     await t.rollback();
@@ -556,6 +581,33 @@ exports.deleteInsertScore = async (req, res) => {
 
 
 
+const formatScore = (score) => {
+  const plainScore = score.toJSON();
+
+  // initialize cc1-cc20
+  for (let i = 1; i <= 20; i++) {
+    plainScore[`cc${i}`] = null;
+    plainScore[`cc${i}Label`] = null;
+    plainScore[`cc${i}Id`] = null;
+  }
+
+  // map using criteriaId (NOT index)
+  if (plainScore.customCriteria) {
+    plainScore.customCriteria.forEach((cc) => {
+      const criteriaId = cc.criteria?.criteriaId;
+
+      if (!criteriaId || criteriaId > 20) return;
+
+      const key = `cc${criteriaId}`;
+      plainScore[key] = cc.value;
+      plainScore[`${key}Label`] = cc.criteria?.criteria || null;
+      plainScore[`${key}Id`] = criteriaId;
+    });
+  }
+
+  return plainScore;
+};
+
 exports.getInsertScoresByUnitAndCandidate = async (req, res) => {
   try {
     const { unitId, candidate_id } = req.params;
@@ -618,39 +670,7 @@ exports.getInsertScoresByUnitAndCandidate = async (req, res) => {
       ],
     });
 
-    // =========================================
-    // MAP customCriteria -> cc1, cc2, cc3...
-    // =========================================
-
-    const formattedScores = scores.map((score) => {
-      const plainScore = score.toJSON();
-    
-      // initialize cc1-cc20
-      for (let i = 1; i <= 20; i++) {
-        plainScore[`cc${i}`] = null;
-        plainScore[`cc${i}Label`] = null;
-        plainScore[`cc${i}Id`] = null;
-      }
-    
-      // map using criteriaId (NOT index)
-      plainScore.customCriteria.forEach((cc) => {
-        const criteriaId = cc.criteria?.criteriaId;
-    
-        if (!criteriaId || criteriaId > 20) return;
-    
-        const key = `cc${criteriaId}`;
-    
-        plainScore[key] = cc.value;
-    
-        plainScore[`${key}Label`] =
-          cc.criteria?.criteria || null;
-    
-        plainScore[`${key}Id`] =
-          criteriaId;
-      });
-    
-      return plainScore;
-    });
+    const formattedScores = scores.map((score) => formatScore(score));
 
     return res.status(200).json(formattedScores);
 
