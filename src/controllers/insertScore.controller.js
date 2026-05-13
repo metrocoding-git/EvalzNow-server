@@ -204,15 +204,16 @@ exports.createInsertScore = async (req, res) => {
       // VALIDATE CRITICAL REF DATE ORDER
       // =========================
 
+      const existingScores = await InsertScore.findAll({
+        where: {
+          unitId,
+          candidate_id,
+        },
+        attributes: ["ppId", "criticalRefDate"],
+        transaction,
+      });
+
       if (criticalRefDate) {
-        const existingScores = await InsertScore.findAll({
-          where: {
-            unitId,
-            candidate_id,
-          },
-          attributes: ["ppId", "criticalRefDate"],
-          transaction,
-        });
 
         const newDate = new Date(criticalRefDate);
 
