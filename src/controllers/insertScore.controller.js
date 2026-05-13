@@ -200,15 +200,88 @@ exports.createInsertScore = async (req, res) => {
 
       let subPpId;
 
-      const existingScores = await InsertScore.findAll({
-        where: {
-          unitId,
-          candidate_id,
-          ppId,
-        },
-        attributes: ["subPpId"],
-        transaction,
-      });
+      // =========================
+      // VALIDATE CRITICAL REF DATE ORDER
+      // =========================
+
+      if (criticalRefDate) {
+        const existingScores = await InsertScore.findAll({
+          where: {
+            unitId,
+            candidate_id,
+          },
+          attributes: ["ppId", "criticalRefDate"],
+          transaction,
+        });
+
+        const newDate = new Date(criticalRefDate);
+
+        for (const score of existingScores) {
+          if (!score.criticalRefDate) continue;
+
+          const existingDate = new Date(score.criticalRefDate);
+
+          const existingPpId = Number(score.ppId);
+          const newPpId = Number(ppId);
+
+          // =========================================
+          // POSITIVE PP IDs
+          // =========================================
+          if (newPpId > 0 && existingPpId > 0) {
+
+            // Higher PP ID => same or later date
+            if (newPpId > existingPpId && newDate < existingDate) {
+              await transaction.rollback();
+
+              return res.status(400).json({
+                message:
+                  "Critical Reference Dates must follow a chronological order based on PP ID.",
+              });
+            }
+
+            // Lower PP ID => same or earlier date
+            if (newPpId < existingPpId && newDate > existingDate) {
+              await transaction.rollback();
+
+              return res.status(400).json({
+                message:
+                  "Critical Reference Date must be equal to or later than previous PP entries.",
+              });
+            }
+          }
+
+          // =========================================
+          // NEGATIVE PP IDs
+          // =========================================
+          if (newPpId < 0 && existingPpId < 0) {
+
+            // More negative PP ID => same or later date
+            // Example:
+            // -1 -> Jan 1
+            // -2 -> Jan 3
+            // -3 -> Jan 5
+
+            if (newPpId < existingPpId && newDate < existingDate) {
+              await transaction.rollback();
+
+              return res.status(400).json({
+                message:
+                  "Critical Reference Dates must follow a chronological sequence based on PP order.",
+              });
+            }
+
+            // Less negative PP ID => same or earlier date
+            if (newPpId > existingPpId && newDate > existingDate) {
+              await transaction.rollback();
+
+              return res.status(400).json({
+                message:
+                  "Critical Reference Date must be equal to or later than previous PP entries.",
+              });
+            }
+          }
+        }
+      }
 
       if (existingScores.length === 0) {
         subPpId = ppId > 0 ? 1 : -1;
@@ -222,7 +295,7 @@ exports.createInsertScore = async (req, res) => {
                 ...existingScores.map((s) => s.subPpId)
               ) - 1;
       }
-
+      
       // =========================
       // CREATE INSERT SCORE
       // =========================
