@@ -11,53 +11,124 @@ const InsertScore = db.InsertScore;
 const AssessmentBlockManager = db.AssessmentBlockManager;
 const Unit = db.Unit;
 const Candidate = db.Candidate;
+const InsertScoreCriteria = db.InsertScoreCriteria;
+const ScoringCriteria = db.ScoringCriteria;
 
 // ✅ UPDATED CONTROLLER: Separate positive and negative ppIds with independent serial numbers
 exports.getInsertScoreSequential = async (req, res) => {
   try {
-    const { unitId, candidate_id, ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = req.query;
+    const {
+      unitId,
+      candidate_id,
+      ppIdFrom,
+      ppIdTo,
+      criticalRefDateFrom,
+      criticalRefDateTo,
+    } = req.query;
 
     if (!unitId || !candidate_id) {
-      return res.status(400).json({ message: "unitId and candidate_id are required" });
+      return res
+        .status(400)
+        .json({ message: "unitId and candidate_id are required" });
     }
 
-    // Dynamic WHERE clause
-    const where = { unitId, candidate_id };
+    const where = {
+      unitId,
+      candidate_id,
+    };
 
+    // PP ID FILTER
     if (ppIdFrom !== undefined && ppIdTo !== undefined) {
-      where.ppId = { [Sequelize.Op.between]: [parseInt(ppIdFrom), parseInt(ppIdTo)] };
+      where.ppId = {
+        [Op.between]: [parseInt(ppIdFrom), parseInt(ppIdTo)],
+      };
     } else if (ppIdFrom !== undefined) {
-      where.ppId = { [Sequelize.Op.gte]: parseInt(ppIdFrom) };
+      where.ppId = {
+        [Op.gte]: parseInt(ppIdFrom),
+      };
     } else if (ppIdTo !== undefined) {
-      where.ppId = { [Sequelize.Op.lte]: parseInt(ppIdTo) };
+      where.ppId = {
+        [Op.lte]: parseInt(ppIdTo),
+      };
     }
 
+    // DATE FILTER
     if (criticalRefDateFrom || criticalRefDateTo) {
       where.criticalRefDate = {};
-      if (criticalRefDateFrom) where.criticalRefDate[Sequelize.Op.gte] = new Date(criticalRefDateFrom);
-      if (criticalRefDateTo) where.criticalRefDate[Sequelize.Op.lte] = new Date(criticalRefDateTo);
+
+      if (criticalRefDateFrom) {
+        where.criticalRefDate[Op.gte] = new Date(
+          criticalRefDateFrom
+        );
+      }
+
+      if (criticalRefDateTo) {
+        where.criticalRefDate[Op.lte] = new Date(
+          criticalRefDateTo
+        );
+      }
     }
 
-    // Fetch all matching records ordered by ppId
+    // FETCH INSERT SCORES
     const rows = await InsertScore.findAll({
       where,
+      include: [
+        {
+          model: InsertScoreCriteria,
+          as: "customCriteria",
+          required: false,
+          include: [
+            {
+              model: ScoringCriteria,
+              as: "criteria",
+              attributes: ["id", "criteriaId", "criteria"],
+            },
+          ],
+        },
+      ],
       order: [["criticalRefDate", "ASC"]],
-      raw: true,
     });
 
-    // Separate positive and negative ppId rows
-    const positiveRows = rows.filter(r => r.ppId > 0);
-    const negativeRows = rows.filter(r => r.ppId < 0);
+    // SPLIT POSITIVE / NEGATIVE
+    const positiveRows = rows.filter((r) => r.ppId > 0);
+    const negativeRows = rows.filter((r) => r.ppId < 0);
 
-    // Transform rows with separate serial numbering
     const transformRows = (rows) =>
       rows.map((row, index) => {
         const mcValues = {};
         const ccValues = {};
 
+        // MAIN CRITERIA
         for (let i = 1; i <= 20; i++) {
-          mcValues[`mc${i}`] = row[`mc${i}`] != null ? Number(row[`mc${i}`]) : 0;
-          ccValues[`cc${i}`] = row[`cc${i}`] != null ? Number(row[`cc${i}`]) : 0;
+          mcValues[`mc${i}`] =
+            row[`mc${i}`] != null
+              ? Number(row[`mc${i}`])
+              : 0;
+
+          // default cc values
+          ccValues[`cc${i}`] = 0;
+        }
+
+        // CUSTOM CRITERIA
+        if (
+          row.customCriteria &&
+          row.customCriteria.length > 0
+        ) {
+          row.customCriteria.forEach((cc) => {
+            const criteriaIndex =
+              cc.criteria?.criteriaId;
+
+            // criteriaId => cc1, cc2, cc3...
+            if (
+              criteriaIndex >= 1 &&
+              criteriaIndex <= 20
+            ) {
+              ccValues[`cc${criteriaIndex}`] =
+                cc.value != null
+                  ? Number(cc.value)
+                  : 0;
+            }
+          });
         }
 
         return {
@@ -71,10 +142,12 @@ exports.getInsertScoreSequential = async (req, res) => {
         };
       });
 
-    const transformedPositive = transformRows(positiveRows);
-    const transformedNegative = transformRows(negativeRows);
+    const transformedPositive =
+      transformRows(positiveRows);
 
-    // Combine into final structured response
+    const transformedNegative =
+      transformRows(negativeRows);
+
     res.status(200).json({
       total: rows.length,
       totalPositive: transformedPositive.length,
@@ -82,11 +155,15 @@ exports.getInsertScoreSequential = async (req, res) => {
       positiveData: transformedPositive,
       negativeData: transformedNegative,
     });
-
   } catch (error) {
-    console.error("Error in getInsertScoreSequential:", error);
+    console.error(
+      "Error in getInsertScoreSequential:",
+      error
+    );
+
     res.status(500).json({
-      message: "Error fetching insert score sequential summary",
+      message:
+        "Error fetching insert score sequential summary",
       error: error.message,
     });
   }
