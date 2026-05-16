@@ -90,8 +90,8 @@ exports.getInsertScoreSequential = async (req, res) => {
     });
 
     // SPLIT POSITIVE / NEGATIVE
-    const positiveRows = rows.filter((r) => r.ppId > 0);
-    const negativeRows = rows.filter((r) => r.ppId < 0);
+    const positiveRows = rows.filter((r) => r.ppId > 0).sort((a, b) => a.ppId - b.ppId);
+    const negativeRows = rows.filter((r) => r.ppId < 0).sort((a, b) => b.ppId - a.ppId);
 
     const transformRows = (rows) =>
       rows.map((row, index) => {
