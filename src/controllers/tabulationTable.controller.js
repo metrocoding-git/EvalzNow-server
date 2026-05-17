@@ -2841,7 +2841,7 @@ function calculateStdDevs(results) {
     "deltaRRN",
     "deltaPRN",
     "deltaARN",
-    "GEQ",
+    
   ];
 
   // Filter only valid rows with positive ppId
@@ -2909,7 +2909,6 @@ function calculateStdErrors(results, stdDevRow) {
     "deltaRRN",
     "deltaPRN",
     "deltaARN",
-    "GEQ",
   ];
 
   const validRows = results.filter(r => r.ppId > 0);
@@ -3805,6 +3804,18 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           unitType
         );
 
+        if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
+          average.GEQ = calculateGEQ_CIO(
+            avgDeltaRRN,
+            avgDeltaPRN
+          );
+        } else if (unitType === "Third Parameter") {
+          average.GEQ = calculateGEQ_TP(
+            avgDeltaRRN,
+            avgDeltaPRN,
+            avgDeltaARN
+          );
+        }
       }
 
       allResults[candidateId] = {
