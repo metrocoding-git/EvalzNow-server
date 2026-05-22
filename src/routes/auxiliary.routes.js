@@ -21,5 +21,6 @@ router.put('/assessment/:id', auxiliaryResultant.updateCandidateNeedAssessment);
 router.put('/chain/:id', auxiliaryResultant.updateAssessmentChain);
 router.delete('/assessment/:id', auxiliaryResultant.deleteCandidateNeedAssessment);
 router.delete('/lesson/:id', auxiliaryResultant.deleteUnitImprovement);
+router.delete('/chain/:id', auxiliaryResultant.deleteAssessmentChain);
 
 module.exports = router;

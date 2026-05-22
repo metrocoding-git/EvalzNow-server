@@ -2937,6 +2937,23 @@ function calculateStdErrors(results, stdDevRow) {
 }
 
 
+const parseDate = (dateStr, endOfDay = false) => {
+  if (!dateStr) return null;
+
+  // expects DD/MM/YYYY
+  const [day, month, year] = dateStr.split("/");
+
+  const date = new Date(year, month - 1, day);
+
+  if (endOfDay) {
+    date.setHours(23, 59, 59, 999);
+  } else {
+    date.setHours(0, 0, 0, 0);
+  }
+
+  return date;
+}
+
 // ---------------------------------------------------------------------
 
 
@@ -3390,13 +3407,13 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       }
 
       // 🔹 Add criticalRefDate range filters (if provided)
-      if (criticalRefDateFrom && criticalRefDateTo) {
-        whereClause.criticalRefDate = { [Op.between]: [new Date(criticalRefDateFrom), new Date(criticalRefDateTo)] };
-      } else if (criticalRefDateFrom) {
-        whereClause.criticalRefDate = { [Op.gte]: new Date(criticalRefDateFrom) };
-      } else if (criticalRefDateTo) {
-        whereClause.criticalRefDate = { [Op.lte]: new Date(criticalRefDateTo) };
-      }
+      // if (criticalRefDateFrom && criticalRefDateTo) {
+      //   whereClause.criticalRefDate = { [Op.between]: [new Date(criticalRefDateFrom), new Date(criticalRefDateTo)] };
+      // } else if (criticalRefDateFrom) {
+      //   whereClause.criticalRefDate = { [Op.gte]: new Date(criticalRefDateFrom) };
+      // } else if (criticalRefDateTo) {
+      //   whereClause.criticalRefDate = { [Op.lte]: new Date(criticalRefDateTo) };
+      // }
 
       const aggregates = await InsertScore.findAll({
         attributes: [
@@ -3409,7 +3426,24 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
         raw: true,
       });
 
-      if (!aggregates.length) {
+      //  Filter aggregates using latestCriticalRefDate
+      const filteredAggregates = aggregates.filter((agg) => {
+        if (!agg.latestCriticalRefDate) return false;
+
+        const latestDate = new Date(agg.latestCriticalRefDate);
+
+        if (criticalRefDateFrom && latestDate < new Date(criticalRefDateFrom)) {
+          return false;
+        }
+
+        if (criticalRefDateTo && latestDate > new Date(criticalRefDateTo)) {
+          return false;
+        }
+
+        return true;
+      });
+
+      if (!filteredAggregates.length) {
         allResults[candidateId] = {
           results: [],
           average: null,
@@ -3420,7 +3454,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       }
 
       const results = await Promise.all(
-        aggregates.map(async (agg) => {
+        filteredAggregates.map(async (agg) => {
           const ppId = agg.ppId;
           const totalDuration = Number(agg.totalDuration) || 0;
           const criticalRefDate = agg.latestCriticalRefDate ? new Date(agg.latestCriticalRefDate) : null;
