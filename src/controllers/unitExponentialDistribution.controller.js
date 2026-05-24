@@ -57,8 +57,8 @@ function calculateDistribution(params = {}) {
   const mu = Array.isArray(data) && data.length ? meanFn(data) : fallbackMean;
   const lambda = 1 / mu;
   const step = params.step ?? 0.05;
-  // Spec says 0 to 10λ; ensure reasonable extent
-  const end = Math.max(10 * lambda, 10 / lambda);
+  // Spec says 0 to 15λ; ensure reasonable extent
+  const end = 15;
   const x = generateRange(0, end, step);
   const y = x.map((xi) => exponentialPdf(xi, lambda));
 
@@ -162,17 +162,19 @@ exports.getExponetialDistributionData = async (req, res) => {
 
     const deltaGEQArray = collect("GEQ");
 
-    console.log("Collected arrays:");
-    console.log("RR:", rrArray);
-    console.log("PR:", prArray);
-    console.log("AR:", arArray);
-    console.log("delta RR:", deltaRRArray);
-    console.log("delta PR:", deltaPRArray);
-    console.log("delta AR:", deltaARArray);
-    console.log("XEQ:", xeqArray);
-    console.log("XCP:", xcpArray);
-    console.log("XBP:", xbpArray);
-    console.log("deltaGEQ:", deltaGEQArray);
+    
+
+    // console.log("Collected arrays:");
+    // console.log("RR:", rrArray);
+    // console.log("PR:", prArray);
+    // console.log("AR:", arArray);
+    // console.log("delta RR:", deltaRRArray);
+    // console.log("delta PR:", deltaPRArray);
+    // console.log("delta AR:", deltaARArray);
+    // console.log("XEQ:", xeqArray);
+    // console.log("XCP:", xcpArray);
+    // console.log("XBP:", xbpArray);
+    // console.log("deltaGEQ:", deltaGEQArray);
 
     // --- DISTRIBUTIONS ---
     const rrDistribution = calculateDistribution({ data: rrArray, step: 0.05 });
@@ -189,6 +191,10 @@ exports.getExponetialDistributionData = async (req, res) => {
 
     const deltaGEQDistribution = calculateDistribution({ data: deltaGEQArray, step: 0.05 });
 
+    console.log("RR ARRAY MAX:", Math.max(...rrArray));
+    console.log("RR DISTRIBUTION MAX X:", Math.max(...rrDistribution.x));
+    console.log("RR TABLE MAX X:", Math.max(...rrDistribution.table.map(d => d.x)));
+    
     res.status(200).json({
       mode: "MIXED", // Can be mix of PP-level and candidate averages
       distributions: {
