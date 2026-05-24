@@ -241,8 +241,11 @@ const rows = [
         // Calculate RMS and deltaRMS per lobe
         Object.keys(lobeStats).forEach(lobe => {
           const bucket = lobeStats[lobe];
-          bucket.RMS = bucket.count > 0 ? Math.sqrt(bucket.sum / bucket.count) : 0;
-          bucket.deltaRMS = bucket.deltaCount > 0 ? Math.sqrt(bucket.deltaSum / bucket.deltaCount) : 0;
+          bucket.RMS = bucket.count > 0 && Number.isFinite(bucket.sum) && Number.isFinite(bucket.count)
+              ? Math.sqrt(bucket.sum / bucket.count) : 0;
+
+          bucket.deltaRMS = bucket.deltaCount > 0 && Number.isFinite(bucket.deltaSum) &&
+           Number.isFinite(bucket.deltaCount) ? Math.sqrt(bucket.deltaSum / bucket.deltaCount) : 0;
         });
   
         finalResult.push({
@@ -251,6 +254,8 @@ const rows = [
         });
       }
   
+      finalResult.sort((a, b) => a.ppId - b.ppId);
+
       return res.status(200).json({
         unitId,
         candidateId,

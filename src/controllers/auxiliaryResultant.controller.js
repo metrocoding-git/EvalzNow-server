@@ -1628,6 +1628,45 @@ exports.updateAssessmentChain = async (req, res) => {
   }
 };
 
+exports.deleteAssessmentChain = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    //  Validate ID
+    if (!id) {
+      return res.status(400).json({
+        message: "AssessmentChain ID is required"
+      });
+    }
+
+    //  Find chain
+    const chain = await AssessmentChain.findByPk(id);
+
+    if (!chain) {
+      return res.status(404).json({
+        message: "AssessmentChain not found"
+      });
+    }
+
+    //  Delete chain
+    await chain.destroy();
+
+    return res.status(200).json({
+      success: true,
+      message: "AssessmentChain deleted successfully",
+      deletedId: id
+    });
+
+  } catch (error) {
+    console.error("Error in deleteAssessmentChain:", error);
+
+    return res.status(500).json({
+      message: "Error deleting AssessmentChain",
+      error: error.message
+    });
+  }
+};
+
 exports.getNeedAssessmentStatusSummary = async (req, res) => {
   try {
     const { unitId, candidate_id } = req.params;
