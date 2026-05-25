@@ -317,6 +317,8 @@ exports.getAuxiliaryGraphData = async (req, res) => {
           };
       });
 
+      finalResponse.sort((a, b) => a.ppId - b.ppId);
+      
       // ----------------------------------------------------
       // FINAL OUTPUT
       // ----------------------------------------------------
