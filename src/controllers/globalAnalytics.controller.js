@@ -449,7 +449,7 @@ function getIcClass(icValue, signatureProfile) {
     case 'Case 3a: Productive-Weighted':
       // Use P value
       return p;
-    case 'Case 3b: Receptive-Weighed':
+    case 'Case 3b: Receptive-Weighted':
       // Use R value
       return r;
     default:
@@ -794,6 +794,8 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       raw: true,
     });
 
+
+    
     // ===================================================
     // 2️⃣ Attendance (UnitRoster) Aggregation
     // ===================================================
@@ -854,6 +856,26 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     });
 
     
+    const assessmentBlockCountsByCandidate =
+    await AssessmentBlockManager.findAll({
+      attributes: [
+        "unitId",
+        "candidate_id",
+        [fn("COUNT", col("AssessmentBlockManager.id")), "blockCount"],
+      ],
+      include: [
+        {
+          model: Unit,
+          as: "unit",
+          where: { clientId },
+          attributes: [],
+          required: true,
+        },
+      ],
+      group: ["unitId", "candidate_id"],
+      raw: true,
+    });
+
     const candidateMap = {};
     for (const row of candidateCountByUnit) {
       candidateMap[row.unitId] = Number(row.candidateCount) || 0;
@@ -885,7 +907,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       "Case 1: Solid Balanced": 0,
       "Case 2: Rigorous Balanced": 0,
       "Case 3a: Productive-Weighted": 0,
-      "Case 3b: Receptive-Weighed": 0,
+      "Case 3b: Receptive-Weighted": 0,
     };
 
     const unitTypeSummary = {
@@ -924,6 +946,19 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       ],
       raw: true,
     });
+
+
+    for (const row of assessmentBlockCountsByCandidate) {
+      const count = Number(row.blockCount) || 0;
+    
+      if (count <= 8) {
+        assessmentBlockSummary["AB ≤ 8"]++;
+      } else if (count <= 20) {
+        assessmentBlockSummary["8 < AB ≤ 20"]++;
+      } else {
+        assessmentBlockSummary["AB > 20"]++;
+      }
+    }
 
     // Initialize counters
     const needAssessmentSummary = {
@@ -1037,7 +1072,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
         candidateStaffRatioSummary["≥ 30"]++;
       }
       const bc = Number(unit.benchmarkCount) || 0;
-      const ab = Number(unit.assessmentBlockCount) || 0;
+      // const ab = Number(unit.assessmentBlockCount) || 0;
 
       if (signatureProfileSummary[unit.signatureProfile] !== undefined)
         signatureProfileSummary[unit.signatureProfile]++;
@@ -1045,9 +1080,9 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       if (bc <= 10) benchmarkCountSummary["BC ≤ 10"]++;
       else if (bc <= 25) benchmarkCountSummary["10 < BC ≤ 25"]++;
       else benchmarkCountSummary["BC > 25"]++;
-      if (ab <= 8) assessmentBlockSummary["AB ≤ 8"]++;
-      else if (ab <= 20) assessmentBlockSummary["8 < AB ≤ 20"]++;
-      else assessmentBlockSummary["AB > 20"]++;
+      // if (ab <= 8) assessmentBlockSummary["AB ≤ 8"]++;
+      // else if (ab <= 20) assessmentBlockSummary["8 < AB ≤ 20"]++;
+      // else assessmentBlockSummary["AB > 20"]++;
     }
 
     const leaderImpactByUnit = await LeaderMarks.findAll({
