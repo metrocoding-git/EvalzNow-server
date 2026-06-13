@@ -460,6 +460,93 @@ exports.createCandidateMarks = async (req, res) => {
   }
 };
 
+exports.updateCandidateMark = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      impactType,
+      concernIdentified,
+      identityDate,
+      concernResolved,
+      resolutionDate
+    } = req.body;
+
+    // Find existing record
+    const candidateMark = await db.CandidateMarks.findByPk(id);
+
+    if (!candidateMark) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate mark not found"
+      });
+    }
+
+    // Validate required fields
+    if (
+      !impactType ||
+      !concernIdentified ||
+      !identityDate
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "impactType, concernIdentified, and identityDate are required"
+      });
+    }
+
+    // Validate impact type
+    if (!["Positive", "Negative"].includes(impactType)) {
+      return res.status(400).json({
+        success: false,
+        message: "impactType must be 'Positive' or 'Negative'"
+      });
+    }
+
+    // Update record
+    await candidateMark.update({
+      impactType,
+      concernIdentified,
+      identityDate,
+      concernResolved,
+      resolutionDate: resolutionDate || null
+    });
+
+    // Fetch updated record with associations
+    const updatedData = await db.CandidateMarks.findOne({
+      where: { id },
+      include: [
+        {
+          model: db.Candidate,
+          as: "candidate",
+          attributes: ["id", "firstName", "lastName"]
+        },
+        {
+          model: db.Unit,
+          as: "unit",
+          attributes: ["id", "unitName"]
+        }
+      ]
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Candidate mark updated successfully",
+      data: updatedData
+    });
+
+  } catch (error) {
+    console.error("Error in updateCandidateMark:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Error updating candidate mark",
+      error: error.message
+    });
+  }
+};
+
+
 exports.getCandidateNeedAssessments = async (req, res) => {
   try {
     const { unitId, candidate_id } = req.params;
@@ -951,6 +1038,119 @@ exports.createLeaderMarks = async (req, res) => {
   }
 };
 
+exports.updateLeaderMarks = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      staffLookupId,
+      impactType,
+      concernIdentified,
+      identityDate,
+      concernResolved,
+      resolutionDate
+    } = req.body;
+
+    // Find existing record
+    const leaderMark = await db.LeaderMarks.findByPk(id);
+
+    if (!leaderMark) {
+      return res.status(404).json({
+        success: false,
+        message: "Leader mark not found"
+      });
+    }
+
+    // Validation
+    if (
+      !staffLookupId ||
+      !impactType ||
+      !concernIdentified ||
+      !identityDate
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "staffLookupId, impactType, concernIdentified and identityDate are required"
+      });
+    }
+
+    // Validate impact type
+    if (!["Positive", "Negative"].includes(impactType)) {
+      return res.status(400).json({
+        success: false,
+        message: "impactType must be 'Positive' or 'Negative'"
+      });
+    }
+
+    // Verify staff exists
+    const staffLookup = await db.StaffLookup.findByPk(staffLookupId);
+
+    if (!staffLookup) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid staffLookupId"
+      });
+    }
+
+    // Update record
+    await leaderMark.update({
+      staffLookupId,
+      impactType,
+      concernIdentified,
+      identityDate,
+      concernResolved,
+      resolutionDate:
+        concernResolved === "Yes"
+          ? resolutionDate || null
+          : null
+    });
+
+    // Fetch updated record with relationships
+    const updatedData = await db.LeaderMarks.findOne({
+      where: { id: leaderMark.id },
+      include: [
+        {
+          model: db.Unit,
+          as: "unit",
+          attributes: ["id", "unitName"]
+        },
+        {
+          model: db.StaffLookup,
+          as: "leaderLookup",
+          include: [
+            {
+              model: db.Staff,
+              as: "staff",
+              attributes: [
+                "id",
+                "firstName",
+                "lastName",
+                "emailAddress",
+                "jobTitle"
+              ]
+            }
+          ]
+        }
+      ]
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Leader mark updated successfully",
+      data: updatedData
+    });
+
+  } catch (error) {
+    console.error(" Error in updateLeaderMarks:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Error updating leader mark",
+      error: error.message
+    });
+  }
+};
 
 exports.getLeaderMarks = async (req, res) => {
   try {
