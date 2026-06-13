@@ -19,6 +19,8 @@ router.post('/leader', auxiliaryResultant.createLeaderMarks);
 router.post('/chain', auxiliaryResultant.createAssessmentChain);
 router.put('/assessment/:id', auxiliaryResultant.updateCandidateNeedAssessment);
 router.put('/chain/:id', auxiliaryResultant.updateAssessmentChain);
+router.put('/marks/:id', auxiliaryResultant.updateCandidateMark);
+router.put('/leader/:id', auxiliaryResultant.updateLeaderMarks);
 router.delete('/assessment/:id', auxiliaryResultant.deleteCandidateNeedAssessment);
 router.delete('/lesson/:id', auxiliaryResultant.deleteUnitImprovement);
 router.delete('/chain/:id', auxiliaryResultant.deleteAssessmentChain);
