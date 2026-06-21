@@ -23,6 +23,8 @@ router.put('/marks/:id', auxiliaryResultant.updateCandidateMark);
 router.put('/leader/:id', auxiliaryResultant.updateLeaderMarks);
 router.delete('/assessment/:id', auxiliaryResultant.deleteCandidateNeedAssessment);
 router.delete('/lesson/:id', auxiliaryResultant.deleteUnitImprovement);
+router.delete('/marks/:id', auxiliaryResultant.deleteCandidateMark);
+router.delete('/leader/:id', auxiliaryResultant.deleteLeaderMark);
 router.delete('/chain/:id', auxiliaryResultant.deleteAssessmentChain);
 
 module.exports = router;

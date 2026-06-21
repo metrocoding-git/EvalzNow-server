@@ -546,6 +546,46 @@ exports.updateCandidateMark = async (req, res) => {
   }
 };
 
+exports.deleteCandidateMark = async (req, res) => {
+  try {
+    const { id } = req.params; // unit improvement record ID
+
+    if (!id) {
+      return res.status(400).json({
+        message: "Candidate mark ID is required"
+      });
+    }
+
+    // Find the unit improvement record
+    const candidateMark = await CandidateMarks.findOne({
+      where: { id }
+    });
+
+    if (!candidateMark) {
+      return res.status(404).json({
+        message: "Candidate Mark record not found"
+      });
+    }
+
+    // Delete the record
+    await candidateMark.destroy({
+      where: { id }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Candidate Mark deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Error in delete Candidate Mark:", error);
+    return res.status(500).json({
+      message: "Error deleting Candidate Mark",
+      error: error.message
+    });
+  }
+};
+
 
 exports.getCandidateNeedAssessments = async (req, res) => {
   try {
@@ -1216,6 +1256,45 @@ exports.getLeaderMarks = async (req, res) => {
   }
 };
 
+exports.deleteLeaderMark = async (req, res) => {
+  try {
+    const { id } = req.params; // unit improvement record ID
+
+    if (!id) {
+      return res.status(400).json({
+        message: "Leader mark ID is required"
+      });
+    }
+
+    // Find the unit improvement record
+    const leaderMark = await db.LeaderMarks.findOne({
+      where: { id }
+    });
+
+    if (!leaderMark) {
+      return res.status(404).json({
+        message: "Leader Mark record not found"
+      });
+    }
+
+    // Delete the record
+    await leaderMark.destroy({
+      where: { id }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Leader Mark deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Error in delete Leader Mark:", error);
+    return res.status(500).json({
+      message: "Error deleting Leader Mark",
+      error: error.message
+    });
+  }
+};
 
 exports.getEffortBu = async (req, res) => {
   try {
