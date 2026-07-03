@@ -1140,10 +1140,7 @@ exports.updateLeaderMarks = async (req, res) => {
       concernIdentified,
       identityDate,
       concernResolved,
-      resolutionDate:
-        concernResolved === "Yes"
-          ? resolutionDate || null
-          : null
+      resolutionDate: resolutionDate
     });
 
     // Fetch updated record with relationships
