@@ -1,4 +1,4 @@
-const { fn, col, literal } = require("sequelize");
+const { fn, col, literal, Op } = require("sequelize");
 const db = require("../models");
 const Unit = db.Unit;
 const Benchmark = db.Benchmark;
@@ -858,6 +858,11 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     
     const assessmentBlockCountsByCandidate =
     await AssessmentBlockManager.findAll({
+      where: {
+        ppid: {
+          [Op.gt]: 0, // Only positive PP IDs
+        },
+      },
       attributes: [
         "unitId",
         "candidate_id",
