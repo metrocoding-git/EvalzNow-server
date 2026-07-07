@@ -965,8 +965,21 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       }
     }
 
+    const totalAssessmentBlockCount = await AssessmentBlockManager.count({
+      include: [
+        {
+          model: Unit,
+          as: "unit",
+          where: { clientId },
+          attributes: [],
+          required: true,
+        },
+      ],
+    });
+
     // Initialize counters
     const needAssessmentSummary = {
+      Total: totalAssessmentBlockCount,
       Open: 0,
       Pending: 0,
       Closed: 0,
@@ -982,14 +995,19 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
 
       const observation = (na.observation || "").trim();
 
-      if (bIds.length === 0 && !observation) {
-        needAssessmentSummary.Open++;
-      } else if (bIds.length > 0 && observation) {
+      if (bIds.length > 0 && observation) {
         needAssessmentSummary.Closed++;
       } else {
         needAssessmentSummary.Pending++;
       }
     }
+
+    needAssessmentSummary.Open = Math.max(
+      0,
+      needAssessmentSummary.Total -
+        (needAssessmentSummary.Pending + needAssessmentSummary.Closed)
+    );
+
 
     // for (const row of needAssessmentTotals) {
     //   needAssessmentSummary.total += Number(row.totalNeedAssessments) || 0;
@@ -1038,19 +1056,22 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     }
 
     const globalCandidateMarks = {
-      impactScore: 0,
+      positiveMarks: 0,
       totalMarks: 0,
+      impactScore: 0,
     };
     
     for (const row of candidateImpactByUnit) {
       const positive = Number(row.positiveCount) || 0;
       const total = Number(row.totalCount) || 0;
     
-      if (total > 0) {
-        globalCandidateMarks.impactScore += positive / total;
-      }
-    
+      globalCandidateMarks.positiveMarks += positive;
       globalCandidateMarks.totalMarks += total;
+    }
+    
+    if (globalCandidateMarks.totalMarks > 0) {
+      globalCandidateMarks.impactScore =
+        globalCandidateMarks.positiveMarks / globalCandidateMarks.totalMarks;
     }
     
 

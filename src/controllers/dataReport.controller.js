@@ -332,7 +332,7 @@ function calculateInteractionClass(rr, pr, ar, unitType, signatureProfile) {
         return GetInteractionClassForCase2(rrVal, prVal);
       case "Case 3a: Productive-Weighted":
         return GetInteractionClassForCase3a(rrVal, prVal);
-      case "Case 3b: Receptive-Weighed":
+      case "Case 3b: Receptive-Weighted":
         return GetInteractionClassForCase3b(rrVal, prVal);
       default:
         return null;
