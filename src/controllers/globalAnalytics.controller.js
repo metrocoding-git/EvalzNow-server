@@ -1159,21 +1159,24 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     }
 
     const globalLeaderMarks = {
-      impactScore: 0,
+      positiveMarks: 0,
       totalMarks: 0,
+      impactScore: 0,
     };
     
     for (const row of leaderImpactByUnit) {
       const positive = Number(row.positiveCount) || 0;
       const total = Number(row.totalCount) || 0;
     
-      if (total > 0) {
-        globalLeaderMarks.impactScore += positive / total;
-      }
-    
+      globalLeaderMarks.positiveMarks += positive;
       globalLeaderMarks.totalMarks += total;
     }
     
+    if (globalLeaderMarks.totalMarks > 0) {
+      globalLeaderMarks.impactScore =
+        globalLeaderMarks.positiveMarks / globalLeaderMarks.totalMarks;
+    }
+
 
     const unitOutcomeTotals = await UnitRoster.findAll({
       attributes: [
