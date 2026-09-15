@@ -66,7 +66,7 @@ const rows = [
     { lobe: "Temporal Lobe - Left", func: "Linking sound frequencies to different action responses", rr: "n", pr: "y", ar: "n" },
     { lobe: "Temporal Lobe - Left", func: "Social Cognition", rr: "y", pr: "n", ar: "n" },
     { lobe: "Temporal Lobe - Left", func: "Short-Term Visual Perception", rr: "y", pr: "n", ar: "y" },
-    { lobe: "Temporal Lobe - Left", func: "Functional Capacity - Temporal Lobe (L)", rr: "y", pr: "y", ar: "y" },
+    { lobe: "Temporal Lobe - Left", func: "Functional Capacity - Temporal Lobe", rr: "y", pr: "y", ar: "y" },
   
     // ================= FRONTAL LOBE - RIGHT =================
     { lobe: "Frontal Lobe - Right", func: "Non-Verbal processing", rr: "y", pr: "n", ar: "y" },

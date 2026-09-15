@@ -284,7 +284,7 @@ function calculateInteractionClass(rr, pr, ar, unitType, signatureProfile) {
       case "Case 3b: Receptive-Weighted":
         console.log("get interaction value: ", GetInteractionClassForCase3b(rrVal, prVal));
         return GetInteractionClassForCase3b(rrVal, prVal);
-        
+
       default:
         return null;
     }
@@ -2729,7 +2729,7 @@ function calculateAverages(results) {
       }
       return null;
     }).filter(v => v !== null);
-    
+
     avgRow[field] = values.length
       ? +(values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(3)
       : null;
@@ -2767,7 +2767,7 @@ function calculateCombinedAverages(allResults) {
 
   // Collect all valid rows from ALL candidates
   const allValidRows = [];
-  
+
   for (const candidateId in allResults) {
     const candidateData = allResults[candidateId];
     const validRows = candidateData.results.filter(r => r.ppId > 0);
@@ -2788,7 +2788,7 @@ function calculateCombinedAverages(allResults) {
       }
       return null;
     }).filter(v => v !== null);
-    
+
     combinedAvgRow[field] = values.length
       ? +(values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(3)
       : null;
@@ -2843,7 +2843,7 @@ function calculateStdDevs(results) {
     "deltaRRN",
     "deltaPRN",
     "deltaARN",
-    
+
   ];
 
   // Filter only valid rows with positive ppId
@@ -2863,7 +2863,7 @@ function calculateStdDevs(results) {
       }
       return null;
     }).filter(v => v !== null);
-    
+
     stdRow[field] =
       values.length > 1
         ? +CalculateStandardDevTS(values, false)
@@ -2929,7 +2929,7 @@ function calculateStdErrors(results, stdDevRow) {
     } else {
       stdDevValue = NaN;
     }
-    
+
     stdErrRow[field] = !isNaN(stdDevValue)
       ? CalculateStandardError(stdDevValue, validRows)
       : null;
@@ -3261,8 +3261,8 @@ exports.getPpCompetencyRatios = async (req, res) => {
       if (row.criticalRefDate && row.cumulativeDuration > 0 && row.ppId > 0) {
         const diffUSD = (row.criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
         const diffCSD = (row.criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-        row.Productivity_USD = +(row.cumulativeDuration / diffUSD).toFixed(3);
-row.Productivity_CSD = +(row.cumulativeDuration / diffCSD).toFixed(3);
+        row.Productivity_USD = +(row.cumulativeDuration / diffUSD / 10).toFixed(3);
+        row.Productivity_CSD = +(row.cumulativeDuration / diffCSD / 10).toFixed(3);
       } else {
         row.Productivity_USD = null;
         row.Productivity_CSD = null;
@@ -3395,7 +3395,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
       // 🔹 Build base where clause for this candidate
       const whereClause = { unitId, candidate_id: candidateId };
 
-      if(ppId) {
+      if (ppId) {
         whereClause.ppId = Number(ppId);
       }
 
@@ -3527,8 +3527,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           if (criticalRefDate && totalDuration > 0 && ppId > 0) {
             const diffUSD = (criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
             const diffCSD = (criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-            out.Productivity_USD = +((totalDuration / diffUSD).toFixed(3));
-            out.Productivity_CSD = +((totalDuration / diffCSD).toFixed(3));
+            out.Productivity_USD = +((totalDuration / diffUSD / 10).toFixed(3));
+            out.Productivity_CSD = +((totalDuration / diffCSD / 10).toFixed(3));
           } else {
             out.Productivity_CSD = null;
             out.Productivity_USD = null;
@@ -3554,10 +3554,9 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
             [rr, pr] = PerformancePointTPAllCases(out.XTR, out.XPR);
           }
 
-          out.RRN = rr ? +rr.toFixed(3) : null;
-          out.PRN = pr ? +pr.toFixed(3) : null;
-          out.ARN = ar ? +ar.toFixed(3) : null;
-
+          out.RRN = rr !== null ? +rr.toFixed(3) : null;
+          out.PRN = pr !== null ? +pr.toFixed(3) : null;
+          out.ARN = ar !== null ? +ar.toFixed(3) : null;
           // console.log("signature ", signature, signatureProfile);
           // console.log("cimo: ", out.XLR, out.XRR, out.XWR, out.XSR);
           // console.log("tp: ", out.XTR, out.XPR);
@@ -3742,8 +3741,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
         if (row.criticalRefDate && row.cumulativeDuration > 0 && row.ppId > 0) {
           const diffUSD = (row.criticalRefDate - unitStart) / (1000 * 60 * 60 * 24);
           const diffCSD = (row.criticalRefDate - candidateStart) / (1000 * 60 * 60 * 24);
-          row.Productivity_USD = (row.cumulativeDuration / diffUSD).toFixed(3);
-          row.Productivity_CSD = (row.cumulativeDuration / diffCSD).toFixed(3);
+          row.Productivity_USD = (row.cumulativeDuration / diffUSD / 10).toFixed(3);
+          row.Productivity_CSD = (row.cumulativeDuration / diffCSD / 10).toFixed(3);
         } else {
           row.Productivity_USD = null;
           row.Productivity_CSD = null;
@@ -3914,14 +3913,14 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
     // Sort combined results by candidate_id first, then ppId
     // combinedResults.sort((a, b) => {
-      // Note: results don't have candidate_id attached, so they maintain their order
-      // return 0;
+    // Note: results don't have candidate_id attached, so they maintain their order
+    // return 0;
     // });
 
     // if (combinedAverage) {
     //   combinedAverages.push({ candidateId: "ALL", ...combinedAverage });
     // }
-    
+
     res.status(200).json({
       results: combinedResults,
       averages: combinedAverages.length > 0 ? combinedAverages : undefined,
