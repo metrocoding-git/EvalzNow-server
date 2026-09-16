@@ -29,7 +29,7 @@ function cognitiveNS(xArray, yArray) {
     }
   }
 
-  return parseFloat(areasub).toFixed(3);
+  return (parseFloat(areasub) / 100).toFixed(3);
 }
 
 
@@ -622,7 +622,7 @@ exports.getDataReportByUnitCandidate = async (req, res) => {
       ? {
         count: neuroData.count,
         data: neuroData.data,
-        cognitiveLoad: calculateCognitiveLoadPerLobe(neuroData.data)
+        cognitiveLoad: neuroData.cognitiveLoad
       }
       : {
         count: 0,
@@ -864,7 +864,7 @@ exports.getDataReportByUnitAllCandidates = async (req, res) => {
         ? {
           count: neuroData.count,
           data: neuroData.data,
-          cognitiveLoad: calculateCognitiveLoadPerLobe(neuroData.data)
+          cognitiveLoad: neuroData.cognitiveLoad
         }
         : { count: 0, data: [], cognitiveLoad: {} };
 
