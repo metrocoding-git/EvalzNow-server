@@ -154,10 +154,10 @@ function calculateSTAP(RRNValue, PRNValue, ARNValue, MSIPValue, unitType) {
   const msip = MSIPValue ?? 0;
 
   if (
-    rrn >= 0.7 &&
-    prn >= 0.7 &&
+    rrn >= 0.50 &&
+    prn >= 0.50 &&
     (unitType !== "Third Parameter" || arn >= 0.7) &&
-    msip < 0
+    msip <= 0.42
   ) {
     return "STABLE";
   } else {
@@ -298,7 +298,7 @@ function calculateInteractionClass(rr, pr, ar, unitType, signatureProfile) {
 
 const calculateSTAG = (deltaRRN, deltaPRN, deltaARN, msipValue, type) => {
 
-  if (deltaRRN > 0 && deltaPRN > 0 && (type !== "Third Parameter" || deltaARN > 0) && msipValue < 0) {
+  if (deltaRRN > 0 && deltaPRN > 0 && (type !== "Third Parameter" || deltaARN > 0) && msipValue <= 0.42) {
     return 'STABLE'
   }
   else {
