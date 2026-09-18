@@ -156,7 +156,7 @@ function calculateSTAP(RRNValue, PRNValue, ARNValue, MSIPValue, unitType) {
   if (
     rrn >= 0.50 &&
     prn >= 0.50 &&
-    (unitType !== "Third Parameter" || arn >= 0.7) &&
+    (unitType !== "Third Parameter" || arn >= 0.50) &&
     msip <= 0.42
   ) {
     return "STABLE";
@@ -296,9 +296,9 @@ function calculateInteractionClass(rr, pr, ar, unitType, signatureProfile) {
 
 //------------ STAG calculation --------------------------------
 
-const calculateSTAG = (deltaRRN, deltaPRN, deltaARN, msipValue, type) => {
+const calculateSTAG = (deltaRRN, deltaPRN, deltaARN, msipValue, type, GEQ) => {
 
-  if (deltaRRN > 0 && deltaPRN > 0 && (type !== "Third Parameter" || deltaARN > 0) && msipValue <= 0.42) {
+  if (deltaRRN >= 0 && deltaPRN >= 0 && (type !== "Third Parameter" || deltaARN >= 0) && msipValue <= 0.42 && GEQ >= 0) {
     return 'STABLE'
   }
   else {
@@ -310,14 +310,18 @@ const calculateSTAG = (deltaRRN, deltaPRN, deltaARN, msipValue, type) => {
 
 
 
-// ----------------- XEP Calculations -----------------
+// ----------------- GEQ Calculations -----------------
 
 function calculateGEQ_CIO(deltaRRN, deltaPRN) {
   if (deltaRRN == null || deltaPRN == null) return null;
   const val = Math.sqrt(Math.pow(deltaRRN, 2) + Math.pow(deltaPRN, 2) - deltaRRN * deltaPRN);
-  return isNaN(val) ? null : +val.toFixed(3);
+  if (isNaN(val)) return null;
+
+  const sign = (deltaRRN >= 0 && deltaPRN >= 0) ? 1 : -1;
+  return +(sign * val).toFixed(3);
 }
 
+// This is for the third parameter
 function calculateGEQ_TP(deltaRRN, deltaPRN, deltaARN) {
   if (deltaRRN == null || deltaPRN == null || deltaARN == null) return null;
 
@@ -328,8 +332,10 @@ function calculateGEQ_TP(deltaRRN, deltaPRN, deltaARN) {
   const term3 = safeSqrt(deltaPRN ** 2 + deltaARN ** 2 - deltaPRN * deltaARN);
 
   const val = (term1 + term2 + term3) / 3;
+  if (isNaN(val)) return null;
 
-  return isNaN(val) ? null : +val.toFixed(3);
+  const sign = (deltaRRN >= 0 && deltaPRN >= 0 && deltaARN >= 0) ? 1 : -1;
+  return +(sign * val).toFixed(3);
 }
 
 // ------------------------------------------------------------------
@@ -3289,18 +3295,25 @@ exports.getPpCompetencyRatios = async (req, res) => {
         const currPRN = row.PRN ?? 0;
         const currARN = row.ARN ?? 0;
 
-        row.deltaRRN = +(currRRN - (index === 0 ? 0 : prevRRN)).toFixed(3);
-        row.deltaPRN = +(currPRN - (index === 0 ? 0 : prevPRN)).toFixed(3);
-        row.deltaARN = +(currARN - (index === 0 ? 0 : prevARN)).toFixed(3);
-
-        // --- Calculate STAG ---
-        row.STAG = calculateSTAG(row.deltaRRN, row.deltaPRN, row.deltaARN, row.MSIP, unitType);
-
+        if (row.ppId === 1) {
+          row.deltaRRN = 0;
+          row.deltaPRN = 0;
+          row.deltaARN = 0;
+        } else {
+          row.deltaRRN = +(currRRN - prevRRN).toFixed(3);
+          row.deltaPRN = +(currPRN - prevPRN).toFixed(3);
+          row.deltaARN = +(currARN - prevARN).toFixed(3);
+        }
+        
         if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
           row.GEQ = calculateGEQ_CIO(row.deltaRRN, row.deltaPRN);
         } else if (unitType === "Third Parameter") {
           row.GEQ = calculateGEQ_TP(row.deltaRRN, row.deltaPRN, row.deltaARN);
         }
+
+        // --- Calculate STAG ---
+        row.STAG = calculateSTAG(row.deltaRRN, row.deltaPRN, row.deltaARN, row.MSIP, unitType, row.GEQ);
+
         // update previous values for next iteration
         prevRRN = currRRN;
         prevPRN = currPRN;
@@ -3768,18 +3781,25 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
           const currPRN = row.PRN ?? 0;
           const currARN = row.ARN ?? 0;
 
-          row.deltaRRN = +(currRRN - (index === 0 ? 0 : prevRRN)).toFixed(3);
-          row.deltaPRN = +(currPRN - (index === 0 ? 0 : prevPRN)).toFixed(3);
-          row.deltaARN = +(currARN - (index === 0 ? 0 : prevARN)).toFixed(3);
-
-          // --- Calculate STAG ---
-          row.STAG = calculateSTAG(row.deltaRRN, row.deltaPRN, row.deltaARN, row.MSIP, unitType);
+          if (row.ppId === 1) {
+            row.deltaRRN = 0;
+            row.deltaPRN = 0;
+            row.deltaARN = 0;
+          } else {
+            row.deltaRRN = +(currRRN - prevRRN).toFixed(3);
+            row.deltaPRN = +(currPRN - prevPRN).toFixed(3);
+            row.deltaARN = +(currARN - prevARN).toFixed(3);
+          }
 
           if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
             row.GEQ = calculateGEQ_CIO(row.deltaRRN, row.deltaPRN);
           } else if (unitType === "Third Parameter") {
             row.GEQ = calculateGEQ_TP(row.deltaRRN, row.deltaPRN, row.deltaARN);
           }
+
+          // --- Calculate STAG ---
+          row.STAG = calculateSTAG(row.deltaRRN, row.deltaPRN, row.deltaARN, row.MSIP, unitType, row.GEQ);
+
           // update previous values for next iteration
           prevRRN = currRRN;
           prevPRN = currPRN;
@@ -3831,13 +3851,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
         average.STAP = calculateSTAP(avgRRN, avgPRN, avgARN, avgMSIP, unitType);
 
-        average.STAG = calculateSTAG(
-          avgDeltaRRN,
-          avgDeltaPRN,
-          avgDeltaARN,
-          avgMSIP,
-          unitType
-        );
+        
 
         if (unitType === "Communicative I/O" || unitType === "Theory & Practice") {
           average.GEQ = calculateGEQ_CIO(
@@ -3851,6 +3865,15 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
             avgDeltaARN
           );
         }
+
+        average.STAG = calculateSTAG(
+          avgDeltaRRN,
+          avgDeltaPRN,
+          avgDeltaARN,
+          avgMSIP,
+          unitType,
+          average.GEQ
+        );
       }
 
       allResults[candidateId] = {

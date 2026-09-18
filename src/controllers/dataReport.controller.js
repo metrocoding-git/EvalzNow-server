@@ -903,7 +903,7 @@ function calculateSTAP(RRNValue, PRNValue, ARNValue, MSIPValue, unitType) {
   if (
     rrn >= 0.50 &&
     prn >= 0.50 &&
-    (unitType !== "Third Parameter" || arn >= 0.7) &&
+    (unitType !== "Third Parameter" || arn >= 0.50) &&
     msip <= 0.42
   ) {
     return "STABLE";
@@ -913,9 +913,9 @@ function calculateSTAP(RRNValue, PRNValue, ARNValue, MSIPValue, unitType) {
 }
 
 
-const calculateSTAG = (deltaRRN, deltaPRN, deltaARN, msipValue, type) => {
+const calculateSTAG = (deltaRRN, deltaPRN, deltaARN, msipValue, type, GEQ) => {
 
-  if (deltaRRN > 0 && deltaPRN > 0 && (type !== "Third Parameter" || deltaARN > 0) && msipValue <= 0.42) {
+  if (deltaRRN >= 0 && deltaPRN >= 0 && (type !== "Third Parameter" || deltaARN >= 0) && msipValue <= 0.42 && GEQ >= 0) {
     return 'STABLE'
   }
   else {
@@ -950,6 +950,12 @@ const calculateAverageSTAG = (tabulationAverages, unitType) => {
   const avgDeltaPRN = getMetric("deltaPRN");
   const avgDeltaARN = getMetric("deltaARN");
   const avgMSIP = getMetric("MSIP");
+  const avgGEQ = getMetric("GEQ");
+  console.log("avgDeltaRRN:", avgDeltaRRN);
+  console.log("avgDeltaPRN:", avgDeltaPRN);
+  console.log("avgDeltaARN:", avgDeltaARN);
+  console.log("avgMSIP:", avgMSIP);
+  console.log("avgGEQ:", avgGEQ);
 
   return calculateSTAG(
     avgDeltaRRN,
