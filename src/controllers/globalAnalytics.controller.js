@@ -14,7 +14,7 @@ const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.con
 exports.getUnitSuccessRatesByThreshold = async (req, res) => {
   try {
     const { clientId } = req.params;
-    
+
     if (!clientId) {
       return res.status(400).json({ message: "clientId is required" });
     }
@@ -111,7 +111,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
             sumDeltaARN: unit["ΔARN"] || 0
           },
           candidateResults: unitResults.candidateMetrics,
-          
+
         });
       }
     }
@@ -126,7 +126,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
           totalMetrics[metric].totalInstances++;
           const candidateValue = candidate[metric];
           const threshold = unitData.thresholds[metric];
-          
+
           if (candidateValue !== null && candidateValue !== undefined) {
             if (metric === 'MSIP') {
               if (candidateValue <= threshold) {
@@ -138,7 +138,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
           }
         });
       }
-     
+
     }
 
     // =================================================== 
@@ -148,7 +148,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
     Object.keys(totalMetrics).forEach(metric => {
       const data = totalMetrics[metric];
       let thresholdLabel;
-      
+
       if (metric.startsWith('avgDelta')) {
         const metricName = metric.replace('avgDelta', '');
         thresholdLabel = `Average Δ${metricName}`;
@@ -164,8 +164,8 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
         comparison: metric === 'MSIP' ? '≤' : '≥',
         successCount: data.successCount,
         totalInstances: data.totalInstances,
-        successRate: data.totalInstances > 0 
-          ? +(data.successCount / data.totalInstances).toFixed(3) 
+        successRate: data.totalInstances > 0
+          ? +(data.successCount / data.totalInstances).toFixed(3)
           : 0,
         description: getMetricDescription(metric)
       };
@@ -176,7 +176,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
     // ===================================================
     const unitDetails = allResults.map(unit => {
       const unitSuccessCounts = {};
-      
+
       Object.keys(totalMetrics).forEach(metric => {
         unitSuccessCounts[`${metric}SuccessCount`] = 0;
       });
@@ -185,7 +185,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
         Object.keys(totalMetrics).forEach(metric => {
           const candidateValue = candidate[metric];
           const threshold = unit.thresholds[metric];
-          
+
           if (candidateValue !== null && candidateValue !== undefined) {
             if (metric === 'MSIP') {
               if (candidateValue <= threshold) {
@@ -201,7 +201,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
       const unitSuccessRates = {};
       Object.keys(totalMetrics).forEach(metric => {
         if (unit.candidateResults.length > 0) {
-          unitSuccessRates[`${metric}Rate`] = 
+          unitSuccessRates[`${metric}Rate`] =
             +(unitSuccessCounts[`${metric}SuccessCount`] / unit.candidateResults.length * 100).toFixed(2);
         } else {
           unitSuccessRates[`${metric}Rate`] = 0;
@@ -215,7 +215,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
         thresholds: unit.thresholds,
         successCounts: unitSuccessCounts,
         successRates: unitSuccessRates,
-        
+
       };
     });
 
@@ -254,7 +254,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
           sumDeltaPRN: successRates.sumDeltaPRN,
           sumDeltaARN: successRates.sumDeltaARN
         },
-        
+
       },
       unitDetails,
       explanation: {
@@ -278,7 +278,7 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
 
 // Helper function for metric descriptions
 function getMetricDescription(metric) {
-  switch(metric) {
+  switch (metric) {
     case 'MSIP': return 'Lower values are better';
     case 'IC': return 'Higher Interaction Class is better';
     case 'avgDeltaRRN': return 'Average Receptive Growth - higher is better';
@@ -295,11 +295,11 @@ function getMetricDescription(metric) {
 async function calculateAllCandidateMetrics(unitId, candidateIds) {
   try {
     const results = [];
-    
+
     for (const candidateId of candidateIds) {
       // Get all metrics for this candidate
       const candidateData = await getAllCandidateMetricsFromTabulation(unitId, candidateId);
-      
+
       if (candidateData) {
         results.push({
           candidateId,
@@ -326,7 +326,7 @@ async function calculateAllCandidateMetrics(unitId, candidateIds) {
           sumDeltaPRN: candidateData.sumDeltaPRN,
           sumDeltaARN: candidateData.sumDeltaARN
         });
- 
+
       }
     }
 
@@ -345,7 +345,7 @@ async function calculateAllCandidateMetrics(unitId, candidateIds) {
 async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
   try {
     const tabulationData = await callTabulationFunction(unitId, candidateId);
-    
+
     if (!tabulationData) return null;
 
     // Find candidate in averages
@@ -364,7 +364,7 @@ async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
     if (tabulationData.results && Array.isArray(tabulationData.results)) {
       tabulationData.results.forEach(record => {
         if (record.candidateId === candidateId.toString() && record.ppId > 0) {
-          
+
         }
       });
     }
@@ -394,7 +394,7 @@ async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
       sumDeltaRRN: cumulativeSum?.deltaRRN ?? 0,
       sumDeltaPRN: cumulativeSum?.deltaPRN ?? 0,
       sumDeltaARN: cumulativeSum?.deltaARN ?? 0,
-      
+
     };
   } catch (error) {
     console.error("Error fetching tabulation data:", error);
@@ -423,7 +423,7 @@ async function callTabulationFunction(unitId, candidateId) {
     };
 
     await tabulationController.getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-    
+
     return capturedData;
   } catch (error) {
     console.error("Error calling tabulation function:", error);
@@ -441,7 +441,7 @@ function getIcClass(icValue, signatureProfile) {
   const r = parseInt(match[1], 10);
   const p = parseInt(match[2], 10);
 
-  switch(signatureProfile) {
+  switch (signatureProfile) {
     case 'Case 1: Solid Balanced':
     case 'Case 2: Rigorous Balanced':
       // Average IC: take R=P value (both equal in these cases)
@@ -487,37 +487,35 @@ exports.getClientIcDistribution = async (req, res) => {
 
       for (const { candidateId } of rosters) {
         const tabulationData = await callTabulationFunction(unit.id, candidateId);
-      
+
         if (!tabulationData?.averages) continue;
-      
+
         // Use default signatureProfile if missing
         const signatureProfile = tabulationData.signatureProfile || 'Case 1: Solid Balanced';
-      
-        console.log("unit:", unit.unitId, "candidateId:", candidateId, "signatureProfile:", signatureProfile);
-      
+
         const candidateAvg = tabulationData.averages.find(
           avg => avg.candidateId.toString().trim() === candidateId.toString().trim() && avg.ppId === "Average"
         );
-      
+
         if (!candidateAvg) {
           console.log("No average found for candidate:", candidateId, "averages:", tabulationData.averages);
           continue;
         }
-      
+
         if (!candidateAvg.IC) {
           console.log("No IC value for candidate:", candidateId, "IC field:", candidateAvg.IC);
           continue;
         }
-      
+
         const icClass = getIcClass(candidateAvg.IC, signatureProfile);
         console.log("Candidate:", candidateId, "IC:", candidateAvg.IC, "IC Class:", icClass);
-      
+
         if (icClass !== null && icCounts.hasOwnProperty(icClass)) {
           icCounts[icClass]++;
           totalCandidates++;
         }
       }
-      
+
     }
 
     // 3️⃣ Convert counts to percentages
@@ -722,7 +720,7 @@ async function getCandidateMetricsFromDB(unitId, candidateId) {
   try {
     // Query your InsertScore table or whichever table stores calculated metrics
     // This assumes you have a table storing candidate performance metrics
-    
+
     const metrics = await db.InsertScore.findAll({
       where: {
         unitId: unitId,
@@ -752,13 +750,13 @@ async function getCandidateMetricsFromDB(unitId, candidateId) {
       group: ['candidate_id'],
       raw: true
     });
-    
+
     if (metrics && metrics.length > 0) {
       return metrics[0];
     }
-    
+
     return null;
-    
+
   } catch (error) {
     console.error("Error querying metrics from DB:", error);
     return null;
@@ -768,7 +766,7 @@ async function getCandidateMetricsFromDB(unitId, candidateId) {
 exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
   try {
     const { clientId } = req.params;
-    
+
 
     if (!clientId) {
       return res.status(400).json({ message: "clientId is required" });
@@ -795,7 +793,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     });
 
 
-    
+
     // ===================================================
     // 2️⃣ Attendance (UnitRoster) Aggregation
     // ===================================================
@@ -838,6 +836,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     });
 
     const staffCountByUnit = await StaffLookup.findAll({
+      where: { roleType: "Leader" },   // only Leaders
       attributes: [
         "unitId",
         [fn("COUNT", col("StaffLookup.id")), "staffCount"],
@@ -851,35 +850,35 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
           required: true,
         },
       ],
-      group: ["unitId"],
+      group: ["StaffLookup.unitId"],
       raw: true,
     });
 
-    
+
     const assessmentBlockCountsByCandidate =
-    await AssessmentBlockManager.findAll({
-      where: {
-        ppid: {
-          [Op.gt]: 0, // Only positive PP IDs
+      await AssessmentBlockManager.findAll({
+        where: {
+          ppid: {
+            [Op.gt]: 0, // Only positive PP IDs
+          },
         },
-      },
-      attributes: [
-        "unitId",
-        "candidate_id",
-        [fn("COUNT", col("AssessmentBlockManager.id")), "blockCount"],
-      ],
-      include: [
-        {
-          model: Unit,
-          as: "unit",
-          where: { clientId },
-          attributes: [],
-          required: true,
-        },
-      ],
-      group: ["unitId", "candidate_id"],
-      raw: true,
-    });
+        attributes: [
+          "unitId",
+          "candidate_id",
+          [fn("COUNT", col("AssessmentBlockManager.id")), "blockCount"],
+        ],
+        include: [
+          {
+            model: Unit,
+            as: "unit",
+            where: { clientId },
+            attributes: [],
+            required: true,
+          },
+        ],
+        group: ["unitId", "candidate_id"],
+        raw: true,
+      });
 
     const candidateMap = {};
     for (const row of candidateCountByUnit) {
@@ -892,11 +891,11 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     }
 
     const candidateStaffRatioSummary = {
-      "≤ 20": 0,
-      "20–30": 0,
+      "≤ 10": 0,
+      "10–30": 0,
       "≥ 30": 0,
     };
-    
+
     const attendanceSummary = {
       present: Number(rosterTotals[0]?.present) || 0,
       excusedAbsences: Number(rosterTotals[0]?.excusedAbsences) || 0,
@@ -955,7 +954,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
 
     for (const row of assessmentBlockCountsByCandidate) {
       const count = Number(row.blockCount) || 0;
-    
+
       if (count <= 8) {
         assessmentBlockSummary["AB ≤ 8"]++;
       } else if (count <= 20) {
@@ -1005,7 +1004,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     needAssessmentSummary.Open = Math.max(
       0,
       needAssessmentSummary.Total -
-        (needAssessmentSummary.Pending + needAssessmentSummary.Closed)
+      (needAssessmentSummary.Pending + needAssessmentSummary.Closed)
     );
 
 
@@ -1060,20 +1059,20 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       totalMarks: 0,
       impactScore: 0,
     };
-    
+
     for (const row of candidateImpactByUnit) {
       const positive = Number(row.positiveCount) || 0;
       const total = Number(row.totalCount) || 0;
-    
+
       globalCandidateMarks.positiveMarks += positive;
       globalCandidateMarks.totalMarks += total;
     }
-    
+
     if (globalCandidateMarks.totalMarks > 0) {
       globalCandidateMarks.impactScore =
         globalCandidateMarks.positiveMarks / globalCandidateMarks.totalMarks;
     }
-    
+
 
     // ===================================================
     // 7️⃣ Other Analytics Calculations
@@ -1090,13 +1089,15 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
 
       const ratio = candidateCount / staffCount;
 
-      if (ratio <= 20) {
-        candidateStaffRatioSummary["≤ 20"]++;
+      if (ratio <= 10) {
+        candidateStaffRatioSummary["≤ 10"]++;
       } else if (ratio <= 30) {
-        candidateStaffRatioSummary["20–30"]++;
+        candidateStaffRatioSummary["10–30"]++;
       } else {
         candidateStaffRatioSummary["≥ 30"]++;
       }
+
+      console.log(`[CTL] unit ID: ${unitId}, Candidate Count: ${candidateCount}, Staff Count: ${staffCount}, Ratio: ${ratio.toFixed(2)}`, candidateStaffRatioSummary);
       const bc = Number(unit.benchmarkCount) || 0;
       // const ab = Number(unit.assessmentBlockCount) || 0;
 
@@ -1136,7 +1137,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       raw: true,
     });
 
-    
+
     const leaderMarks = {};
 
     for (const row of leaderImpactByUnit) {
@@ -1163,15 +1164,15 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       totalMarks: 0,
       impactScore: 0,
     };
-    
+
     for (const row of leaderImpactByUnit) {
       const positive = Number(row.positiveCount) || 0;
       const total = Number(row.totalCount) || 0;
-    
+
       globalLeaderMarks.positiveMarks += positive;
       globalLeaderMarks.totalMarks += total;
     }
-    
+
     if (globalLeaderMarks.totalMarks > 0) {
       globalLeaderMarks.impactScore =
         globalLeaderMarks.positiveMarks / globalLeaderMarks.totalMarks;
@@ -1219,19 +1220,19 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       Fail: Number(unitOutcomeTotals[0]?.Fail) || 0,
       Ongoing: Number(unitOutcomeTotals[0]?.Ongoing) || 0,
     };
-    
+
     const unitsOfClient = await Unit.findAll({
       where: { clientId },
       attributes: ["id"],
       raw: true,
     });
-    
+
     let totalNeedAssessmentCount = 0;
     let existingNeedAssessmentCount = 0;
-    
+
     for (const unit of unitsOfClient) {
       const unitId = unit.id;
-    
+
       // 1️⃣ Total unique ppIds from InsertScore
       const insertScores = await InsertScore.findAll({
         where: { unitId },
@@ -1240,14 +1241,14 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       });
       const uniquePpIds = [...new Set(insertScores.map((s) => s.ppId))];
       totalNeedAssessmentCount += uniquePpIds.length;
-    
+
       // 2️⃣ Existing NeedAssessments count for this unit
       const needAssessmentsForUnit = await NeedAssessments.count({
         where: { unitId },
       });
       existingNeedAssessmentCount += needAssessmentsForUnit;
     }
-    
+
     // 3️⃣ Calculate open
     // const needAssessmentSummary = {
     //   total: totalNeedAssessmentCount,

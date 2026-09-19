@@ -362,6 +362,29 @@ async function buildAssessmentSummary(unitId, candidateIds) {
 }
 
 
+async function buildRosterList(unitId) {
+  const rosterRows = await UnitRoster.findAll({ where: { unitId } });
+  if (!rosterRows.length) return [];
+
+  const ids = [...new Set(rosterRows.map((r) => r.candidateId))];
+  const cands = await Candidate.findAll({ where: { id: ids } });
+  const byId = new Map(cands.map((c) => [c.id, c.toJSON()]));
+
+  return rosterRows
+    .map((r) => {
+      const c = byId.get(r.candidateId) ?? {};
+      return {
+        candidateId: c.id ?? r.candidateId,
+        candidateCode: c.candidateId,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        nationality: c.nationality,
+        candidateStartDate: c.startDate,
+        unitOutcome: r.unitOutcome,
+      };
+    })
+    .sort((a, b) => String(a.lastName ?? "").localeCompare(String(b.lastName ?? "")));
+}
 
 
 exports.getDataReportByUnitCandidate = async (req, res) => {
@@ -1311,6 +1334,7 @@ exports.getDataReportByUnit = async (req, res) => {
     response.unit.rosterStats = {
       totalCount: unitRosterTotalCount
     };
+    response.unit.rosterCandidates = await buildRosterList(unitId); 
 
     const unitScoreBucket = [];
 
