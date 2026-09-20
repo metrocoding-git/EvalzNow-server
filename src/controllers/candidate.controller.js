@@ -13,10 +13,6 @@ exports.getCandidates = async (req, res) => {
       throw new Error('Candidate-Irregularity association not found');
     }
 
-    // const userAccId = req.user?.acc_id; // get accountId from logged-in user
-    // if (!userAccId) {
-    //   return res.status(401).json({ message: 'Unauthorized: accountId missing' });
-    // }
     const { clientId } = req.params;
 
     // ✅ Ensure client belongs to this account
@@ -30,9 +26,6 @@ exports.getCandidates = async (req, res) => {
     const candidates = await Candidate.findAll({
       where: { clientId: clientId },
       include: [
-        // {
-        //   model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
-        // },
         {
         model: db.Irregularity, // Use db.Irregularity directly
         as: "irregularities",

@@ -9,10 +9,6 @@ const StaffLookup = db.StaffLookup;
 exports.getUnits = async (req, res) => {
   try {
 
-    // const userAccId = req.user?.acc_id; // get accountId from logged-in user
-    // if (!userAccId) {
-    //   return res.status(401).json({ message: 'Unauthorized: accountId missing' });
-    // }
     const { clientId } = req.params;
 
     // Verify association exists
@@ -31,9 +27,7 @@ exports.getUnits = async (req, res) => {
     const units = await Unit.findAll({
       where: { clientId: clientId },
       include: [
-        // {
-        //   model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
-        // },
+
         {
         model: db.Benchmark,
         as: "benchmarks",

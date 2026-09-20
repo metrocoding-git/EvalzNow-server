@@ -66,7 +66,6 @@ exports.login = async (req, res) => {
         id: account.id,
         username: account.username,
         role: account.role,
-        acc: account.acc_id,
         clientId,
         staffId
       },
@@ -81,10 +80,10 @@ exports.login = async (req, res) => {
 // POST create account
 exports.createAccount = async (req, res) => {
     try {
-      const { username, password, acc_id, role } = req.body;
+      const { username, password, role } = req.body;
   
-      if (!username || !password || !acc_id || !role) {
-        return res.status(400).json({ message: "username, password, acc_id, and role are required" });
+      if (!username || !password || !role) {
+        return res.status(400).json({ message: "username, password, and role are required" });
       }
   
       // Check if username already exists
@@ -99,7 +98,6 @@ exports.createAccount = async (req, res) => {
       const account = await Account.create({
         username,
         password,
-        acc_id,
         role
       });
   
@@ -147,7 +145,6 @@ exports.getCurrentUser = async (req, res) => {
       id: account.id,
       username: account.username,
       role: account.role,
-      acc: account.acc_id,
     };
 
     // 🔹 If staff → include staffId + clientId

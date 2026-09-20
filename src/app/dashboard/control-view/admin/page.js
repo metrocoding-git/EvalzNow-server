@@ -126,8 +126,7 @@ export default function AdminControl() {
 
       const accountPayload = {
         username: newClient.emailAddress,
-        password: "12345678", // default password
-        acc_id: loggedInUser?.acc,
+        password: "12345678", 
         role: "admin",
       };
       const createdAccount = await createAccount(accountPayload);

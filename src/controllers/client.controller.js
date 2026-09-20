@@ -2,21 +2,18 @@ const db = require('../models');
 const Client = db.Client;
 const Account = db.Account;
 const CompanySize = db.CompanySize;
+const { emailTaken, createLoginAccount, renameLoginAccount, deleteLoginAccounts } = require('../utils/accountSync');
 
 
 // GET clients for the logged-in user's account
 exports.getClients = async (req, res) => {
   try {
-    const userAccId = req.user?.acc_id; // get accountId from logged-in user
-    if (!userAccId) {
-      return res.status(401).json({ message: 'Unauthorized: accountId missing' });
-    }
 
     const clients = await Client.findAll({
       
       include: [
         {
-          model: Account, as: 'account', where: { acc_id: userAccId }, // filter by logged-in user's account
+          model: Account, as: 'account', // filter by logged-in user's account
         },
         { model: CompanySize, as: 'companySize' }] // include company size
     });
@@ -33,45 +30,29 @@ exports.getClients = async (req, res) => {
 exports.createClient = async (req, res) => {
   try {
     const {
-      lastName,
-      firstName,
-      jobTitle,
-      emailAddress,
-      companyName,
-      companyContactNumber,
-      institutionalType,
-      businessRegistrationNo,
-      country,
-      companySizeId,
-      status,
-      accountId 
+      lastName, firstName, jobTitle, emailAddress, companyName, companyContactNumber,
+      institutionalType, businessRegistrationNo, country, companySizeId, status, accountId,
     } = req.body;
 
-    // ✅ Check if email already exists
-    const existingClient = await Client.findOne({ where: { emailAddress } });
-    if (existingClient) {
+    if (await emailTaken(emailAddress)) {
       return res.status(400).json({ message: 'Email address already exists' });
     }
 
-    const newClient = await Client.create({
-      lastName,
-      firstName,
-      jobTitle,
-      emailAddress,
-      companyName,
-      companyContactNumber,
-      institutionalType,
-      businessRegistrationNo,
-      country,
-      companySizeId,
-      status, 
-      accountId
+    const newClient = await db.sequelize.transaction(async (t) => {
+      const client = await Client.create(
+        {
+          lastName, firstName, jobTitle, emailAddress, companyName, companyContactNumber,
+          institutionalType, businessRegistrationNo, country, companySizeId, status, accountId,
+        },
+        { transaction: t }
+      );
+      await createLoginAccount(emailAddress, 'admin', t);   
+      return client;
     });
 
-    // Fetch created client including company size
     const clientWithSize = await Client.findOne({
       where: { id: newClient.id },
-      include: [{ model: CompanySize, as: 'companySize' }]
+      include: [{ model: CompanySize, as: 'companySize' }],
     });
 
     res.status(201).json(clientWithSize);
@@ -81,42 +62,63 @@ exports.createClient = async (req, res) => {
   }
 };
 
-
 // PUT update a client
 exports.updateClient = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const updated = await Client.update(req.body, { where: { id } });
-  
-      if (updated[0] === 0) {
-        return res.status(404).json({ message: 'Client not found or no changes made' });
-      }
-  
-      const updatedClient = await Client.findOne({
-        where: { id },
-        include: [{ model: CompanySize, as: 'companySize' }]
-      });
-  
-      res.status(200).json(updatedClient);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Error updating client', error: error.message });
+  try {
+    const { id } = req.params;
+
+    const client = await Client.findByPk(id);
+    if (!client) return res.status(404).json({ message: 'Client not found' });
+
+    const oldEmail = client.emailAddress;
+    const newEmail = req.body.emailAddress;
+    const emailChanged = newEmail && newEmail !== oldEmail;
+
+    if (emailChanged && (await emailTaken(newEmail, { ignoreClientId: id }))) {
+      return res.status(400).json({ message: 'Email address already exists' });
     }
-  };
-  
-  // DELETE a client
-  exports.deleteClient = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const deleted = await Client.destroy({ where: { id } });
-  
-      if (deleted === 0) {
-        return res.status(404).json({ message: 'Client not found' });
-      }
-  
-      res.status(200).json({ message: 'Client deleted successfully' });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Error deleting client', error: error.message });
-    }
-  };
+
+    await db.sequelize.transaction(async (t) => {
+      await client.update(req.body, { transaction: t });
+      if (emailChanged) await renameLoginAccount(oldEmail, newEmail, t);   // account username follows email
+    });
+
+    const updatedClient = await Client.findOne({
+      where: { id },
+      include: [{ model: CompanySize, as: 'companySize' }],
+    });
+
+    res.status(200).json(updatedClient);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error updating client', error: error.message });
+  }
+};
+
+// DELETE a client
+exports.deleteClient = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const client = await Client.findByPk(id);
+    if (!client) return res.status(404).json({ message: 'Client not found' });
+
+    const staff = await db.Staff.findAll({
+      where: { clientId: id },
+      attributes: ['emailAddress'],
+    });
+
+    await db.sequelize.transaction(async (t) => {
+      await client.destroy({ transaction: t });
+      await deleteLoginAccounts(
+        [client.emailAddress, ...staff.map((s) => s.emailAddress)],
+        { keepIds: [client.accountId, req.user?.id], transaction: t }
+      );
+    });
+
+    res.status(200).json({ message: 'Client deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error deleting client', error: error.message });
+  }
+};

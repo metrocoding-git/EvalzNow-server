@@ -146,7 +146,6 @@ export default function StaffControl() {
       const accountPayload = {
         username: newStaff.emailAddress,
         password: "12345678", // default password
-        acc_id: loggedInUser?.acc,
         role: "staff",
       };
       const createdAccount = await createAccount(accountPayload);
