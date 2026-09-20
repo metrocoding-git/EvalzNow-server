@@ -79,42 +79,42 @@ exports.login = async (req, res) => {
 
 // POST create account
 exports.createAccount = async (req, res) => {
-    try {
-      const { username, password, role } = req.body;
-  
-      if (!username || !password || !role) {
-        return res.status(400).json({ message: "username, password, and role are required" });
-      }
-  
-      // Check if username already exists
-      const existing = await Account.findOne({ where: { username } });
-      if (existing) return res.status(400).json({ message: "Username already exists" });
-  
-      // Hash password
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-  
-      // Create account
-      const account = await Account.create({
-        username,
-        password,
-        role
-      });
-  
-      // Optionally create associated client if clientData provided
+  try {
+    const { username, password, role } = req.body;
+
+    if (!username || !password || !role) {
+      return res.status(400).json({ message: "username, password, and role are required" });
+    }
+
+    // Check if username already exists
+    const existing = await Account.findOne({ where: { username } });
+    if (existing) return res.status(400).json({ message: "Username already exists" });
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create account
+    const account = await Account.create({
+      username,
+      password,
+      role
+    });
+
+    // Optionally create associated client if clientData provided
     //   let client = null;
     //   if (clientData) {
     //     client = await Client.create({ ...clientData, accountId: account.id });
     //   }
-  
-      res.status(201).json({
-        message: "Account created successfully",
-        account,
-      });
-  
-    } catch (error) {
-      res.status(500).json({ message: "Error creating account", error: error.message });
-    }
+
+    res.status(201).json({
+      message: "Account created successfully",
+      account,
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: "Error creating account", error: error.message });
+  }
 };
 
 
@@ -154,7 +154,7 @@ exports.getCurrentUser = async (req, res) => {
       });
       responseData.staffId = staff ? staff.id : null;
       responseData.clientId = staff ? staff.clientId : null;
-    } 
+    }
     // 🔹 If admin/super admin → include only clientId
     else if (account.role === "admin" || account.role === "super admin") {
       const client = await Client.findOne({
@@ -172,66 +172,81 @@ exports.getCurrentUser = async (req, res) => {
 };
 
 
+const escapeHtml = (s = "") =>
+  String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 exports.recoverAccount = async (req, res) => {
   try {
     const { username } = req.body;
+    if (!username) return res.status(400).json({ message: "Email is required" });
 
-    if (!username) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    // Check if account exists
     const account = await Account.findOne({ where: { username } });
-
     if (!account) {
-      return res.status(404).json({
-        message: "No account found with this email",
-      });
+      return res.status(404).json({ message: "No account found with this email" });
     }
 
-    //  Generate token
     const resetToken = crypto.randomBytes(32).toString("hex");
-    const expiry = new Date(Date.now() + 1000 * 60 * 30); // 30 min
-
-    //  Save to DB
+    const RESET_TOKEN_MINUTES = 10;
     account.resetToken = resetToken;
-    account.resetTokenExpiry = expiry;
+    account.resetTokenExpiry = new Date(Date.now() + RESET_TOKEN_MINUTES * 60 * 1000);
     await account.save();
 
-    //  Create reset link 
-    const resetLink = `http://localhost:3000/newPassword?token=${resetToken}`;
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const resetLink = `${baseUrl}/newPassword?token=${resetToken}`;
 
-    //  Send email
+    // Name for the greeting: client (executive) first, then staff
+    const person =
+      (await Client.findOne({
+        where: { emailAddress: account.username },
+        attributes: ["firstName", "lastName"],
+      })) ||
+      (await Staff.findOne({
+        where: { emailAddress: account.username },
+        attributes: ["firstName", "lastName"],
+      }));
+    const fullName = person ? `${person.firstName} ${person.lastName}`.trim() : "Customer";
+
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
     });
+
+    const text = `Dear ${fullName}:
+
+Thank you for choosing EvalzNow – The Ultimate Assessment Solution for Industry and Education.
+
+This email contains all of the information that you will need to access your account.
+
+Please use the reset link below to change your password.
+
+${resetLink}
+
+Regards,
+
+EvalzNow Team`;
+
+    const html = `
+      <p>Dear ${escapeHtml(fullName)}:</p>
+      <p>Thank you for choosing EvalzNow – The Ultimate Assessment Solution for Industry and Education.</p>
+      <p>This email contains all of the information that you will need to access your account.</p>
+      <p>Please use the reset link below to change your password.</p>
+      <p><a href="${resetLink}">${resetLink}</a></p>
+      <p>Regards,</p>
+      <p>EvalzNow Team</p>
+    `;
 
     await transporter.sendMail({
       from: `"EvalzNow" <${process.env.EMAIL_USER}>`,
       to: account.username,
       subject: "Password Recovery",
-      html: `
-        <p>You requested password reset</p>
-        <p>Click below link:</p>
-        <a href="${resetLink}">${resetLink}</a>
-        <p>This link expires in 30 minutes</p>
-      `,
+      text,
+      html,
     });
 
-    res.status(200).json({
-      message: "Recovery email sent successfully",
-    });
-
+    res.status(200).json({ message: "Recovery email sent successfully" });
   } catch (error) {
     console.error("Recovery error:", error);
-    res.status(500).json({
-      message: "Error processing recovery",
-      error: error.message,
-    });
+    res.status(500).json({ message: "Error processing recovery", error: error.message });
   }
 };
 
