@@ -386,534 +386,221 @@ async function buildRosterList(unitId) {
     .sort((a, b) => String(a.lastName ?? "").localeCompare(String(b.lastName ?? "")));
 }
 
+// candidate reports
+// negatives first (by absolute value), then positives ascending
+const ppSort = (a, b) => {
+  const aId = a.ppId, bId = b.ppId;
+  if (aId < 0 && bId > 0) return -1;
+  if (aId > 0 && bId < 0) return 1;
+  if (aId < 0 && bId < 0) return Math.abs(aId) - Math.abs(bId);
+  return aId - bId;
+};
 
-exports.getDataReportByUnitCandidate = async (req, res) => {
+// Calls another controller with a mock res. Never throws: a failure returns null.
+const runController = async (fn, req) => {
+  let out = null;
+  const res = { status() { return this; }, json(d) { out = d; return this; } };
   try {
-    const { unitId, candidateId } = req.params;
+    await fn(req, res);
+  } catch (e) {
+    console.warn(`[report] ${fn.name} failed:`, e.message);
+  }
+  return out;
+};
 
-    if (!unitId || !candidateId) {
-      return res.status(400).json({
-        message: "unitId and candidateId are required"
+const unitReportInclude = () => [
+  {
+    model: db.StaffLookup,
+    as: "staffAssignments",
+    required: false,
+    include: [
+      { model: db.Staff, as: "staff", required: false, attributes: ["id", "lastName", "firstName"] }
+    ]
+  },
+  { model: db.Benchmark, as: "benchmarks", required: false }
+];
+
+// One candidate's full report data. Works with or without PP scores.
+async function buildCandidateReport(unitId, candidateId) {
+  // Candidate comes from the Candidate table, NOT from scores[0]
+  const candidateRecord = await Candidate.findOne({
+    where: { id: candidateId },
+    include: [{ model: db.Irregularity, as: "irregularities", required: false }]
+  });
+  if (!candidateRecord) return null;
+  const c = candidateRecord.toJSON();
+
+  const scores = await InsertScore.findAll({
+    where: { unitId, candidate_id: candidateId },
+    include: [
+      { model: AssessmentBlockManager, as: "assessmentBlock" },
+      { model: Unit, as: "unit" },
+      { model: Candidate, as: "candidate", include: [{ model: db.Irregularity, as: "irregularities" }] }
+    ],
+    order: [["ppId", "ASC"], ["criticalRefDate", "ASC"]]
+  });
+
+  const rosterData = await UnitRoster.findAll({ where: { unitId, candidateId } });
+  const marks = await CandidateMarks.findAll({
+    where: { unitId, candidateId },
+    order: [["entryNumber", "ASC"]]
+  });
+  const needRows = await needAssessment.findAll({
+    where: { unitId, candidateId },
+    attributes: ["ppId", "benchmarkIds", "bIds", "observation"]
+  });
+
+  const scoreJson = scores.map(s => s.toJSON());
+
+  const candidate = {
+    candidateId: c.id,
+    candidateCode: c.candidateId,
+    firstName: c.firstName,
+    lastName: c.lastName,
+    nationality: c.nationality,
+    gender: c.gender,
+    ethnicity: c.ethnicity,
+    income: c.income,
+    religion: c.religion,
+    maritalStatus: c.maritalStatus,
+    jobType: c.jobType,
+    dateOfBirth: c.dateOfBirth,
+    candidateStartDate: c.startDate,
+    specialIdNo: c.specialIdNo,
+    irregularities: c.irregularities || [],
+    pps: [],
+    roster: rosterData.map(r => {
+      const plain = r.toJSON();
+      return { ...plain, percentages: calculateRosterPercentages(plain) };
+    }),
+    scores: scoreJson.sort(ppSort),
+    engageLevelStats: calculateEngageLevelPercentages(scoreJson),
+    candidateMarks: marks.map(m => m.toJSON()),
+    competencyResults: [],
+    competencyAverages: [],
+    competencyCumalative: [],
+    competencycumulativeAverages: [],
+    needAssessments: needRows
+      .map(na => ({
+        ppId: na.ppId,
+        benchmarkIds: JSON.parse(na.benchmarkIds || "[]"),
+        bIds: JSON.parse(na.bIds || "[]"),
+        observation: na.observation
+      }))
+      .sort(ppSort),
+    assessmentChain: [],
+    neuroScienceRms: { count: 0, data: [], cognitiveLoad: {} }
+  };
+
+  scores.forEach(row => {
+    if (!candidate.pps.find(p => p.ppId === row.ppId)) {
+      candidate.pps.push({
+        ppId: row.ppId,
+        shortDescription: row.assessmentBlock?.shortDescription,
+        periodType: row.assessmentBlock?.periodType,
+        delivery: row.assessmentBlock?.delivery
       });
     }
+  });
+  candidate.pps.sort(ppSort);
 
-    // 1️⃣ Fetch SINGLE unit
-    const unit = await Unit.findOne({
-      where: { id: unitId },
-      include: [
-        {
-          model: db.StaffLookup,
-          as: "staffAssignments",
-          include: [
-            {
-              model: db.Staff,
-              as: "staff",
-              attributes: ["id", "lastName", "firstName"]
-            }
-          ]
-        },
-        {
-          model: db.Benchmark,
-          as: "benchmarks",
-        }
-      ],
-
+  // Score-dependent calculations run only when the candidate has scores
+  if (scores.length) {
+    const competencyData = await runController(getPpCompetencyRatioMultipleCandidate, {
+      query: { unitId: String(unitId), candidate_id: String(candidateId) }
     });
-
-    if (!unit) {
-      return res.status(404).json({ message: "Unit not found" });
-    }
-
-    const rosterData = await UnitRoster.findAll({
-      where: { unitId, candidateId }
-    });
-
-    const unitRosterTotalCount = await UnitRoster.count({
-      where: { unitId }
-    });
-
-    const unitRosterAll = await UnitRoster.findAll({
-      where: { unitId }
-    });
-
-    // 2️⃣ Fetch scores for ONE unit + ONE candidate
-    const scores = await InsertScore.findAll({
-      where: {
-        unitId,
-        candidate_id: candidateId
-      },
-      include: [
-        { model: AssessmentBlockManager, as: "assessmentBlock" },
-        { model: Unit, as: "unit" },
-        { model: Candidate, as: "candidate", include: [{ model: db.Irregularity, as: "irregularities" },] }
-      ],
-      order: [
-        ["ppId", "ASC"],
-        ["criticalRefDate", "ASC"]
-      ]
-    });
-
-
-    const marks = await CandidateMarks.findAll({
-      where: { unitId, candidateId },
-      order: [["entryNumber", "ASC"]],
-    });
-
-    const response = {
-      unit: {
-        ...unit.toJSON(),
-        candidates: []
-      }
-    };
-
-    response.unit.rosterStats = {
-      totalCount: unitRosterTotalCount
-    };
-
-
-    if (!scores.length) {
-      return res.status(200).json(response);
-    }
-
-    // 3️⃣ Build candidate + PP structure
-    const candidate = {
-      candidateId: scores[0].candidate.id,
-      candidateCode: scores[0].candidate.candidateId,
-      firstName: scores[0].candidate.firstName,
-      lastName: scores[0].candidate.lastName,
-      nationality: scores[0].candidate.nationality,
-      gender: scores[0].candidate.gender,
-      ethnicity: scores[0].candidate.ethnicity,
-      income: scores[0].candidate.income,
-      religion: scores[0].candidate.religion,
-      maritalStatus: scores[0].candidate.maritalStatus,
-      jobType: scores[0].candidate.jobType,
-      dateOfBirth: scores[0].candidate.dateOfBirth,
-      candidateStartDate: scores[0].candidate.startDate,
-      specialIdNo: scores[0].candidate.specialIdNo,
-      pps: [],
-      roster: [],
-      scores: [],
-      competencyResults: [],
-      competencyAverages: [],
-      competencyCumalative: [],
-      competencycumulativeAverages: [],
-      needAssessments: [],
-      candidateMarks: [],
-      assessmentChain: [],
-      neuroScienceRms: {}
-    };
-
-    candidate.roster = rosterData.map(r => {
-      const plain = r.toJSON();
-
-      return {
-        ...plain,
-        percentages: calculateRosterPercentages(plain)
-      };
-    });
-
-
-    candidate.scores = scores.map(s => s.toJSON());
-
-    candidate.engageLevelStats = calculateEngageLevelPercentages(candidate.scores);
-
-    candidate.candidateMarks = marks.map(m => m.toJSON());
-
-    scores.forEach(row => {
-      if (!candidate.pps.find(p => p.ppId === row.ppId)) {
-        candidate.pps.sort((a, b) => {
-          const aId = a.ppId;
-          const bId = b.ppId;
-
-          // negatives first
-          if (aId < 0 && bId > 0) return -1;
-          if (aId > 0 && bId < 0) return 1;
-
-          // both negative → sort by absolute value
-          if (aId < 0 && bId < 0) {
-            return Math.abs(aId) - Math.abs(bId);
-          }
-
-          // both positive → normal ascending
-          return aId - bId;
-        }).push({
-          ppId: row.ppId,
-          shortDescription: row.assessmentBlock?.shortDescription,
-          periodType: row.assessmentBlock?.periodType,
-          delivery: row.assessmentBlock?.delivery
-        });
-      }
-    });
-
-    //  Competency ratios
-    const mockReq = {
-      query: { unitId, candidate_id: candidateId }
-    };
-    let competencyData = null;
-
-    const mockRes = {
-      status() { return this; },
-      json(data) { competencyData = data; }
-    };
-
-    await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-    candidate.competencyResults = competencyData?.results || [];
+    candidate.competencyResults = (competencyData?.results || []).sort(ppSort);
     candidate.competencyAverages = competencyData?.averages || [];
     candidate.competencyCumalative = competencyData?.cumulativeSums || [];
     candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
 
-    candidate.competencyResults.sort((a, b) => {
-      const aId = a.ppId;
-      const bId = b.ppId;
-
-      // negatives first
-      if (aId < 0 && bId > 0) return -1;
-      if (aId > 0 && bId < 0) return 1;
-
-      // both negative → sort by absolute value
-      if (aId < 0 && bId < 0) {
-        return Math.abs(aId) - Math.abs(bId);
-      }
-
-      // both positive → normal ascending
-      return aId - bId;
+    const neuroData = await runController(getNeuroScienceRmsValues, {
+      params: { unitId, candidateId }, query: {}
     });
-
-    candidate.scores.sort((a, b) => {
-      const aId = a.ppId;
-      const bId = b.ppId;
-
-      // negatives first
-      if (aId < 0 && bId > 0) return -1;
-      if (aId > 0 && bId < 0) return 1;
-
-      // both negative → sort by absolute value
-      if (aId < 0 && bId < 0) {
-        return Math.abs(aId) - Math.abs(bId);
-      }
-
-      // both positive → normal ascending
-      return aId - bId;
-    });
-
-    //  Need assessments
-    const needAssessments = await needAssessment.findAll({
-      where: { unitId, candidateId },
-      attributes: ["ppId", "benchmarkIds", "bIds", "observation"]
-    });
-
-    candidate.needAssessments = needAssessments.map(na => ({
-      ppId: na.ppId,
-      benchmarkIds: JSON.parse(na.benchmarkIds || "[]"),
-      bIds: JSON.parse(na.bIds || "[]"),
-      observation: na.observation
-    }));
-
-    candidate.needAssessments.sort((a, b) => {
-      const aId = a.ppId;
-      const bId = b.ppId;
-
-      // negatives first
-      if (aId < 0 && bId > 0) return -1;
-      if (aId > 0 && bId < 0) return 1;
-
-      // both negative → sort by absolute value
-      if (aId < 0 && bId < 0) {
-        return Math.abs(aId) - Math.abs(bId);
-      }
-
-      // both positive → normal ascending
-      return aId - bId;
-    });
-
-    //  Neuro science RMS + cognitive load
-    const neuroReq = {
-      params: { unitId, candidateId },
-      query: {}
-    };
-    let neuroData = null;
-
-    const neuroRes = {
-      status() { return this; },
-      json(payload) { neuroData = payload; }
-    };
-
-    await getNeuroScienceRmsValues(neuroReq, neuroRes);
-
-    candidate.neuroScienceRms = neuroData?.data?.length
-      ? {
+    if (neuroData?.data?.length) {
+      candidate.neuroScienceRms = {
         count: neuroData.count,
         data: neuroData.data,
         cognitiveLoad: neuroData.cognitiveLoad
-      }
-      : {
-        count: 0,
-        data: [],
-        cognitiveLoad: {}
       };
+    }
 
-    // Assessment Chain data
-    const chainReq = {
+    const chainData = await runController(getAssessmentChainData, {
       params: { unitId, candidateId }
-    };
-
-    let chainData = null;
-
-    const chainRes = {
-      status() { return this; },
-      json(payload) {
-        chainData = payload;
-        return this;
-      }
-    };
-
-    await getAssessmentChainData(chainReq, chainRes);
-
+    });
     candidate.assessmentChain = chainData?.results || [];
+  }
 
-    response.unit.candidates.push(candidate);
+  return candidate;
+}
 
-    res.status(200).json(response);
 
+exports.getDataReportByUnitCandidate = async (req, res) => {
+  try {
+    const { unitId, candidateId } = req.params;
+    if (!unitId || !candidateId) {
+      return res.status(400).json({ message: "unitId and candidateId are required" });
+    }
+
+    const unit = await Unit.findOne({ where: { id: unitId }, include: unitReportInclude() });
+    if (!unit) return res.status(404).json({ message: "Unit not found" });
+
+    const candidate = await buildCandidateReport(unitId, candidateId);
+    if (!candidate) return res.status(404).json({ message: "Candidate not found" });
+
+    const totalCount = await UnitRoster.count({ where: { unitId } });
+
+    return res.status(200).json({
+      unit: {
+        ...unit.toJSON(),
+        rosterStats: { totalCount },
+        candidates: [candidate]          // always included, with or without scores
+      }
+    });
   } catch (error) {
     console.error("Error fetching unit candidate report:", error);
-    res.status(500).json({
-      message: "Error fetching unit candidate report",
-      error: error.message
-    });
+    res.status(500).json({ message: "Error fetching unit candidate report", error: error.message });
   }
 };
 
 exports.getDataReportByUnitAllCandidates = async (req, res) => {
   try {
     const { unitId } = req.params;
+    if (!unitId) return res.status(400).json({ message: "unitId is required" });
 
-    if (!unitId) {
-      return res.status(400).json({ message: "unitId is required" });
-    }
+    const unit = await Unit.findOne({ where: { id: unitId }, include: unitReportInclude() });
+    if (!unit) return res.status(404).json({ message: "Unit not found" });
 
-    // 1️⃣ Fetch unit ONCE
-    const unit = await Unit.findOne({
-      where: { id: unitId },
-      include: [
-        {
-          model: db.StaffLookup,
-          as: "staffAssignments",
-          required: false,
-          include: [
-            {
-              model: db.Staff,
-              required: false,
-              as: "staff",
-              attributes: ["id", "lastName", "firstName"]
-            }
-          ]
-        },
-        {
-          model: db.Benchmark,
-          required: false,
-          as: "benchmarks",
-        }
-      ],
-
-    });
-
-    // if (!unit) {
-    //   return res.status(404).json({ message: "Unit not found" });
-    // }
-
-    // 2️⃣ Get DISTINCT candidateIds (UnitRoster first)
-    const rosterCandidates = await UnitRoster.findAll({
+    const rosterIdRows = await UnitRoster.findAll({
       where: { unitId },
-      attributes: [
-        [db.Sequelize.fn("DISTINCT", db.Sequelize.col("candidateId")), "candidateId"]
-      ],
+      attributes: [[Sequelize.fn("DISTINCT", Sequelize.col("candidateId")), "candidateId"]],
       raw: true
     });
+    let candidateIds = rosterIdRows.map(r => r.candidateId);
 
-    let candidateIds = rosterCandidates.map(r => r.candidateId);
-
-    // fallback → InsertScore
     if (!candidateIds.length) {
-      const scoreCandidates = await InsertScore.findAll({
+      const scoreIdRows = await InsertScore.findAll({
         where: { unitId },
-        attributes: [
-          [db.Sequelize.fn("DISTINCT", db.Sequelize.col("candidate_id")), "candidateId"]
-        ],
+        attributes: [[Sequelize.fn("DISTINCT", Sequelize.col("candidate_id")), "candidateId"]],
         raw: true
       });
-
-      candidateIds = scoreCandidates.map(s => s.candidateId);
+      candidateIds = scoreIdRows.map(s => s.candidateId);
     }
 
-    const response = {
-      unit: {
-        ...unit.toJSON(),
-        candidates: []
-      }
-    };
-
-    if (!candidateIds.length) {
-      return res.status(200).json(response);
-    }
-
-    // 3️⃣ Iterate candidates
+    const candidates = [];
     for (const candidateId of candidateIds) {
-
-      // Scores
-      const scores = await InsertScore.findAll({
-        where: { unitId, candidate_id: candidateId },
-        include: [
-          { model: AssessmentBlockManager, as: "assessmentBlock" },
-          { model: Unit, as: "unit" },
-          { model: Candidate, as: "candidate" }
-        ],
-        order: [
-          ["ppId", "ASC"],
-          ["criticalRefDate", "ASC"]
-        ]
-      });
-
-      if (!scores.length) continue;
-
-      // Roster
-      const rosterData = await UnitRoster.findAll({
-        where: { unitId, candidateId }
-      });
-
-      // Marks
-      const marks = await CandidateMarks.findAll({
-        where: { unitId, candidateId },
-        order: [["entryNumber", "ASC"]]
-      });
-
-      // Candidate base
-      const candidate = {
-        candidateId: scores[0].candidate.id,
-        candidateCode: scores[0].candidate.candidateId,
-        firstName: scores[0].candidate.firstName,
-        lastName: scores[0].candidate.lastName,
-        nationality: scores[0].candidate.nationality,
-        gender: scores[0].candidate.gender,
-        ethnicity: scores[0].candidate.ethnicity,
-        income: scores[0].candidate.income,
-        religion: scores[0].candidate.religion,
-        maritalStatus: scores[0].candidate.maritalStatus,
-        jobType: scores[0].candidate.jobType,
-        dateOfBirth: scores[0].candidate.dateOfBirth,
-        candidateStartDate: scores[0].candidate.startDate,
-        specialIdNo: scores[0].candidate.specialIdNo,
-        pps: [],
-        roster: [],
-        scores: [],
-        competencyResults: [],
-        competencyAverages: [],
-        competencyCumalative: [],
-        competencycumulativeAverages: [],
-        needAssessments: [],
-        candidateMarks: [],
-        assessmentChain: [],
-        neuroScienceRms: {}
-      };
-
-      // Roster mapping
-      candidate.roster = rosterData.map(r => {
-        const plain = r.toJSON();
-        return {
-          ...plain,
-          percentages: calculateRosterPercentages(plain)
-        };
-      });
-
-      // Scores
-      candidate.scores = scores.map(s => s.toJSON());
-      candidate.engageLevelStats = calculateEngageLevelPercentages(candidate.scores);
-      candidate.candidateMarks = marks.map(m => m.toJSON());
-
-      // PP list
-      scores.forEach(row => {
-        if (!candidate.pps.find(p => p.ppId === row.ppId)) {
-          candidate.pps.push({
-            ppId: row.ppId,
-            shortDescription: row.assessmentBlock?.shortDescription,
-            periodType: row.assessmentBlock?.periodType,
-            delivery: row.assessmentBlock?.delivery
-          });
-        }
-      });
-
-      // Competency
-      const mockReq = { query: { unitId, candidate_id: candidateId } };
-      let competencyData = null;
-
-      const mockRes = {
-        status() { return this; },
-        json(data) { competencyData = data; }
-      };
-
-      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-
-      candidate.competencyResults = competencyData?.results || [];
-      candidate.competencyAverages = competencyData?.averages || [];
-      candidate.competencyCumalative = competencyData?.cumulativeSums || [];
-      candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
-
-      // Need assessment
-      const needAssessments = await needAssessment.findAll({
-        where: { unitId, candidateId },
-        attributes: ["ppId", "benchmarkIds", "bIds", "observation"]
-      });
-
-      candidate.needAssessments = needAssessments.map(na => ({
-        ppId: na.ppId,
-        benchmarkIds: JSON.parse(na.benchmarkIds || "[]"),
-        bIds: JSON.parse(na.bIds || "[]"),
-        observation: na.observation
-      }));
-
-      // Neuro RMS
-      const neuroReq = { params: { unitId, candidateId }, query: {} };
-      let neuroData = null;
-
-      const neuroRes = {
-        status() { return this; },
-        json(payload) { neuroData = payload; }
-      };
-
-      await getNeuroScienceRmsValues(neuroReq, neuroRes);
-
-      candidate.neuroScienceRms = neuroData?.data?.length
-        ? {
-          count: neuroData.count,
-          data: neuroData.data,
-          cognitiveLoad: neuroData.cognitiveLoad
-        }
-        : { count: 0, data: [], cognitiveLoad: {} };
-
-      // Assessment chain
-      const chainReq = { params: { unitId, candidateId } };
-      let chainData = null;
-
-      const chainRes = {
-        status() { return this; },
-        json(payload) { chainData = payload; }
-      };
-
-      await getAssessmentChainData(chainReq, chainRes);
-      candidate.assessmentChain = chainData?.results || [];
-
-      response.unit.candidates.push(candidate);
+      const candidate = await buildCandidateReport(unitId, candidateId);
+      if (candidate) candidates.push(candidate);   // no skipping for missing scores
     }
 
-    return res.status(200).json(response);
+    const totalCount = await UnitRoster.count({ where: { unitId } });
 
+    return res.status(200).json({
+      unit: { ...unit.toJSON(), rosterStats: { totalCount }, candidates }
+    });
   } catch (error) {
     console.error("Error fetching unit report:", error);
-    res.status(500).json({
-      message: "Error fetching unit report",
-      error: error.message
-    });
+    res.status(500).json({ message: "Error fetching unit report", error: error.message });
   }
 };
 

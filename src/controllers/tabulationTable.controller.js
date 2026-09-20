@@ -282,7 +282,6 @@ function calculateInteractionClass(rr, pr, ar, unitType, signatureProfile) {
       case "Case 3a: Productive-Weighted":
         return GetInteractionClassForCase3a(rrVal, prVal);
       case "Case 3b: Receptive-Weighted":
-        console.log("get interaction value: ", GetInteractionClassForCase3b(rrVal, prVal));
         return GetInteractionClassForCase3b(rrVal, prVal);
 
       default:
@@ -3354,8 +3353,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
 
     // 🔹 Parse candidate_id - supports both single and comma-separated multiple IDs
     const candidateIds = candidate_id
-      ? candidate_id.split(',').map(id => id.trim()).filter(Boolean)
-      : [];
+     ? String(candidate_id).split(',').map(id => id.trim()).filter(Boolean)
+     : [];
 
     if (!unitId || !candidateIds.length) {
       return res.status(400).json({ message: "unitId and candidate_id are required" });
