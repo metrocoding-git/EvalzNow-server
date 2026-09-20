@@ -11,250 +11,168 @@ const InsertScore = db.InsertScore;
 const StaffLookup = db.StaffLookup;
 const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.controller');
 
+const CIO = "Communicative I/O", TNP = "Theory & Practice", TP = "Third Parameter";
+
+// Which unit types each metric applies to. Anything not listed applies to all types.
+const METRIC_UNIT_TYPES = {
+  XRR: [CIO], XLR: [CIO], XWR: [CIO], XSR: [CIO],
+  XTR: [TNP], XPR: [TNP],
+  XRVSR: [TP], XPVSR: [TP], XAVSR: [TP],
+  avgDeltaARN: [TP], sumDeltaARN: [TP],
+};
+
+// metric key -> threshold column on Unit
+const METRIC_THRESHOLD_COLUMN = {
+  XEP: "XEP", XRR: "XRR", XLR: "XLR", XWR: "XWR", XSR: "XSR", XTR: "XTR", XPR: "XPR",
+  XRVSR: "XRVSR", XPVSR: "XPVSR", XAVSR: "XAVSR", XCP: "XCP", XBP: "XBP",
+  MSIP: "MSIP", IC: "IC", GEQ: "ΔGEQ",
+  avgDeltaRRN: "ΔRRN", avgDeltaPRN: "ΔPRN", avgDeltaARN: "ΔARN",
+  sumDeltaRRN: "ΔRRN", sumDeltaPRN: "ΔPRN", sumDeltaARN: "ΔARN",
+};
+
+const toNum = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// true = pass, false = fail, null = not applicable / no data (not counted at all)
+function evaluateMetric(metric, value, threshold, unitType) {
+  const types = METRIC_UNIT_TYPES[metric];
+  if (types && !types.includes(unitType)) return null;
+
+  const v = toNum(value);
+  const t = toNum(threshold);
+  if (v === null || t === null) return null;
+
+  return metric === "MSIP" ? v <= t : v >= t;
+}
+
 exports.getUnitSuccessRatesByThreshold = async (req, res) => {
   try {
     const { clientId } = req.params;
+    if (!clientId) return res.status(400).json({ message: "clientId is required" });
 
-    if (!clientId) {
-      return res.status(400).json({ message: "clientId is required" });
-    }
-
-    // =================================================== 
-    // 1. Fetch all units with their threshold values
-    // ===================================================
     const units = await Unit.findAll({
       where: { clientId },
       attributes: [
-        "id", "unitId", "unitName",
+        "id", "unitId", "unitName", "unitType",
         "XEP", "XRR", "XLR", "XWR", "XSR", "XTR", "XPR",
         "XRVSR", "XPVSR", "XAVSR", "XCP", "XBP", "MSIP", "IC",
-        "ΔGEQ", "ΔRRN", "ΔPRN", "ΔARN"
+        "ΔGEQ", "ΔRRN", "ΔPRN", "ΔARN",
       ],
       raw: true,
     });
+    if (!units.length) return res.status(404).json({ message: "No units found for this client" });
 
-    if (!units.length) {
-      return res.status(404).json({ message: "No units found for this client" });
-    }
+    const metricKeys = Object.keys(METRIC_THRESHOLD_COLUMN);
+    const totalMetrics = Object.fromEntries(
+      metricKeys.map((m) => [m, { successCount: 0, totalInstances: 0 }])
+    );
 
-    // =================================================== 
-    // 2. Initialize totals including STAP/STAG counters
-    // ===================================================
     const allResults = [];
-    const totalMetrics = {
-      XEP: { threshold: "XEP", successCount: 0, totalInstances: 0 },
-      XRR: { threshold: "XRR", successCount: 0, totalInstances: 0 },
-      XLR: { threshold: "XLR", successCount: 0, totalInstances: 0 },
-      XWR: { threshold: "XWR", successCount: 0, totalInstances: 0 },
-      XSR: { threshold: "XSR", successCount: 0, totalInstances: 0 },
-      XTR: { threshold: "XTR", successCount: 0, totalInstances: 0 },
-      XPR: { threshold: "XPR", successCount: 0, totalInstances: 0 },
-      XRVSR: { threshold: "XRVSR", successCount: 0, totalInstances: 0 },
-      XPVSR: { threshold: "XPVSR", successCount: 0, totalInstances: 0 },
-      XAVSR: { threshold: "XAVSR", successCount: 0, totalInstances: 0 },
-      XCP: { threshold: "XCP", successCount: 0, totalInstances: 0 },
-      XBP: { threshold: "XBP", successCount: 0, totalInstances: 0 },
-      MSIP: { threshold: "MSIP", successCount: 0, totalInstances: 0 },
-      IC: { threshold: "IC", successCount: 0, totalInstances: 0 },
-      GEQ: { threshold: "ΔGEQ", successCount: 0, totalInstances: 0 },
-      avgDeltaRRN: { threshold: "ΔRRN", successCount: 0, totalInstances: 0 },
-      avgDeltaPRN: { threshold: "ΔPRN", successCount: 0, totalInstances: 0 },
-      avgDeltaARN: { threshold: "ΔARN", successCount: 0, totalInstances: 0 },
-      sumDeltaRRN: { threshold: "ΔRRN", successCount: 0, totalInstances: 0 },
-      sumDeltaPRN: { threshold: "ΔPRN", successCount: 0, totalInstances: 0 },
-      sumDeltaARN: { threshold: "ΔARN", successCount: 0, totalInstances: 0 }
-    };
-
-
-    // =================================================== 
-    // 3. Process each unit
-    // ===================================================
     for (const unit of units) {
-      const unitRosters = await UnitRoster.findAll({
-        where: { unitId: unit.id },
-        attributes: ["candidateId"],
-        raw: true,
+      const rosters = await UnitRoster.findAll({
+        where: { unitId: unit.id }, attributes: ["candidateId"], raw: true,
       });
+      const candidateIds = [...new Set(rosters.map((r) => r.candidateId))];   // no duplicates
+      if (!candidateIds.length) continue;
 
-      if (!unitRosters.length) continue;
-
-      const candidateIds = unitRosters.map(roster => roster.candidateId);
-
-      // Fetch all metrics AND stability data for candidates
       const unitResults = await calculateAllCandidateMetrics(unit.id, candidateIds);
+      if (!unitResults.candidateMetrics.length) continue;
 
-      if (unitResults.candidateMetrics.length) {
-        allResults.push({
-          unitId: unit.id,
-          unitName: unit.unitName,
-          thresholds: {
-            XEP: unit.XEP || 0,
-            XRR: unit.XRR || 0,
-            XLR: unit.XLR || 0,
-            XWR: unit.XWR || 0,
-            XSR: unit.XSR || 0,
-            XTR: unit.XTR || 0,
-            XPR: unit.XPR || 0,
-            XRVSR: unit.XRVSR || 0,
-            XPVSR: unit.XPVSR || 0,
-            XAVSR: unit.XAVSR || 0,
-            XCP: unit.XCP || 0,
-            XBP: unit.XBP || 0,
-            MSIP: unit.MSIP || 0,
-            IC: unit.IC || 0,
-            GEQ: unit.ΔGEQ || 0,
-            avgDeltaRRN: unit["ΔRRN"] || 0,
-            avgDeltaPRN: unit["ΔPRN"] || 0,
-            avgDeltaARN: unit["ΔARN"] || 0,
-            sumDeltaRRN: unit["ΔRRN"] || 0,
-            sumDeltaPRN: unit["ΔPRN"] || 0,
-            sumDeltaARN: unit["ΔARN"] || 0
-          },
-          candidateResults: unitResults.candidateMetrics,
-
-        });
-      }
-    }
-
-    // =================================================== 
-    // 4. Calculate success rates and aggregate stability data
-    // ===================================================
-    for (const unitData of allResults) {
-      for (const candidate of unitData.candidateResults) {
-        // Process regular metrics
-        Object.keys(totalMetrics).forEach(metric => {
-          totalMetrics[metric].totalInstances++;
-          const candidateValue = candidate[metric];
-          const threshold = unitData.thresholds[metric];
-
-          if (candidateValue !== null && candidateValue !== undefined) {
-            if (metric === 'MSIP') {
-              if (candidateValue <= threshold) {
-                totalMetrics[metric].successCount++;
-              }
-            } else if (candidateValue >= threshold) {
-              totalMetrics[metric].successCount++;
-            }
-          }
-        });
-      }
-
-    }
-
-    // =================================================== 
-    // 5. Calculate success rates for regular metrics
-    // ===================================================
-    const successRates = {};
-    Object.keys(totalMetrics).forEach(metric => {
-      const data = totalMetrics[metric];
-      let thresholdLabel;
-
-      if (metric.startsWith('avgDelta')) {
-        const metricName = metric.replace('avgDelta', '');
-        thresholdLabel = `Average Δ${metricName}`;
-      } else if (metric.startsWith('sumDelta')) {
-        const metricName = metric.replace('sumDelta', '');
-        thresholdLabel = `Cumulative Sum Δ${metricName}`;
-      } else {
-        thresholdLabel = `Average ${metric}`;
-      }
-
-      successRates[metric] = {
-        thresholdLabel: thresholdLabel,
-        comparison: metric === 'MSIP' ? '≤' : '≥',
-        successCount: data.successCount,
-        totalInstances: data.totalInstances,
-        successRate: data.totalInstances > 0
-          ? +(data.successCount / data.totalInstances).toFixed(3)
-          : 0,
-        description: getMetricDescription(metric)
-      };
-    });
-
-    // =================================================== 
-    // 6. Calculate unit-level success counts
-    // ===================================================
-    const unitDetails = allResults.map(unit => {
-      const unitSuccessCounts = {};
-
-      Object.keys(totalMetrics).forEach(metric => {
-        unitSuccessCounts[`${metric}SuccessCount`] = 0;
-      });
-
-      unit.candidateResults.forEach(candidate => {
-        Object.keys(totalMetrics).forEach(metric => {
-          const candidateValue = candidate[metric];
-          const threshold = unit.thresholds[metric];
-
-          if (candidateValue !== null && candidateValue !== undefined) {
-            if (metric === 'MSIP') {
-              if (candidateValue <= threshold) {
-                unitSuccessCounts[`${metric}SuccessCount`]++;
-              }
-            } else if (candidateValue >= threshold) {
-              unitSuccessCounts[`${metric}SuccessCount`]++;
-            }
-          }
-        });
-      });
-
-      const unitSuccessRates = {};
-      Object.keys(totalMetrics).forEach(metric => {
-        if (unit.candidateResults.length > 0) {
-          unitSuccessRates[`${metric}Rate`] =
-            +(unitSuccessCounts[`${metric}SuccessCount`] / unit.candidateResults.length * 100).toFixed(2);
-        } else {
-          unitSuccessRates[`${metric}Rate`] = 0;
-        }
-      });
-
-      return {
-        unitId: unit.unitId,
+      allResults.push({
+        unitId: unit.id,
+        unitCode: unit.unitId,
         unitName: unit.unitName,
+        unitType: unit.unitType,
+        // a missing threshold stays null, so that unit is skipped for that metric
+        thresholds: Object.fromEntries(
+          metricKeys.map((m) => [m, toNum(unit[METRIC_THRESHOLD_COLUMN[m]])])
+        ),
+        candidateResults: unitResults.candidateMetrics,
+      });
+    }
+
+    let totalCandidates = 0;
+    const unitDetails = [];
+
+    for (const unit of allResults) {
+      const counts = Object.fromEntries(metricKeys.map((m) => [m, { pass: 0, total: 0 }]));
+
+      for (const candidate of unit.candidateResults) {
+        totalCandidates++;
+        for (const metric of metricKeys) {
+          const r = evaluateMetric(metric, candidate[metric], unit.thresholds[metric], unit.unitType);
+          if (r === null) continue;
+          counts[metric].total++;
+          totalMetrics[metric].totalInstances++;
+          if (r) {
+            counts[metric].pass++;
+            totalMetrics[metric].successCount++;
+          }
+        }
+      }
+
+      const successCounts = {}, successRates = {};
+      for (const m of metricKeys) {
+        successCounts[`${m}SuccessCount`] = counts[m].pass;
+        successRates[`${m}Rate`] = counts[m].total
+          ? +((counts[m].pass / counts[m].total) * 100).toFixed(2)
+          : null;
+      }
+
+      unitDetails.push({
+        unitId: unit.unitCode,
+        unitName: unit.unitName,
+        unitType: unit.unitType,
         candidateCount: unit.candidateResults.length,
         thresholds: unit.thresholds,
-        successCounts: unitSuccessCounts,
-        successRates: unitSuccessRates,
+        successCounts,
+        successRates,
+      });
+    }
 
+    const successRates = {};
+    for (const metric of metricKeys) {
+      const d = totalMetrics[metric];
+      let thresholdLabel;
+      if (metric.startsWith("avgDelta")) thresholdLabel = `Average Δ${metric.replace("avgDelta", "")}`;
+      else if (metric.startsWith("sumDelta")) thresholdLabel = `Cumulative Sum Δ${metric.replace("sumDelta", "")}`;
+      else thresholdLabel = `Average ${metric}`;
+
+      successRates[metric] = {
+        thresholdLabel,
+        comparison: metric === "MSIP" ? "≤" : "≥",
+        successCount: d.successCount,
+        totalInstances: d.totalInstances,          // only candidates the metric applies to
+        successRate: d.totalInstances > 0 ? +(d.successCount / d.totalInstances).toFixed(3) : 0,
+        description: getMetricDescription(metric),
       };
-    });
+    }
 
-    // =================================================== 
-    // 7. Return comprehensive results
-    // ===================================================
     res.status(200).json({
       message: "Success rates calculated based on unit thresholds",
       summary: {
         totalUnits: units.length,
-        totalCandidates: totalMetrics.XEP.totalInstances,
+        totalCandidates,
         regularMetrics: {
-          XEP: successRates.XEP,
-          XRR: successRates.XRR,
-          XLR: successRates.XLR,
-          XWR: successRates.XWR,
-          XSR: successRates.XSR,
-          XTR: successRates.XTR,
-          XPR: successRates.XPR,
-          XRVSR: successRates.XRVSR,
-          XPVSR: successRates.XPVSR,
-          XAVSR: successRates.XAVSR,
-          XCP: successRates.XCP,
-          XBP: successRates.XBP,
-          MSIP: successRates.MSIP,
-          IC: successRates.IC,
-          GEQ: successRates.GEQ
+          XEP: successRates.XEP, XRR: successRates.XRR, XLR: successRates.XLR,
+          XWR: successRates.XWR, XSR: successRates.XSR, XTR: successRates.XTR,
+          XPR: successRates.XPR, XRVSR: successRates.XRVSR, XPVSR: successRates.XPVSR,
+          XAVSR: successRates.XAVSR, XCP: successRates.XCP, XBP: successRates.XBP,
+          MSIP: successRates.MSIP, IC: successRates.IC, GEQ: successRates.GEQ,
         },
         averageDeltaMetrics: {
           avgDeltaRRN: successRates.avgDeltaRRN,
           avgDeltaPRN: successRates.avgDeltaPRN,
-          avgDeltaARN: successRates.avgDeltaARN
+          avgDeltaARN: successRates.avgDeltaARN,
         },
         cumulativeSumDeltaMetrics: {
           sumDeltaRRN: successRates.sumDeltaRRN,
           sumDeltaPRN: successRates.sumDeltaPRN,
-          sumDeltaARN: successRates.sumDeltaARN
+          sumDeltaARN: successRates.sumDeltaARN,
         },
-
       },
       unitDetails,
       explanation: {
@@ -264,15 +182,11 @@ exports.getUnitSuccessRatesByThreshold = async (req, res) => {
         sumDeltaRRN: "Cumulative Sum ∆RR (from cumulativeSums.deltaRRN) compared to unit ΔRRN threshold",
         sumDeltaPRN: "Cumulative Sum ∆PR (from cumulativeSums.deltaPRN) compared to unit ΔPRN threshold",
         sumDeltaARN: "Cumulative Sum ∆AR (from cumulativeSums.deltaARN) compared to unit ΔARN threshold",
-      }
+      },
     });
-
   } catch (error) {
     console.error("Unit Success Rates Error:", error);
-    res.status(500).json({
-      message: "Error calculating unit success rates",
-      error: error.message,
-    });
+    res.status(500).json({ message: "Error calculating unit success rates", error: error.message });
   }
 };
 
@@ -345,56 +259,31 @@ async function calculateAllCandidateMetrics(unitId, candidateIds) {
 async function getAllCandidateMetricsFromTabulation(unitId, candidateId) {
   try {
     const tabulationData = await callTabulationFunction(unitId, candidateId);
-
     if (!tabulationData) return null;
 
-    // Find candidate in averages
-    const regularAvg = tabulationData.averages?.find(
-      avg => avg.candidateId === candidateId.toString()
+    const cid = String(candidateId).trim();
+    const mine = (tabulationData.averages ?? []).filter(
+      (a) => String(a.candidateId).trim() === cid
     );
-
-    // Find candidate in cumulativeSums
-    const cumulativeSum = tabulationData.cumulativeSums?.find(
-      sum => sum.candidateId === candidateId.toString()
-    );
-
+    const regularAvg = mine.find((a) => a.ppId === "Average") ?? mine[0];
     if (!regularAvg) return null;
 
-    // Process all ppId records for this candidate from the results array
-    if (tabulationData.results && Array.isArray(tabulationData.results)) {
-      tabulationData.results.forEach(record => {
-        if (record.candidateId === candidateId.toString() && record.ppId > 0) {
+    const cumulativeSum = (tabulationData.cumulativeSums ?? []).find(
+      (s) => String(s.candidateId).trim() === cid
+    );
 
-        }
-      });
-    }
+    const n = (v) => (v === null || v === undefined || v === "" ? null : parseFloat(v));
 
     return {
-      // Regular average metrics
-      avgXEP: regularAvg.XEP ?? 0,
-      avgXRR: regularAvg.XRR ?? 0,
-      avgXLR: regularAvg.XLR ?? 0,
-      avgXWR: regularAvg.XWR ?? 0,
-      avgXSR: regularAvg.XSR ?? 0,
-      avgXTR: regularAvg.XTR ?? 0,
-      avgXPR: regularAvg.XPR ?? 0,
-      avgXRVSR: regularAvg.XRVSR ?? 0,
-      avgXPVSR: regularAvg.XPVSR ?? 0,
-      avgXAVSR: regularAvg.XAVSR ?? 0,
-      avgXCP: regularAvg.XCP ?? 0,
-      avgXBP: regularAvg.XBP ?? 0,
-      avgMSIP: regularAvg.MSIP ?? 0,
-      avgIC: regularAvg.IC ?? 0,
-      avgGEQ: regularAvg.GEQ ?? 0,
-      // Average delta values from averages array
-      avgDeltaRRN: regularAvg.deltaRRN ?? 0,
-      avgDeltaPRN: regularAvg.deltaPRN ?? 0,
-      avgDeltaARN: regularAvg.deltaARN ?? 0,
-      // Cumulative sum delta values from cumulativeSums array
-      sumDeltaRRN: cumulativeSum?.deltaRRN ?? 0,
-      sumDeltaPRN: cumulativeSum?.deltaPRN ?? 0,
-      sumDeltaARN: cumulativeSum?.deltaARN ?? 0,
-
+      avgXEP: n(regularAvg.XEP), avgXRR: n(regularAvg.XRR), avgXLR: n(regularAvg.XLR),
+      avgXWR: n(regularAvg.XWR), avgXSR: n(regularAvg.XSR), avgXTR: n(regularAvg.XTR),
+      avgXPR: n(regularAvg.XPR), avgXRVSR: n(regularAvg.XRVSR), avgXPVSR: n(regularAvg.XPVSR),
+      avgXAVSR: n(regularAvg.XAVSR), avgXCP: n(regularAvg.XCP), avgXBP: n(regularAvg.XBP),
+      avgMSIP: n(regularAvg.MSIP), avgIC: regularAvg.IC ?? null, avgGEQ: n(regularAvg.GEQ),
+      avgDeltaRRN: n(regularAvg.deltaRRN), avgDeltaPRN: n(regularAvg.deltaPRN),
+      avgDeltaARN: n(regularAvg.deltaARN),
+      sumDeltaRRN: n(cumulativeSum?.deltaRRN), sumDeltaPRN: n(cumulativeSum?.deltaPRN),
+      sumDeltaARN: n(cumulativeSum?.deltaARN),
     };
   } catch (error) {
     console.error("Error fetching tabulation data:", error);
@@ -647,69 +536,41 @@ exports.getClientProductivityDistribution = async (req, res) => {
 exports.getCandidateStableCounts = async (req, res) => {
   try {
     const { clientId } = req.params;
+    if (!clientId) return res.status(400).json({ message: "clientId is required" });
 
-    if (!clientId) {
-      return res.status(400).json({ message: "clientId is required" });
-    }
+    const units = await Unit.findAll({ where: { clientId }, attributes: ["id"], raw: true });
 
-    const units = await Unit.findAll({
-      where: { clientId },
-      attributes: ["id", "unitId", "unitName"],
-      raw: true
-    });
-
-    // ✅ Global counters
-    let STAP_STABLE = 0;
-    let STAP_UNSTABLE = 0;
-    let STAG_STABLE = 0;
-    let STAG_UNSTABLE = 0;
+    let STAP_STABLE = 0, STAP_UNSTABLE = 0, STAG_STABLE = 0, STAG_UNSTABLE = 0;
 
     for (const unit of units) {
       const rosters = await UnitRoster.findAll({
-        where: { unitId: unit.id },
-        attributes: ["candidateId"],
-        raw: true
+        where: { unitId: unit.id }, attributes: ["candidateId"], raw: true,
       });
+      const candidateIds = [...new Set(rosters.map((r) => r.candidateId))];
 
-      if (!rosters.length) continue;
+      for (const candidateId of candidateIds) {
+        const data = await callTabulationFunction(unit.id, candidateId);
+        const cid = String(candidateId).trim();
+        const rows = (data?.averages ?? []).filter((a) => String(a.candidateId).trim() === cid);
+        const avg = rows.find((a) => a.ppId === "Average") ?? rows[0];
+        if (!avg) continue;
 
-      for (const { candidateId } of rosters) {
-        const tabulationData = await callTabulationFunction(unit.id, candidateId);
+        if (avg.STAP === "STABLE") STAP_STABLE++;
+        else if (avg.STAP === "UNSTABLE") STAP_UNSTABLE++;
 
-        if (!tabulationData?.results) continue;
-
-        for (const record of tabulationData.results) {
-          // ✅ STAP (no ppId rule)
-          if (record.STAP === "STABLE") STAP_STABLE++;
-          if (record.STAP === "UNSTABLE") STAP_UNSTABLE++;
-
-          // ✅ STAG (ppId > 0 REQUIRED)
-          if (record.ppId > 0) {
-            if (record.STAG === "STABLE") STAG_STABLE++;
-            if (record.STAG === "UNSTABLE") STAG_UNSTABLE++;
-          }
-        }
+        if (avg.STAG === "STABLE") STAG_STABLE++;
+        else if (avg.STAG === "UNSTABLE") STAG_UNSTABLE++;
       }
     }
 
     return res.status(200).json({
-      message: "Global STAP & STAG stability counts",
-      STAP: {
-        STABLE: STAP_STABLE,
-        UNSTABLE: STAP_UNSTABLE
-      },
-      STAG: {
-        STABLE: STAG_STABLE,
-        UNSTABLE: STAG_UNSTABLE
-      }
+      message: "Global STAP & STAG stability counts (per candidate)",
+      STAP: { STABLE: STAP_STABLE, UNSTABLE: STAP_UNSTABLE },
+      STAG: { STABLE: STAG_STABLE, UNSTABLE: STAG_UNSTABLE },
     });
-
   } catch (error) {
     console.error("STAP/STAG Count Error:", error);
-    res.status(500).json({
-      message: "Error calculating STAP/STAG counts",
-      error: error.message
-    });
+    res.status(500).json({ message: "Error calculating STAP/STAG counts", error: error.message });
   }
 };
 
