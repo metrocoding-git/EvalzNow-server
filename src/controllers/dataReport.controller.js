@@ -1007,6 +1007,11 @@ function calculateStableFraction(data, key) {
   return total === 0 ? 0 : stable / total;
 }
 
+const pickAverageRow = (candidate) =>
+  (candidate.competencyAverages ?? []).find((a) => a.ppId === "Average") ??
+  candidate.competencyAverages?.[0] ??
+  null;
+
 async function buildUnitReport(unitId) {
   const unitRosterAccumulator = {
     presentCount: 0,
@@ -1024,66 +1029,73 @@ async function buildUnitReport(unitId) {
         as: "staffAssignments",
         required: false,
         include: [
-          {
-            model: db.Staff,
-            as: "staff",
-            attributes: ["id", "firstName", "lastName"]
-          }
+          { model: db.Staff, as: "staff", required: false, attributes: ["id", "firstName", "lastName"] }
         ]
       },
-      {
-        model: db.Benchmark,
-        as: "benchmarks",
-        required: false
-      }
+      { model: db.Benchmark, as: "benchmarks", required: false }
     ]
   });
 
   if (!unit) return null;
 
-  // Get distinct candidate IDs from UnitRoster
-  let rosterCandidates = await UnitRoster.findAll({
+  // ALL roster candidates (scored or not) for the UNIT ROSTER section
+  const rosterCandidates = await buildRosterList(unitId);
+  const rosterTotalCount = await UnitRoster.count({ where: { unitId } });
+
+  // Candidate ids: roster first, fallback to InsertScore
+  const rosterIdRows = await UnitRoster.findAll({
     where: { unitId },
     attributes: [[Sequelize.fn("DISTINCT", Sequelize.col("candidateId")), "candidateId"]],
     raw: true
   });
+  let candidateIds = rosterIdRows.map(r => r.candidateId);
 
-  let candidateIds = rosterCandidates.map(r => r.candidateId);
-
-  // Fallback: get candidate IDs from InsertScore
   if (!candidateIds.length) {
-    const scoreCandidates = await InsertScore.findAll({
+    const scoreIdRows = await InsertScore.findAll({
       where: { unitId },
       attributes: [[Sequelize.fn("DISTINCT", Sequelize.col("candidate_id")), "candidateId"]],
       raw: true
     });
-    candidateIds = scoreCandidates.map(s => s.candidateId);
+    candidateIds = scoreIdRows.map(s => s.candidateId);
   }
 
-  if (!candidateIds.length) return { ...unit.toJSON(), candidates: [], tabulationAverages: [], averageInteractionClass: 0 };
+  if (!candidateIds.length) {
+    return {
+      ...unit.toJSON(),
+      candidates: [],
+      rosterCandidates,
+      rosterStats: { totalCount: rosterTotalCount },
+      tabulationAverages: [],
+      averageInteractionClass: 0,
+      competencyStability: { stapStableFraction: 0, stagStableFraction: 0 }
+    };
+  }
 
-  const candidateIdList = candidateIds.join(",");
+  const candidateIdList = candidateIds.map(String).join(",");
+
+  // Unit-level tables: fetch once (same for every candidate)
+  const leaderMarks = await LeaderMarks.findAll({ where: { unitId }, order: [["entryNumber", "ASC"]] });
+  const unitImprovement = await UnitImprovement.findAll({ where: { unitId } });
+
   const unitScoreBucket = [];
-
   let unitStapStableCount = 0;
   let unitStagStableCount = 0;
   let unitCompetencyCandidateCount = 0;
   const candidates = [];
 
-  // Build candidates
   for (const candidateId of candidateIds) {
     const scores = await InsertScore.findAll({
       where: { unitId, candidate_id: candidateId },
       include: [
         { model: AssessmentBlockManager, as: "assessmentBlock" },
+        { model: Unit, as: "unit" },
         { model: Candidate, as: "candidate" }
       ],
       order: [["ppId", "ASC"], ["criticalRefDate", "ASC"]]
     });
 
-    if (!scores.length) continue;
+    if (!scores.length) continue;   // unscored candidates still appear via rosterCandidates
 
-    // Roster
     const rosterData = await UnitRoster.findAll({ where: { unitId, candidateId } });
     rosterData.forEach(r => {
       unitRosterAccumulator.presentCount += r.presentCount || 0;
@@ -1093,12 +1105,11 @@ async function buildUnitReport(unitId) {
       unitRosterAccumulator.unexcusedTardies += r.unexcusedTardies || 0;
     });
 
-    // Marks
-    const marks = await CandidateMarks.findAll({ where: { unitId, candidateId } });
-    const leaderMarks = await LeaderMarks.findAll({ where: { unitId } });
-    const unitImprovement = await UnitImprovement.findAll({ where: { unitId } });
+    const marks = await CandidateMarks.findAll({
+      where: { unitId, candidateId },
+      order: [["entryNumber", "ASC"]]
+    });
 
-    // Base candidate object
     const candidate = {
       candidateId: scores[0].candidate.id,
       candidateCode: scores[0].candidate.candidateId,
@@ -1115,7 +1126,10 @@ async function buildUnitReport(unitId) {
       candidateStartDate: scores[0].candidate.startDate,
       specialIdNo: scores[0].candidate.specialIdNo,
       pps: [],
-      roster: rosterData.map(r => ({ ...r.toJSON(), percentages: calculateRosterPercentages(r.toJSON()) })),
+      roster: rosterData.map(r => {
+        const plain = r.toJSON();
+        return { ...plain, percentages: calculateRosterPercentages(plain) };
+      }),
       scores: scores.map(s => s.toJSON()),
       candidateMarks: marks.map(m => m.toJSON()),
       leaderMarks: leaderMarks.map(l => l.toJSON()),
@@ -1131,7 +1145,6 @@ async function buildUnitReport(unitId) {
 
     unitScoreBucket.push(...candidate.scores);
 
-    // PP list
     scores.forEach(row => {
       if (!candidate.pps.find(p => p.ppId === row.ppId)) {
         candidate.pps.push({
@@ -1144,37 +1157,33 @@ async function buildUnitReport(unitId) {
     });
 
     // Competency
-    const mockReq = { query: { unitId: String(unitId), candidate_id: String(candidateId) } };
-    const mockRes = {
-      status() { return this; }, json(data) {
-        Object.assign(candidate, {
-          competencyResults: data?.results || [],
-          competencyAverages: data?.averages || [],
-          competencyCumalative: data?.cumulativeSums || [],
-          competencycumulativeAverages: data?.cumulativeAverages || []
-        });
-      }
-    };
+    let competencyData = null;
+    await getPpCompetencyRatioMultipleCandidate(
+      { query: { unitId: String(unitId), candidate_id: String(candidateId) } },
+      { status() { return this; }, json(data) { competencyData = data; } }
+    );
+    candidate.competencyResults = competencyData?.results || [];
+    candidate.competencyAverages = competencyData?.averages || [];
+    candidate.competencyCumalative = competencyData?.cumulativeSums || [];
+    candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
 
-    await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-
-    // ✅ Unit-level STAP / STAG aggregation
-    if (candidate.competencyAverages.length) {
+    // Unit-level STAP / STAG (one value per candidate, from the "Average" row)
+    const avgRow = pickAverageRow(candidate);
+    if (avgRow) {
       unitCompetencyCandidateCount++;
-
-      const avg = candidate.competencyAverages[0]; // one average per candidate
-
-      if (avg.STAP === "STABLE") unitStapStableCount++;
-      if (avg.STAG === "STABLE") unitStagStableCount++;
+      if (avgRow.STAP === "STABLE") unitStapStableCount++;
+      if (avgRow.STAG === "STABLE") unitStagStableCount++;
     }
 
-    // Effort BU
-    const effortReq = { params: { unitId: String(unitId), candidate_id: String(candidateId) } };
+    // Effort BU (CSD / USD)
     let effortBU = null;
-    await getEffortBu(effortReq, { status() { return this; }, json(d) { effortBU = d; } });
+    await getEffortBu(
+      { params: { unitId: String(unitId), candidate_id: String(candidateId) } },
+      { status() { return this; }, json(d) { effortBU = d; } }
+    );
     candidate.effortBu = effortBU || [];
 
-    // Need assessment
+    // Need assessments
     const needAssessments = await needAssessment.findAll({
       where: { unitId, candidateId },
       attributes: ["ppId", "benchmarkIds", "bIds", "observation"]
@@ -1189,50 +1198,31 @@ async function buildUnitReport(unitId) {
     candidates.push(candidate);
   }
 
+  // Need assessment status summary (once for the unit)
   let assessmentSummary = null;
-
-  const assessmentTrackReq = {
-    params: {
-      unitId: String(unitId),
-      candidate_id: candidateIdList
-    }
-  };
-
-  const assessmentTrackRes = {
-    status() { return this; },
-    json(payload) {
-      assessmentSummary = payload;
-      return this;
-    }
-  };
-
-  await getNeedAssessmentStatusSummary(assessmentTrackReq, assessmentTrackRes);
+  await getNeedAssessmentStatusSummary(
+    { params: { unitId: String(unitId), candidate_id: candidateIdList } },
+    { status() { return this; }, json(payload) { assessmentSummary = payload; return this; } }
+  );
 
   const competencyStability = {
-    stapStableFraction:
-      unitCompetencyCandidateCount === 0
-        ? 0
-        : unitStapStableCount / unitCompetencyCandidateCount,
-
-    stagStableFraction:
-      unitCompetencyCandidateCount === 0
-        ? 0
-        : unitStagStableCount / unitCompetencyCandidateCount
+    stapStableFraction: unitCompetencyCandidateCount === 0 ? 0 : unitStapStableCount / unitCompetencyCandidateCount,
+    stagStableFraction: unitCompetencyCandidateCount === 0 ? 0 : unitStagStableCount / unitCompetencyCandidateCount
   };
 
-  // Build tabulation averages
   const tabulationAverages = calculateUnitTabulationAverages(candidates, unit.unitType, unit.signatureProfile);
 
-  // Compute unit-level average Interaction Class
   const avgRR = tabulationAverages.find(t => t.metric === "RRN")?.value ?? 0;
   const avgPR = tabulationAverages.find(t => t.metric === "PRN")?.value ?? 0;
   const avgAR = tabulationAverages.find(t => t.metric === "ARN")?.value ?? 0;
-  const averageInteractionClass = calculateInteractionClass(avgRR, avgPR, avgAR, unit.unitType, unit.signatureProfile);
+  const averageInteractionClass = calculateInteractionClass(
+    avgRR, avgPR, avgAR, unit.unitType, unit.signatureProfile
+  );
 
-  const rosterTotalCount = await UnitRoster.count({ where: { unitId } });
   return {
     ...unit.toJSON(),
     candidates,
+    rosterCandidates,                                   // every roster candidate
     engageLevelStats: calculateEngageLevelPercentages(unitScoreBucket),
     rosterPercentages: calculateRosterPercentages(unitRosterAccumulator),
     tabulationAverages,
@@ -1247,333 +1237,17 @@ async function buildUnitReport(unitId) {
 exports.getDataReportByUnit = async (req, res) => {
   try {
     const { unitId } = req.params;
+    if (!unitId) return res.status(400).json({ message: "unitId is required" });
 
-    if (!unitId) {
-      return res.status(400).json({ message: "unitId is required" });
-    }
+    const unit = await buildUnitReport(unitId);
+    if (!unit) return res.status(404).json({ message: "Unit not found" });
 
-    const unitRosterAccumulator = {
-      presentCount: 0,
-      excusedAbsences: 0,
-      unexcusedAbsences: 0,
-      excusedTardies: 0,
-      unexcusedTardies: 0
-    };
-
-
-    // 1️⃣ Fetch unit ONCE
-    const unit = await Unit.findOne({
-      where: { id: unitId },
-      include: [
-        {
-          model: db.StaffLookup,
-          as: "staffAssignments",
-          required: false,
-          include: [
-            {
-              model: db.Staff,
-              required: false,
-              as: "staff",
-              attributes: ["id", "lastName", "firstName"]
-            }
-          ]
-        },
-        {
-          model: db.Benchmark,
-          required: false,
-          as: "benchmarks",
-        }
-      ],
-
-    });
-
-    // if (!unit) {
-    //   return res.status(404).json({ message: "Unit not found" });
-    // }
-
-    // 2️⃣ Get DISTINCT candidateIds (UnitRoster first)
-    const rosterCandidates = await UnitRoster.findAll({
-      where: { unitId },
-      attributes: [
-        [db.Sequelize.fn("DISTINCT", db.Sequelize.col("candidateId")), "candidateId"]
-      ],
-      raw: true
-    });
-
-    let candidateIds = rosterCandidates.map(r => r.candidateId);
-    const candidateIdList = candidateIds.map(String).join(",");
-
-    // fallback → InsertScore
-    if (!candidateIds.length) {
-      const scoreCandidates = await InsertScore.findAll({
-        where: { unitId },
-        attributes: [
-          [db.Sequelize.fn("DISTINCT", db.Sequelize.col("candidate_id")), "candidateId"]
-        ],
-        raw: true
-      });
-
-      candidateIds = scoreCandidates.map(s => s.candidateId);
-    }
-
-    const response = {
-      unit: {
-        ...unit.toJSON(),
-        candidates: []
-      }
-    };
-
-    if (!candidateIds.length) {
-      return res.status(200).json(response);
-    }
-
-    const unitRosterTotalCount = await UnitRoster.count({
-      where: { unitId }
-    });
-
-    response.unit.rosterStats = {
-      totalCount: unitRosterTotalCount
-    };
-    response.unit.rosterCandidates = await buildRosterList(unitId); 
-
-    const unitScoreBucket = [];
-
-    let unitStapStableCount = 0;
-    let unitStagStableCount = 0;
-    let unitCompetencyCandidateCount = 0;
-
-    // 3️⃣ Iterate candidates
-    for (const candidateId of candidateIds) {
-
-      // Scores
-      const scores = await InsertScore.findAll({
-        where: { unitId, candidate_id: candidateId },
-        include: [
-          { model: AssessmentBlockManager, as: "assessmentBlock" },
-          { model: Unit, as: "unit" },
-          { model: Candidate, as: "candidate" }
-        ],
-        order: [
-          ["ppId", "ASC"],
-          ["criticalRefDate", "ASC"]
-        ]
-      });
-
-      if (!scores.length) continue;
-
-      // Roster
-      const rosterData = await UnitRoster.findAll({
-        where: { unitId, candidateId }
-      });
-
-      rosterData.forEach(r => {
-        unitRosterAccumulator.presentCount += r.presentCount || 0;
-        unitRosterAccumulator.excusedAbsences += r.excusedAbsences || 0;
-        unitRosterAccumulator.unexcusedAbsences += r.unexcusedAbsences || 0;
-        unitRosterAccumulator.excusedTardies += r.excusedTardies || 0;
-        unitRosterAccumulator.unexcusedTardies += r.unexcusedTardies || 0;
-      });
-
-
-      // Marks
-      const marks = await CandidateMarks.findAll({
-        where: { unitId, candidateId },
-        order: [["entryNumber", "ASC"]]
-      });
-
-      const leaderMarks = await LeaderMarks.findAll({
-        where: {
-          unitId
-        },
-        order: [["entryNumber", "ASC"]]
-      });
-
-      const unitImprovement = await UnitImprovement.findAll({
-        where: {
-          unitId
-        },
-
-      });
-
-
-      // Candidate base
-      const candidate = {
-        candidateId: scores[0].candidate.id,
-        candidateCode: scores[0].candidate.candidateId,
-        firstName: scores[0].candidate.firstName,
-        lastName: scores[0].candidate.lastName,
-        nationality: scores[0].candidate.nationality,
-        gender: scores[0].candidate.gender,
-        ethnicity: scores[0].candidate.ethnicity,
-        income: scores[0].candidate.income,
-        religion: scores[0].candidate.religion,
-        maritalStatus: scores[0].candidate.maritalStatus,
-        jobType: scores[0].candidate.jobType,
-        dateOfBirth: scores[0].candidate.dateOfBirth,
-        candidateStartDate: scores[0].candidate.startDate,
-        specialIdNo: scores[0].candidate.specialIdNo,
-        pps: [],
-        roster: [],
-        scores: [],
-        competencyResults: [],
-        competencyAverages: [],
-        competencyCumalative: [],
-        competencycumulativeAverages: [],
-        needAssessments: [],
-        candidateMarks: [],
-        leaderMarks: [],
-        unitImprovement: [],
-        assessmentChain: [],
-        effortBu: [],
-        neuroScienceRms: {}
-      };
-
-      // Roster mapping
-      candidate.roster = rosterData.map(r => {
-        const plain = r.toJSON();
-        return {
-          ...plain,
-          percentages: calculateRosterPercentages(plain)
-        };
-      });
-
-      // Scores
-      candidate.scores = scores.map(s => s.toJSON());
-      unitScoreBucket.push(...candidate.scores);
-      candidate.engageLevelStats = calculateEngageLevelPercentages(candidate.scores);
-      candidate.candidateMarks = marks.map(m => m.toJSON());
-      candidate.leaderMarks = leaderMarks.map(lm => lm.toJSON());
-      candidate.unitImprovement = unitImprovement.map(ui => ui.toJSON());
-
-
-      // PP list
-      scores.forEach(row => {
-        if (!candidate.pps.find(p => p.ppId === row.ppId)) {
-          candidate.pps.push({
-            ppId: row.ppId,
-            shortDescription: row.assessmentBlock?.shortDescription,
-            periodType: row.assessmentBlock?.periodType,
-            delivery: row.assessmentBlock?.delivery
-          });
-        }
-      });
-
-      // Competency
-      const mockReq = { query: { unitId: String(unitId), candidate_id: String(candidateId) } };
-      let competencyData = null;
-
-      const mockRes = {
-        status() { return this; },
-        json(data) { competencyData = data; }
-      };
-
-      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-
-      candidate.competencyResults = competencyData?.results || [];
-      candidate.competencyAverages = competencyData?.averages || [];
-      candidate.competencyCumalative = competencyData?.cumulativeSums || [];
-      candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
-
-      if (candidate.competencyAverages.length) {
-        unitCompetencyCandidateCount++;
-
-        const avg = candidate.competencyAverages[0]; // ← ONE average per candidate
-
-        if (avg.STAP === "STABLE") unitStapStableCount++;
-        if (avg.STAG === "STABLE") unitStagStableCount++;
-      }
-
-      // effort BU - USD, CSD
-      const effortBUReq = { params: { unitId: String(unitId), candidate_id: String(candidateId) } };
-      let effortBU = null;
-
-      const effortBURes = {
-        status() { return this; },
-        json(data) { effortBU = data; }
-      };
-
-      await getEffortBu(effortBUReq, effortBURes);
-      candidate.effortBu = effortBU || [];
-
-      // Need assessment
-      const needAssessments = await needAssessment.findAll({
-        where: { unitId, candidateId },
-        attributes: ["ppId", "benchmarkIds", "bIds", "observation"]
-      });
-
-      candidate.needAssessments = needAssessments.map(na => ({
-        ppId: na.ppId,
-        benchmarkIds: JSON.parse(na.benchmarkIds || "[]"),
-        bIds: JSON.parse(na.bIds || "[]"),
-        observation: na.observation
-      }));
-
-      // Assessment Chain data
-      const assessmentTrackReq = {
-        params: { unitId: unitId, candidate_id: candidateIdList }
-      };
-
-      let assessmentTracking = null;
-
-      const assessmentTrackRes = {
-        status() { return this; },
-        json(payload) {
-          assessmentTracking = payload;
-          return this;
-        }
-      };
-
-      await getNeedAssessmentStatusSummary(assessmentTrackReq, assessmentTrackRes);
-      response.unit.assessmentSummary = assessmentTracking;
-
-      response.unit.candidates.push(candidate);
-
-      response.unit.engageLevelStats = calculateEngageLevelPercentages(unitScoreBucket);
-    }
-
-    response.unit.competencyStability = {
-      stapStableFraction:
-        unitCompetencyCandidateCount === 0
-          ? 0
-          : unitStapStableCount / unitCompetencyCandidateCount,
-
-      stagStableFraction:
-        unitCompetencyCandidateCount === 0
-          ? 0
-          : unitStagStableCount / unitCompetencyCandidateCount
-    };
-
-    response.unit.rosterPercentages = calculateRosterPercentages(unitRosterAccumulator);
-
-    response.unit.tabulationAverages = calculateUnitTabulationAverages(response.unit.candidates, unit.unitType, unit.signatureProfile);
-
-
-    // 4️⃣ Compute average Interaction Class (IC) for the unit
-    const tabAvgs = response.unit.tabulationAverages;
-
-    const avgRR = tabAvgs.find(t => t.metric === "RRN")?.value ?? 0;
-    const avgPR = tabAvgs.find(t => t.metric === "PRN")?.value ?? 0;
-    const avgAR = tabAvgs.find(t => t.metric === "deltaARN")?.value ?? 0;
-
-    response.unit.averageInteractionClass = calculateInteractionClass(
-      avgRR,
-      avgPR,
-      avgAR,
-      unit.unitType,
-      unit.signatureProfile
-    );
-
-    return res.status(200).json(response);
-
+    return res.status(200).json({ unit });
   } catch (error) {
     console.error("Error fetching unit report:", error);
-    res.status(500).json({
-      message: "Error fetching unit report",
-      error: error.message
-    });
+    res.status(500).json({ message: "Error fetching unit report", error: error.message });
   }
 };
-
 
 exports.getDataReportByClient = async (req, res) => {
   try {
