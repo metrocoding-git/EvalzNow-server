@@ -21,7 +21,7 @@ function cognitiveNS(xArray, yArray) {
 
   return (areasub / 100).toFixed(3);
 }
- 
+
 
 
 function calculateCognitiveLoadPerLobe(neuroRmsData) {
@@ -48,9 +48,9 @@ function calculateCognitiveLoadPerLobe(neuroRmsData) {
         profSlice.length < 2
           ? "0.000"
           : cognitiveNS(
-              sorted.slice(0, index + 1).map(r => r.ppId),
-              profSlice
-            );
+            sorted.slice(0, index + 1).map(r => r.ppId),
+            profSlice
+          );
 
       result[lobeName].proficiency.push({
         ppId: row.ppId,
@@ -66,9 +66,9 @@ function calculateCognitiveLoadPerLobe(neuroRmsData) {
         growthSlice.length < 2
           ? "0.000"
           : cognitiveNS(
-              sorted.slice(0, index + 1).map(r => r.ppId),
-              growthSlice
-            );
+            sorted.slice(0, index + 1).map(r => r.ppId),
+            growthSlice
+          );
 
       result[lobeName].growth.push({
         ppId: row.ppId,
@@ -109,262 +109,267 @@ const formatCompetencyNumbers = (competency) => {
     }
   });
 
+  const dc = parseFloat(formatted.cumulativeDuration);
+  if (!isNaN(dc)) {
+    formatted.cumulativeDuration = dc.toFixed(2);
+  }
+
   return formatted;
 };
 
 
 // GET Insert Scores by Unit ID
 exports.getDataExtractionByUnitId = async (req, res) => {
-    try {
-      const { unitId } = req.params;
-  
-      const scores = await InsertScore.findAll({
-        where: { unitId },
-        include: [
-          { model: AssessmentBlockManager, as: 'assessmentBlock' },
-          { model: Unit, as: 'unit' },
-          { model: Candidate, as: 'candidate' }
-        ],
-        order: [
-          ['candidate_id', 'ASC'],
-          ['ppId', 'ASC'],
-          ['criticalRefDate', 'ASC']
-        ]
-      });
-      
-      const grouped = {
-        unit: null,
-        candidates: []
-      };
-      
-      scores.forEach(row => {
-        // set unit once
-        if (!grouped.unit) {
-          grouped.unit = {
-            unitId: row.unit.id,
-            unitName: row.unit.unitName,
-            unitStartDate: row.unit.unitStartDate,
-            unitEndDate: row.unit.unitEndDate,
-            unitType: row.unit.unitType,
-            environment: row.unit.environment,
-            signatureProfile: row.unit.signatureProfile
-          };
-        }
-      
-        // candidate level
-        let candidate = grouped.candidates.find(
-          c => c.candidateId === row.candidate.id
-        );
-      
-        if (!candidate) {
-          candidate = {
-            candidateId: row.candidate.id,
-            candidateCode: row.candidate.candidateId,
-            firstName: row.candidate.firstName,
-            lastName: row.candidate.lastName,
-            nationality: row.candidate.nationality,
-            gender: row.candidate.gender,
-            ethnicity: row.candidate.ethnicity,
-            income: row.candidate.income,
-            religion: row.candidate.religion,
-            maritalStatus: row.candidate.maritalStatus,
-            jobType: row.candidate.jobType,
-            dateOfBirth: row.candidate.dateOfBirth,
-            candidateStartDate: row.candidate.startDate,
-            specialIdNo: row.candidate.specialIdNo,
-            pps: [],
-            competencyResults: []  
-          };
-      
-          grouped.candidates.push(candidate);
-        }
-      
-        // PP level
-        let pp = candidate.pps.find(p => p.ppId === row.ppId);
-      
-        if (!pp) {
-          pp = {
-            ppId: row.ppId,
-            shortDescription: row.assessmentBlock?.shortDescription,
-            periodType: row.assessmentBlock?.periodType,
-            delivery: row.assessmentBlock?.delivery,
-          };
-      
-          candidate.pps.push(pp);
-        } 
-      });
+  try {
+    const { unitId } = req.params;
 
-      const sortPpIds = (a, b) => {
-        // both negative
-        if (a.ppId < 0 && b.ppId < 0) {
-          return Math.abs(a.ppId) - Math.abs(b.ppId);
-        }
-      
-        // one negative, one positive
-        if (a.ppId < 0 && b.ppId > 0) return -1;
-        if (a.ppId > 0 && b.ppId < 0) return 1;
-      
-        // both positive
-        return a.ppId - b.ppId;
-      };
+    const scores = await InsertScore.findAll({
+      where: { unitId },
+      include: [
+        { model: AssessmentBlockManager, as: 'assessmentBlock' },
+        { model: Unit, as: 'unit' },
+        { model: Candidate, as: 'candidate' }
+      ],
+      order: [
+        ['candidate_id', 'ASC'],
+        ['ppId', 'ASC'],
+        ['criticalRefDate', 'ASC']
+      ]
+    });
 
-      grouped.candidates.forEach(candidate => {
-        candidate.pps.sort(sortPpIds);
-      });
+    const grouped = {
+      unit: null,
+      candidates: []
+    };
 
-      //  extract candidate IDs
-      const candidateIds = grouped.candidates.map(c => c.candidateId);
-
-      //  Fetch competency ratios for all candidates in one go
-      const mockReq = {
-          query: {
-              unitId: grouped.unit.unitId,
-              candidate_id: candidateIds.join(",")
-          }
-      };
-      
-      let competencyData = null;
-      
-      const mockRes = {
-          status(code) { this.statusCode = code; return this; },
-          json(data) { competencyData = data; return this; }
-      };
-      
-      await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
-
-      //  Group results by candidateId
-      const competencyByCandidate = {};
-      (competencyData?.results || []).forEach(r => {
-          if (!competencyByCandidate[r.candidateId]) {
-              competencyByCandidate[r.candidateId] = [];
-          }
-          competencyByCandidate[r.candidateId].push(r);
-      });
-
-      //  Attach only results to each candidate
-      grouped.candidates.forEach(candidate => {
-        candidate.competencyResults = (competencyByCandidate[candidate.candidateId] || [])
-          .map(c => formatCompetencyNumbers(c)); // ✅ Apply formatting here
-      });
-
-
-      // Fetch need assessments for the unit
-      const needAssessments = await needAssessment.findAll({
-        where: { unitId },
-        attributes: [
-          'candidateId',
-          'ppId',
-          'benchmarkIds',
-          'bIds',
-          'observation'
-        ]
-      });
-      
-      const safeParse = (value) => {
-        try {
-          if (!value) return [];
-          if (typeof value === "string") return JSON.parse(value);
-          if (Array.isArray(value)) return value;
-          return [];
-        } catch (err) {
-          console.error("Invalid JSON:", value);
-          return [];
-        }
-      };
-      
-      const needAssessmentByCandidate = {};
-
-      // Group by candidateId
-      needAssessments.forEach(na => {
-        if (!needAssessmentByCandidate[na.candidateId]) {
-          needAssessmentByCandidate[na.candidateId] = [];
-        }
-      
-        const benchmarkIds = safeParse(na.benchmarkIds);
-        const bIds = safeParse(na.bIds);
-        const observation = na.observation?.trim() || "";
-      
-        //  STATUS LOGIC
-        let status = "Open";
-      
-        if (benchmarkIds.length > 0 && observation) {
-          status = "Closed";
-        } else if (
-          (benchmarkIds.length > 0 && !observation) ||
-          (benchmarkIds.length === 0 && observation)
-        ) {
-          status = "Pending";
-        }
-      
-        needAssessmentByCandidate[na.candidateId].push({
-          ppId: na.ppId,
-          benchmarkIds,
-          bIds,
-          observation,
-          status 
-        });
-      });
-
-      // Attach to candidates
-      grouped.candidates.forEach(candidate => {
-        candidate.needAssessments =
-          needAssessmentByCandidate[candidate.candidateId] || [];
-      });
-
-
-      // Neuro Science Rms value extraction
-      for (const candidate of grouped.candidates) {
-
-        const neuroReq = {
-          params: {
-            unitId: grouped.unit.unitId,
-            candidateId: candidate.candidateId
-          },
-          query: {} // optional filters if needed later
+    scores.forEach(row => {
+      // set unit once
+      if (!grouped.unit) {
+        grouped.unit = {
+          unitId: row.unit.id,
+          unitName: row.unit.unitName,
+          unitStartDate: row.unit.unitStartDate,
+          unitEndDate: row.unit.unitEndDate,
+          unitType: row.unit.unitType,
+          environment: row.unit.environment,
+          signatureProfile: row.unit.signatureProfile
         };
-      
-        let neuroData = null;
-
-        const neuroRes = {
-          status(code) {
-            this.statusCode = code;
-            return this;
-          },
-          json(payload) {
-            neuroData = payload;
-            return this;
-          }
-        };
-
-        await getNeuroScienceRmsValues(neuroReq, neuroRes);
-
-        // console.log("nuero science RMS: ", neuroRes, neuroData);
-      
-        // Attach only valid results
-        if (neuroData?.data?.length) {
-          const cognitiveLoad = calculateCognitiveLoadPerLobe(neuroData.data);
-        
-          candidate.neuroScienceRms = {
-            count: neuroData.count,
-            data: neuroData.data,
-            cognitiveLoad
-          };
-        } else {
-          candidate.neuroScienceRms = {
-            count: 0,
-            data: [],
-            cognitiveLoad: {}
-          };
-        }
-        
       }
 
-      res.status(200).json(grouped);
+      // candidate level
+      let candidate = grouped.candidates.find(
+        c => c.candidateId === row.candidate.id
+      );
 
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Error fetching insert scores by blockId', error: error.message });
+      if (!candidate) {
+        candidate = {
+          candidateId: row.candidate.id,
+          candidateCode: row.candidate.candidateId,
+          firstName: row.candidate.firstName,
+          lastName: row.candidate.lastName,
+          nationality: row.candidate.nationality,
+          gender: row.candidate.gender,
+          ethnicity: row.candidate.ethnicity,
+          income: row.candidate.income,
+          religion: row.candidate.religion,
+          maritalStatus: row.candidate.maritalStatus,
+          jobType: row.candidate.jobType,
+          dateOfBirth: row.candidate.dateOfBirth,
+          candidateStartDate: row.candidate.startDate,
+          specialIdNo: row.candidate.specialIdNo,
+          pps: [],
+          competencyResults: []
+        };
+
+        grouped.candidates.push(candidate);
+      }
+
+      // PP level
+      let pp = candidate.pps.find(p => p.ppId === row.ppId);
+
+      if (!pp) {
+        pp = {
+          ppId: row.ppId,
+          shortDescription: row.assessmentBlock?.shortDescription,
+          periodType: row.assessmentBlock?.periodType,
+          delivery: row.assessmentBlock?.delivery,
+        };
+
+        candidate.pps.push(pp);
+      }
+    });
+
+    const sortPpIds = (a, b) => {
+      // both negative
+      if (a.ppId < 0 && b.ppId < 0) {
+        return Math.abs(a.ppId) - Math.abs(b.ppId);
+      }
+
+      // one negative, one positive
+      if (a.ppId < 0 && b.ppId > 0) return -1;
+      if (a.ppId > 0 && b.ppId < 0) return 1;
+
+      // both positive
+      return a.ppId - b.ppId;
+    };
+
+    grouped.candidates.forEach(candidate => {
+      candidate.pps.sort(sortPpIds);
+    });
+
+    //  extract candidate IDs
+    const candidateIds = grouped.candidates.map(c => c.candidateId);
+
+    //  Fetch competency ratios for all candidates in one go
+    const mockReq = {
+      query: {
+        unitId: grouped.unit.unitId,
+        candidate_id: candidateIds.join(",")
+      }
+    };
+
+    let competencyData = null;
+
+    const mockRes = {
+      status(code) { this.statusCode = code; return this; },
+      json(data) { competencyData = data; return this; }
+    };
+
+    await getPpCompetencyRatioMultipleCandidate(mockReq, mockRes);
+
+    //  Group results by candidateId
+    const competencyByCandidate = {};
+    (competencyData?.results || []).forEach(r => {
+      if (!competencyByCandidate[r.candidateId]) {
+        competencyByCandidate[r.candidateId] = [];
+      }
+      competencyByCandidate[r.candidateId].push(r);
+    });
+
+    //  Attach only results to each candidate
+    grouped.candidates.forEach(candidate => {
+      candidate.competencyResults = (competencyByCandidate[candidate.candidateId] || [])
+        .map(c => formatCompetencyNumbers(c)); // ✅ Apply formatting here
+    });
+
+
+    // Fetch need assessments for the unit
+    const needAssessments = await needAssessment.findAll({
+      where: { unitId },
+      attributes: [
+        'candidateId',
+        'ppId',
+        'benchmarkIds',
+        'bIds',
+        'observation'
+      ]
+    });
+
+    const safeParse = (value) => {
+      try {
+        if (!value) return [];
+        if (typeof value === "string") return JSON.parse(value);
+        if (Array.isArray(value)) return value;
+        return [];
+      } catch (err) {
+        console.error("Invalid JSON:", value);
+        return [];
+      }
+    };
+
+    const needAssessmentByCandidate = {};
+
+    // Group by candidateId
+    needAssessments.forEach(na => {
+      if (!needAssessmentByCandidate[na.candidateId]) {
+        needAssessmentByCandidate[na.candidateId] = [];
+      }
+
+      const benchmarkIds = safeParse(na.benchmarkIds);
+      const bIds = safeParse(na.bIds);
+      const observation = na.observation?.trim() || "";
+
+      //  STATUS LOGIC
+      let status = "Open";
+
+      if (benchmarkIds.length > 0 && observation) {
+        status = "Closed";
+      } else if (
+        (benchmarkIds.length > 0 && !observation) ||
+        (benchmarkIds.length === 0 && observation)
+      ) {
+        status = "Pending";
+      }
+
+      needAssessmentByCandidate[na.candidateId].push({
+        ppId: na.ppId,
+        benchmarkIds,
+        bIds,
+        observation,
+        status
+      });
+    });
+
+    // Attach to candidates
+    grouped.candidates.forEach(candidate => {
+      candidate.needAssessments =
+        needAssessmentByCandidate[candidate.candidateId] || [];
+    });
+
+
+    // Neuro Science Rms value extraction
+    for (const candidate of grouped.candidates) {
+
+      const neuroReq = {
+        params: {
+          unitId: grouped.unit.unitId,
+          candidateId: candidate.candidateId
+        },
+        query: {} // optional filters if needed later
+      };
+
+      let neuroData = null;
+
+      const neuroRes = {
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        json(payload) {
+          neuroData = payload;
+          return this;
+        }
+      };
+
+      await getNeuroScienceRmsValues(neuroReq, neuroRes);
+
+      // console.log("nuero science RMS: ", neuroRes, neuroData);
+
+      // Attach only valid results
+      if (neuroData?.data?.length) {
+        const cognitiveLoad = calculateCognitiveLoadPerLobe(neuroData.data);
+
+        candidate.neuroScienceRms = {
+          count: neuroData.count,
+          data: neuroData.data,
+          cognitiveLoad
+        };
+      } else {
+        candidate.neuroScienceRms = {
+          count: 0,
+          data: [],
+          cognitiveLoad: {}
+        };
+      }
+
     }
+
+    res.status(200).json(grouped);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error fetching insert scores by blockId', error: error.message });
+  }
 };
 
 
@@ -476,11 +481,11 @@ exports.getDataExtractionByClientId = async (req, res) => {
         if (a.ppId < 0 && b.ppId < 0) {
           return Math.abs(a.ppId) - Math.abs(b.ppId);
         }
-      
+
         // one negative, one positive
         if (a.ppId < 0 && b.ppId > 0) return -1;
         if (a.ppId > 0 && b.ppId < 0) return 1;
-      
+
         // both positive
         return a.ppId - b.ppId;
       };
@@ -519,13 +524,13 @@ exports.getDataExtractionByClientId = async (req, res) => {
 
       grouped.candidates.forEach(candidate => {
         const rawResults = competencyByCandidate[candidate.candidateId] || [];
-      
+
         candidate.competencyResults = rawResults.map(result =>
           formatCompetencyNumbers(result)
         );
       });
-      
-      
+
+
 
       // ---------------------------
       // Need Assessments
@@ -546,7 +551,7 @@ exports.getDataExtractionByClientId = async (req, res) => {
           return [];
         }
       };
-      
+
       const needAssessmentByCandidate = {};
 
       // Group by candidateId
@@ -554,14 +559,14 @@ exports.getDataExtractionByClientId = async (req, res) => {
         if (!needAssessmentByCandidate[na.candidateId]) {
           needAssessmentByCandidate[na.candidateId] = [];
         }
-      
+
         const benchmarkIds = safeParse(na.benchmarkIds);
         const bIds = safeParse(na.bIds);
         const observation = na.observation?.trim() || "";
-      
+
         //  STATUS LOGIC
         let status = "Open";
-      
+
         if (benchmarkIds.length > 0 && observation) {
           status = "Closed";
         } else if (
@@ -570,13 +575,13 @@ exports.getDataExtractionByClientId = async (req, res) => {
         ) {
           status = "Pending";
         }
-      
+
         needAssessmentByCandidate[na.candidateId].push({
           ppId: na.ppId,
           benchmarkIds,
           bIds,
           observation,
-          status 
+          status
         });
       });
 
@@ -700,7 +705,7 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
       scores.forEach(row => {
         let candidate = grouped.candidates.find(c => c.candidateId === row.candidate.id);
 
-        
+
         if (!candidate) {
           candidate = {
             candidateId: row.candidate.id,
@@ -740,11 +745,11 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
         if (a.ppId < 0 && b.ppId < 0) {
           return Math.abs(a.ppId) - Math.abs(b.ppId);
         }
-      
+
         // one negative, one positive
         if (a.ppId < 0 && b.ppId > 0) return -1;
         if (a.ppId > 0 && b.ppId < 0) return 1;
-      
+
         // both positive
         return a.ppId - b.ppId;
       };
@@ -752,7 +757,7 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
       grouped.candidates.forEach(candidate => {
         candidate.pps.sort(sortPpIds);
       });
-      
+
       // Competency ratios
       const mockReq = {
         query: {
@@ -770,14 +775,14 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
         candidate.competencyResults = (competencyData?.results || [])
           .map(c => formatCompetencyNumbers(c));
       });
-      
+
 
       // Need Assessments
       const needAssessments = await needAssessment.findAll({
         where: { unitId, candidateId },
         attributes: ['candidateId', 'ppId', 'benchmarkIds', 'bIds', 'observation']
-      }); 
-      
+      });
+
       const safeParse = (value) => {
         try {
           if (!value) return [];
@@ -789,16 +794,16 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
           return [];
         }
       };
-      
+
       grouped.candidates.forEach(candidate => {
         candidate.needAssessments = needAssessments.map(na => {
           const benchmarkIds = safeParse(na.benchmarkIds);
           const bIds = safeParse(na.bIds);
           const observation = na.observation?.trim() || "";
-      
+
           // 
           let status = "Open";
-      
+
           if (benchmarkIds.length > 0 && observation) {
             status = "Closed";
           } else if (
@@ -807,7 +812,7 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
           ) {
             status = "Pending";
           }
-      
+
           return {
             ppId: na.ppId,
             benchmarkIds,

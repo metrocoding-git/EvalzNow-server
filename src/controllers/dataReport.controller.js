@@ -396,6 +396,19 @@ const ppSort = (a, b) => {
   return aId - bId;
 };
 
+const applyCumulativeDayCount = (rows = []) =>
+  rows.map(r => {
+    const cumulative = Number(r.cumulativeDuration);
+    return {
+      ...r,
+      ppDuration: r.totalDuration,
+      totalDuration: Number.isFinite(cumulative)
+        ? +cumulative.toFixed(2)
+        : r.totalDuration,
+    };
+  });
+
+
 // Calls another controller with a mock res. Never throws: a failure returns null.
 const runController = async (fn, req) => {
   let out = null;
@@ -509,7 +522,7 @@ async function buildCandidateReport(unitId, candidateId) {
     const competencyData = await runController(getPpCompetencyRatioMultipleCandidate, {
       query: { unitId: String(unitId), candidate_id: String(candidateId) }
     });
-    candidate.competencyResults = (competencyData?.results || []).sort(ppSort);
+    candidate.competencyResults = applyCumulativeDayCount(competencyData?.results || []).sort(ppSort);
     candidate.competencyAverages = competencyData?.averages || [];
     candidate.competencyCumalative = competencyData?.cumulativeSums || [];
     candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
@@ -849,7 +862,7 @@ async function buildUnitReport(unitId) {
       { query: { unitId: String(unitId), candidate_id: String(candidateId) } },
       { status() { return this; }, json(data) { competencyData = data; } }
     );
-    candidate.competencyResults = competencyData?.results || [];
+    candidate.competencyResults = applyCumulativeDayCount(competencyData?.results || []);
     candidate.competencyAverages = competencyData?.averages || [];
     candidate.competencyCumalative = competencyData?.cumulativeSums || [];
     candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];

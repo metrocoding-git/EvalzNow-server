@@ -753,8 +753,8 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
 
     const candidateStaffRatioSummary = {
       "≤ 10": 0,
-      "10–30": 0,
-      "≥ 30": 0,
+      "10–20": 0,
+      "≥ 20": 0,
     };
 
     const attendanceSummary = {
@@ -953,9 +953,9 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
       if (ratio <= 10) {
         candidateStaffRatioSummary["≤ 10"]++;
       } else if (ratio <= 30) {
-        candidateStaffRatioSummary["10–30"]++;
+        candidateStaffRatioSummary["10–20"]++;
       } else {
-        candidateStaffRatioSummary["≥ 30"]++;
+        candidateStaffRatioSummary["≥ 20"]++;
       }
 
       console.log(`[CTL] unit ID: ${unitId}, Candidate Count: ${candidateCount}, Staff Count: ${staffCount}, Ratio: ${ratio.toFixed(2)}`, candidateStaffRatioSummary);

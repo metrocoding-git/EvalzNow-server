@@ -3212,14 +3212,14 @@ exports.getPpCompetencyRatios = async (req, res) => {
             MRS: out.MRS, MLS: out.MLS, MSS: out.MSS, MWS: out.MWS,
           }).toFixed(3);
         } else if (unitType === "Theory & Practice") {
-            out.XCP = +CalcCompositeProficiencyTP(out.ATS, out.APS, out.MTS, out.MPS).toFixed(3);
-            out.XBP = +CalcBandProficiencyTP(out.XTR, out.XPR).toFixed(3);
-            out.MSIP = +CalcButlerIntProfTP(out.XTR ?? 0, out.XPR ?? 0).toFixed(3);
-          } else if (unitType === "Third Parameter") {
-            out.XCP = +CalcCompositeProficiency3P(out.ARVS, out.APVS, out.AAVS, out.MRVS, out.MPVS, out.MAVS).toFixed(3);
-            out.XBP = +CalcBandProficiency3P(out.XRVSR, out.XPVSR, out.XAVSR).toFixed(3);
-            out.MSIP = +CalcButlerIntProf3P(out.XRVSR ?? 0, out.XPVSR ?? 0, out.XAVSR ?? 0).toFixed(3);
-          }
+          out.XCP = +CalcCompositeProficiencyTP(out.ATS, out.APS, out.MTS, out.MPS).toFixed(3);
+          out.XBP = +CalcBandProficiencyTP(out.XTR, out.XPR).toFixed(3);
+          out.MSIP = +CalcButlerIntProfTP(out.XTR ?? 0, out.XPR ?? 0).toFixed(3);
+        } else if (unitType === "Third Parameter") {
+          out.XCP = +CalcCompositeProficiency3P(out.ARVS, out.APVS, out.AAVS, out.MRVS, out.MPVS, out.MAVS).toFixed(3);
+          out.XBP = +CalcBandProficiency3P(out.XRVSR, out.XPVSR, out.XAVSR).toFixed(3);
+          out.MSIP = +CalcButlerIntProf3P(out.XRVSR ?? 0, out.XPVSR ?? 0, out.XAVSR ?? 0).toFixed(3);
+        }
 
         // --- Compute STA/P ---
         out.STAP = calculateSTAP(out.RRN, out.PRN, out.ARN, out.MSIP, unitType);
