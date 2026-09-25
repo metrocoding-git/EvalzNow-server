@@ -91,12 +91,19 @@ function CalcBandProficiencyCIO(xrr, xlr, xsr, xwr) {
   return (xrr + xlr + xsr + xwr) / 4;
 }
 
-function CalcButlerIntProfCIO({ ARS, ALS, ASP, AWS, MRS, MLS, MSS, MWS }) {
-  const PrPw2 = Math.pow(ASP + AWS, 2) / Math.pow(MSS + MWS || 1, 2);
-  const RrPw2 = Math.pow(ARS + ALS, 2) / Math.pow(MRS + MLS || 1, 2);
-  let bmsip = Math.pow(PrPw2 + RrPw2, -0.5) - 1;
-  if (bmsip > 5 || bmsip === Number.POSITIVE_INFINITY) bmsip = 5;
-  return +bmsip.toFixed(3);
+function CalcButlerIntProfCIO(RRN, PRN) {
+  let value =
+    Math.pow(
+      Math.pow(RRN, 2) +
+      Math.pow(PRN, 2),
+      -0.5
+    ) - 1;
+
+  if (value > 5 || value === Number.POSITIVE_INFINITY) {
+    value = 5;
+  }
+
+  return +value.toFixed(3);
 }
 
 // --- Theory & Practice ---
@@ -141,6 +148,23 @@ function CalcButlerIntProf3P(xrvsr, xpvsr, xavsr) {
   }
 
   return +value.toFixed(3);
+}
+
+function calculateMSIPFromAverages(avgRRN, avgPRN, avgARN, unitType) {
+  const rrn = avgRRN ?? 0;
+  const prn = avgPRN ?? 0;
+  const arn = avgARN ?? 0;
+
+  if (unitType === "Communicative I/O") {
+    return CalcButlerIntProfCIO(rrn, prn);
+  } else if (unitType === "Theory & Practice") {
+    // For T&P, RRN = XTR and PRN = XPR
+    return CalcButlerIntProfTP(rrn, prn);
+  } else if (unitType === "Third Parameter") {
+    // For Third Parameter, RRN = XRVSR, PRN = XPVSR, ARN = XAVSR
+    return CalcButlerIntProf3P(rrn, prn, arn);
+  }
+  return null;
 }
 
 // ------------------------------------------------------------------
@@ -3207,10 +3231,7 @@ exports.getPpCompetencyRatios = async (req, res) => {
             out.MRS, out.MLS, out.MSS, out.MWS
           ).toFixed(3);
           out.XBP = +CalcBandProficiencyCIO(out.XRR, out.XLR, out.XSR, out.XWR).toFixed(3);
-          out.MSIP = +CalcButlerIntProfCIO({
-            ARS: out.ARS, ALS: out.ALS, ASP: out.ASP, AWS: out.AWS,
-            MRS: out.MRS, MLS: out.MLS, MSS: out.MSS, MWS: out.MWS,
-          }).toFixed(3);
+          out.MSIP = +CalcButlerIntProfCIO(out.RRN, out.PRN).toFixed(3);
         } else if (unitType === "Theory & Practice") {
           out.XCP = +CalcCompositeProficiencyTP(out.ATS, out.APS, out.MTS, out.MPS).toFixed(3);
           out.XBP = +CalcBandProficiencyTP(out.XTR, out.XPR).toFixed(3);
@@ -3699,10 +3720,7 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
               out.MRS, out.MLS, out.MSS, out.MWS
             ).toFixed(3);
             out.XBP = +CalcBandProficiencyCIO(out.XRR, out.XLR, out.XSR, out.XWR).toFixed(3);
-            out.MSIP = +CalcButlerIntProfCIO({
-              ARS: out.ARS, ALS: out.ALS, ASP: out.ASP, AWS: out.AWS,
-              MRS: out.MRS, MLS: out.MLS, MSS: out.MSS, MWS: out.MWS,
-            }).toFixed(3);
+            out.MSIP = +CalcButlerIntProfCIO(out.RRN, out.PRN).toFixed(3);
           } else if (unitType === "Theory & Practice") {
             out.XCP = +CalcCompositeProficiencyTP(out.ATS, out.APS, out.MTS, out.MPS).toFixed(3);
             out.XBP = +CalcBandProficiencyTP(out.XTR, out.XPR).toFixed(3);
@@ -3838,7 +3856,9 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
         const avgRRN = average.RRN ?? 0;
         const avgPRN = average.PRN ?? 0;
         const avgARN = average.ARN ?? 0;
-        const avgMSIP = average.MSIP ?? 0;
+
+        const avgMSIP = calculateMSIPFromAverages(avgRRN, avgPRN, avgARN, unitType);
+        average.MSIP = avgMSIP;
 
         average.IC = calculateInteractionClass(
           avgRRN,

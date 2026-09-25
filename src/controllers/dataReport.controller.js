@@ -374,7 +374,7 @@ async function buildRosterList(unitId) {
     .map((r) => {
       const c = byId.get(r.candidateId) ?? {};
       return {
-        candidateId: c.id ?? r.candidateId,
+        candidateId: c.candidateId ?? r.candidateId,
         candidateCode: c.candidateId,
         firstName: c.firstName,
         lastName: c.lastName,
@@ -811,7 +811,7 @@ async function buildUnitReport(unitId) {
     });
 
     const candidate = {
-      candidateId: scores[0].candidate.id,
+      candidateId: scores[0].candidate.candidateId,
       candidateCode: scores[0].candidate.candidateId,
       firstName: scores[0].candidate.firstName,
       lastName: scores[0].candidate.lastName,
