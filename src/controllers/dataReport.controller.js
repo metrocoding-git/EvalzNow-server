@@ -1,4 +1,5 @@
 const db = require('../models');
+const { mapLimit, REPORT_CONCURRENCY } = require("../utils/concurrency");
 const { Op, Sequelize } = require("sequelize");
 const InsertScore = db.InsertScore;
 const AssessmentBlockManager = db.AssessmentBlockManager;
@@ -600,11 +601,10 @@ exports.getDataReportByUnitAllCandidates = async (req, res) => {
       candidateIds = scoreIdRows.map(s => s.candidateId);
     }
 
-    const candidates = [];
-    for (const candidateId of candidateIds) {
-      const candidate = await buildCandidateReport(unitId, candidateId);
-      if (candidate) candidates.push(candidate);   // no skipping for missing scores
-    }
+    // Candidates are built in parallel (bounded) but kept in the original order.
+    const built = await mapLimit(candidateIds, REPORT_CONCURRENCY,
+      (candidateId) => buildCandidateReport(unitId, candidateId));
+    const candidates = built.filter(Boolean);   // no skipping for missing scores
 
     const totalCount = await UnitRoster.count({ where: { unitId } });
 
@@ -783,7 +783,7 @@ async function buildUnitReport(unitId) {
   let unitCompetencyCandidateCount = 0;
   const candidates = [];
 
-  for (const candidateId of candidateIds) {
+  const processCandidate = async (candidateId) => {
     const scores = await InsertScore.findAll({
       where: { unitId, candidate_id: candidateId },
       include: [
@@ -794,16 +794,9 @@ async function buildUnitReport(unitId) {
       order: [["ppId", "ASC"], ["criticalRefDate", "ASC"]]
     });
 
-    if (!scores.length) continue;   // unscored candidates still appear via rosterCandidates
+    if (!scores.length) return null;   // unscored candidates still appear via rosterCandidates
 
     const rosterData = await UnitRoster.findAll({ where: { unitId, candidateId } });
-    rosterData.forEach(r => {
-      unitRosterAccumulator.presentCount += r.presentCount || 0;
-      unitRosterAccumulator.excusedAbsences += r.excusedAbsences || 0;
-      unitRosterAccumulator.unexcusedAbsences += r.unexcusedAbsences || 0;
-      unitRosterAccumulator.excusedTardies += r.excusedTardies || 0;
-      unitRosterAccumulator.unexcusedTardies += r.unexcusedTardies || 0;
-    });
 
     const marks = await CandidateMarks.findAll({
       where: { unitId, candidateId },
@@ -843,8 +836,6 @@ async function buildUnitReport(unitId) {
       engageLevelStats: calculateEngageLevelPercentages(scores.map(s => s.toJSON()))
     };
 
-    unitScoreBucket.push(...candidate.scores);
-
     scores.forEach(row => {
       if (!candidate.pps.find(p => p.ppId === row.ppId)) {
         candidate.pps.push({
@@ -867,14 +858,6 @@ async function buildUnitReport(unitId) {
     candidate.competencyCumalative = competencyData?.cumulativeSums || [];
     candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
 
-    // Unit-level STAP / STAG (one value per candidate, from the "Average" row)
-    const avgRow = pickAverageRow(candidate);
-    if (avgRow) {
-      unitCompetencyCandidateCount++;
-      if (avgRow.STAP === "STABLE") unitStapStableCount++;
-      if (avgRow.STAG === "STABLE") unitStagStableCount++;
-    }
-
     // Effort BU (CSD / USD)
     let effortBU = null;
     await getEffortBu(
@@ -894,6 +877,35 @@ async function buildUnitReport(unitId) {
       bIds: JSON.parse(na.bIds || "[]"),
       observation: na.observation
     }));
+
+    return { candidate, rosterData };
+  };
+
+  // Candidates are processed in parallel (bounded), then aggregated in the
+  // ORIGINAL order with exactly the same logic as before -> identical results.
+  const processed = await mapLimit(candidateIds, REPORT_CONCURRENCY, processCandidate);
+
+  for (const item of processed) {
+    if (!item) continue;
+    const { candidate, rosterData } = item;
+
+    rosterData.forEach(r => {
+      unitRosterAccumulator.presentCount += r.presentCount || 0;
+      unitRosterAccumulator.excusedAbsences += r.excusedAbsences || 0;
+      unitRosterAccumulator.unexcusedAbsences += r.unexcusedAbsences || 0;
+      unitRosterAccumulator.excusedTardies += r.excusedTardies || 0;
+      unitRosterAccumulator.unexcusedTardies += r.unexcusedTardies || 0;
+    });
+
+    unitScoreBucket.push(...candidate.scores);
+
+    // Unit-level STAP / STAG (one value per candidate, from the "Average" row)
+    const avgRow = pickAverageRow(candidate);
+    if (avgRow) {
+      unitCompetencyCandidateCount++;
+      if (avgRow.STAP === "STABLE") unitStapStableCount++;
+      if (avgRow.STAG === "STABLE") unitStagStableCount++;
+    }
 
     candidates.push(candidate);
   }
@@ -969,12 +981,10 @@ exports.getDataReportByClient = async (req, res) => {
       });
     }
 
-    const reports = [];
-
-    for (const unit of units) {
-      const unitReport = await buildUnitReport(unit.id);
-      if (unitReport) reports.push(unitReport);
-    }
+    // Units are built two at a time (each unit already runs its candidates in
+    // parallel); order is preserved so the output is identical.
+    const built = await mapLimit(units, 2, (unit) => buildUnitReport(unit.id));
+    const reports = built.filter(Boolean);
 
     return res.status(200).json({
       clientId,

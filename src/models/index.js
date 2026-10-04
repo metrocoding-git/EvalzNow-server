@@ -33,6 +33,7 @@ db.AssessmentChain = require("./assessmentChain.model")(sequelize, Sequelize);
 db.NeuroScienceSession = require("./neuroScienceSession.model")(sequelize, Sequelize);
 db.NeuroScienceResponse = require("./neuroScienceResponse.model")(sequelize, Sequelize);
 db.InsertScoreCriteria = require("./insertScoreCriteria.model")(sequelize, Sequelize);
+db.AuthRevocation = require("./authRevocation.model")(sequelize, Sequelize);
 
 
 

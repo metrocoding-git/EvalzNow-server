@@ -21,6 +21,10 @@ exports.getUnitRosters = async (req, res) => {
           model: Unit,
           as: "unit",
           attributes: ["id", "unitId", "unitName", "unitType", "signatureProfile"],
+          // admin/staff: only rosters of their own organisation's units
+          ...(req.user && !req.user.isSuperAdmin
+            ? { where: { clientId: req.user.clientId || 0 }, required: true }
+            : {}),
         },
       ],
       

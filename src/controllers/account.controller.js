@@ -4,10 +4,14 @@ const Account = db.Account;
 const Staff = db.Staff;
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
-const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
+const { signToken, revokeToken, revokeAllForAccount, loadPrincipal } = require("../utils/authTokens");
 
-const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
+// Used to keep login timing the same whether or not the username exists
+// (prevents discovering valid usernames by measuring response time).
+const DUMMY_HASH = bcrypt.hashSync("evalznow-dummy-password", 10);
+const MIN_PASSWORD_LENGTH = 8;
+const hashResetToken = (t) => crypto.createHash("sha256").update(String(t)).digest("hex");
 
 
 // POST login account
@@ -15,33 +19,37 @@ exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // 🔹 Validate input
-    if (!username || !password) {
+    // 🔹 Validate input (strings only - blocks object/operator injection)
+    if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
       return res.status(400).json({ message: "Username and password are required" });
+    }
+    if (username.length > 100 || password.length > 200) {
+      return res.status(401).json({ message: "Invalid username or password" });
     }
 
     // 🔹 Check if account exists
     const account = await Account.findOne({ where: { username } });
-    if (!account) {
+
+    // 🔹 Compare password (always run bcrypt so timing does not reveal valid usernames)
+    const storedHash = account && account.password ? account.password : DUMMY_HASH;
+    let isMatch = false;
+    try {
+      isMatch = await bcrypt.compare(password, storedHash);
+    } catch (_) {
+      isMatch = false;
+    }
+    if (!account || !account.password || !isMatch) {
       return res.status(401).json({ message: "Invalid username or password" });
     }
 
-    // 🔹 Compare password
-    const isMatch = await bcrypt.compare(password, account.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid username or password" });
+    // 🔹 Disabled staff accounts cannot sign in
+    const principal = await loadPrincipal(account.id);
+    if (principal && principal.disabled) {
+      return res.status(403).json({ message: "Account is disabled. Please contact your administrator." });
     }
 
-    // 🔹 Generate JWT
-    const token = jwt.sign(
-      {
-        id: account.id,
-        username: account.username,
-        role: account.role,
-      },
-      JWT_SECRET,
-      { expiresIn: "30d" }
-    );
+    // 🔹 Generate JWT (short-lived, unique id so it can be revoked on logout)
+    const token = signToken(account);
 
     // 🔹 Determine clientId based on role
     let clientId = null;
@@ -77,6 +85,29 @@ exports.login = async (req, res) => {
 };
 
 
+// POST logout - ends this session on the server (token can no longer be used)
+exports.logout = async (req, res) => {
+  try {
+    await revokeToken(req.token);
+    res.status(200).json({ message: "Logged out" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.status(500).json({ message: "Error logging out" });
+  }
+};
+
+// POST logout-all - ends every session of this account (all devices/browsers)
+exports.logoutAll = async (req, res) => {
+  try {
+    await revokeAllForAccount(req.user.id);
+    res.status(200).json({ message: "Logged out from all devices" });
+  } catch (error) {
+    console.error("Logout-all error:", error);
+    res.status(500).json({ message: "Error logging out" });
+  }
+};
+
+
 // POST create account
 exports.createAccount = async (req, res) => {
   try {
@@ -85,16 +116,18 @@ exports.createAccount = async (req, res) => {
     if (!username || !password || !role) {
       return res.status(400).json({ message: "username, password, and role are required" });
     }
+    if (!["super admin", "admin", "staff"].includes(role)) {
+      return res.status(400).json({ message: "Invalid role" });
+    }
+    if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    }
 
     // Check if username already exists
     const existing = await Account.findOne({ where: { username } });
     if (existing) return res.status(400).json({ message: "Username already exists" });
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create account
+    // Create account (the model hook hashes the password)
     const account = await Account.create({
       username,
       password,
@@ -107,9 +140,11 @@ exports.createAccount = async (req, res) => {
     //     client = await Client.create({ ...clientData, accountId: account.id });
     //   }
 
+    // Never send the password hash back to the browser
+    const { password: _pw, resetToken: _rt, resetTokenExpiry: _rte, ...safeAccount } = account.toJSON();
     res.status(201).json({
       message: "Account created successfully",
-      account,
+      account: safeAccount,
     });
 
   } catch (error) {
@@ -119,52 +154,18 @@ exports.createAccount = async (req, res) => {
 
 
 
-// GET current user
+// GET current user (token already verified by authenticateToken)
 exports.getCurrentUser = async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).json({ message: "Authorization header missing" });
+    const u = req.user;
+    const responseData = { id: u.id, username: u.username, role: u.role };
+    if (u.role === "staff") {
+      responseData.staffId = u.staffId;
+      responseData.clientId = u.clientId;
+    } else if (u.role === "admin" || u.role === "super admin") {
+      responseData.clientId = u.clientId;
     }
-
-    const token = authHeader.split(" ")[1];
-    if (!token) {
-      return res.status(401).json({ message: "Invalid token" });
-    }
-
-    // 🔹 Verify JWT
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-    // 🔹 Find the account
-    const account = await Account.findByPk(decoded.id);
-    if (!account) {
-      return res.status(404).json({ message: "Account not found" });
-    }
-
-    let responseData = {
-      id: account.id,
-      username: account.username,
-      role: account.role,
-    };
-
-    // 🔹 If staff → include staffId + clientId
-    if (account.role === "staff") {
-      const staff = await Staff.findOne({
-        where: { emailAddress: account.username }
-      });
-      responseData.staffId = staff ? staff.id : null;
-      responseData.clientId = staff ? staff.clientId : null;
-    }
-    // 🔹 If admin/super admin → include only clientId
-    else if (account.role === "admin" || account.role === "super admin") {
-      const client = await Client.findOne({
-        where: { emailAddress: account.username }
-      });
-      responseData.clientId = client ? client.id : null;
-    }
-
     res.status(200).json(responseData);
-
   } catch (error) {
     console.error("Get current user error:", error);
     res.status(500).json({ message: "Error fetching current user", error: error.message });
@@ -178,16 +179,22 @@ const escapeHtml = (s = "") =>
 exports.recoverAccount = async (req, res) => {
   try {
     const { username } = req.body;
-    if (!username) return res.status(400).json({ message: "Email is required" });
+    if (typeof username !== "string" || !username.trim()) {
+      return res.status(400).json({ message: "Email is required" });
+    }
 
-    const account = await Account.findOne({ where: { username } });
+    // Same answer whether or not the email exists (prevents account discovery).
+    const GENERIC_MSG = "If an account exists for this email, a recovery link has been sent.";
+
+    const account = await Account.findOne({ where: { username: username.trim() } });
     if (!account) {
-      return res.status(404).json({ message: "No account found with this email" });
+      return res.status(200).json({ message: GENERIC_MSG });
     }
 
     const resetToken = crypto.randomBytes(32).toString("hex");
     const RESET_TOKEN_MINUTES = 10;
-    account.resetToken = resetToken;
+    // Only a hash is stored: a database leak cannot be used to reset passwords.
+    account.resetToken = hashResetToken(resetToken);
     account.resetTokenExpiry = new Date(Date.now() + RESET_TOKEN_MINUTES * 60 * 1000);
     await account.save();
 
@@ -235,15 +242,17 @@ EvalzNow Team`;
       <p>EvalzNow Team</p>
     `;
 
-    await transporter.sendMail({
+    // Sent in the background: the response time is the same whether or not the
+    // account exists (no timing-based account discovery) and the user is not kept waiting.
+    transporter.sendMail({
       from: `"EvalzNow" <${process.env.EMAIL_USER}>`,
       to: account.username,
       subject: "Password Recovery",
       text,
       html,
-    });
+    }).catch((mailError) => console.error("Recovery email failed:", mailError.message));
 
-    res.status(200).json({ message: "Recovery email sent successfully" });
+    res.status(200).json({ message: GENERIC_MSG });
   } catch (error) {
     console.error("Recovery error:", error);
     res.status(500).json({ message: "Error processing recovery", error: error.message });
@@ -261,15 +270,25 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
+    if (typeof token !== "string" || typeof password !== "string") {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+
     if (password !== confirmPassword) {
       return res.status(400).json({
         message: "Passwords do not match",
       });
     }
 
-    // 2. Find account with token
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({
+        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      });
+    }
+
+    // 2. Find account with token (stored hashed)
     const account = await Account.findOne({
-      where: { resetToken: token },
+      where: { resetToken: hashResetToken(token) },
     });
 
     if (!account) {
@@ -295,6 +314,9 @@ exports.resetPassword = async (req, res) => {
     account.resetTokenExpiry = null;
 
     await account.save();
+
+    // 6. Sign out every existing session for this account
+    await revokeAllForAccount(account.id);
 
     return res.status(200).json({
       message: "Password reset successfully",

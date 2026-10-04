@@ -9,11 +9,16 @@ const { emailTaken, createLoginAccount, renameLoginAccount, deleteLoginAccounts 
 exports.getClients = async (req, res) => {
   try {
 
+    // Super admin sees every client; admin/staff only their own organisation.
+    const where = req.user && !req.user.isSuperAdmin ? { id: req.user.clientId || 0 } : undefined;
+
     const clients = await Client.findAll({
-      
+      where,
       include: [
         {
-          model: Account, as: 'account', // filter by logged-in user's account
+          model: Account, as: 'account',
+          // never expose password hashes or reset tokens
+          attributes: { exclude: ['password', 'resetToken', 'resetTokenExpiry'] },
         },
         { model: CompanySize, as: 'companySize' }] // include company size
     });
