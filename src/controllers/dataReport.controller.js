@@ -1104,7 +1104,7 @@ exports.getGlobalDataReportByClient = async (req, res) => {
     });
 
     // Framework / curriculum age – classroom units only (null = no classroom units -> "-").
-    const classroomUnits = units.filter((u) => u.environment === "Classroom");
+    const classroomUnits = units.filter((u) => String(u.environment ?? "").trim().toLowerCase() === "classroom");
     const frameworkAge = classroomUnits.length
       ? Object.fromEntries(FRAMEWORK_AGES.map((age) => [
         age,
