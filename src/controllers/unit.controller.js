@@ -99,7 +99,7 @@ const FRAMEWORK_AGES = ["< 1 year", "1-2 years", "3-5 years", "6-10 years", "> 1
 // Framework Age only applies to Classroom units; anything else is stored as null.
 function normaliseFrameworkAge(unitData, current = {}) {
   const env = unitData.environment !== undefined ? unitData.environment : current.environment;
-  if (env !== "Classroom") {
+  if (String(env ?? "").trim().toLowerCase() !== "classroom") {
     unitData.frameworkAge = null;
   } else if (unitData.frameworkAge !== undefined && !FRAMEWORK_AGES.includes(unitData.frameworkAge)) {
     unitData.frameworkAge = null;
