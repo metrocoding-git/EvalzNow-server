@@ -652,3 +652,104 @@ exports.getNeuroScienceSessionsByUnitAndCandidate = async (req, res) => {
     });
   }
 };
+
+
+// ---------------------------------------------------------------------------
+// Cognitive function matrix (Yes/No) for every candidate in a unit.
+// Used by "Extract Cognitive Matrix" in Neuroscience Tools.
+// Rows follow the order of the cognitive function list; columns are the
+// candidate's PP IDs (ascending). Missing answers are returned as "".
+// ---------------------------------------------------------------------------
+const LOBE_ORDER = [
+  "Frontal Lobe - Left", "Occipital Lobe - Left", "Parietal Lobe - Left", "Temporal Lobe - Left",
+  "Frontal Lobe - Right", "Occipital Lobe - Right", "Parietal Lobe - Right", "Temporal Lobe - Right",
+];
+
+// Labels used in the Excel extraction (same as the cognitive function list,
+// with the left temporal functional capacity written with "(L)").
+const exportLabel = (lobe, func) =>
+  lobe === "Temporal Lobe - Left" && func === "Functional Capacity - Temporal Lobe"
+    ? "Functional Capacity - Temporal Lobe (L)"
+    : func;
+
+// Names may have been saved with or without the "(L)"/"(R)" suffix.
+const normFunc = (s) => String(s || "").replace(/\s*\((L|R)\)\s*$/i, "").trim().toLowerCase();
+
+exports.getCognitiveMatrixByUnit = async (req, res) => {
+  const { unitId } = req.params;
+  try {
+    const unit = await Unit.findByPk(unitId, {
+      attributes: ["id", "unitName", "unitId", "unitType", "signatureProfile"],
+      raw: true,
+    });
+    if (!unit) return res.status(404).json({ message: "Unit not found" });
+
+    const rosterRows = await db.UnitRoster.findAll({
+      where: { unitId },
+      attributes: ["candidateId"],
+      raw: true,
+    });
+    const candidateIds = [...new Set(rosterRows.map((r) => r.candidateId))];
+
+    const candidates = candidateIds.length
+      ? await Candidate.findAll({
+          where: { id: candidateIds },
+          attributes: ["id", "candidateId", "lastName", "firstName"],
+          raw: true,
+        })
+      : [];
+
+    const sessions = candidateIds.length
+      ? await NeuroScienceSession.findAll({
+          where: { unitId, candidateId: candidateIds },
+          attributes: ["id", "candidateId", "ppId", "createdAt"],
+          include: [{ model: NeuroScienceResponse, as: "responses", attributes: ["lobe", "functionName", "value"] }],
+          order: [["createdAt", "ASC"]],
+        })
+      : [];
+
+    const lobes = LOBE_ORDER.map((lobe) => ({
+      lobe,
+      functions: rows.filter((r) => r.lobe === lobe).map((r) => exportLabel(lobe, r.func)),
+    }));
+
+    // Latest session wins when the same PP ID was saved more than once.
+    const byCandidate = new Map();
+    sessions.forEach((s) => {
+      const plain = s.get({ plain: true });
+      const perPp = byCandidate.get(plain.candidateId) || new Map();
+      const answers = {};
+      (plain.responses || []).forEach((r) => {
+        answers[`${r.lobe}|${normFunc(r.functionName)}`] = r.value;
+      });
+      perPp.set(Number(plain.ppId), answers);
+      byCandidate.set(plain.candidateId, perPp);
+    });
+
+    const sortName = (c) => `${c.lastName || ""} ${c.firstName || ""}`.toLowerCase();
+    const result = candidates
+      .sort((a, b) => sortName(a).localeCompare(sortName(b)))
+      .map((c) => {
+        const perPp = byCandidate.get(c.id) || new Map();
+        const ppIds = [...perPp.keys()].sort((a, b) => a - b);
+        return {
+          lastName: c.lastName,
+          firstName: c.firstName,
+          candidateId: c.candidateId,
+          ppIds,
+          lobes: lobes.map(({ lobe, functions }) => ({
+            lobe,
+            rows: functions.map((func) => ({
+              func,
+              values: ppIds.map((pp) => perPp.get(pp)[`${lobe}|${normFunc(func)}`] || ""),
+            })),
+          })),
+        };
+      });
+
+    return res.status(200).json({ unit, candidates: result });
+  } catch (error) {
+    console.error("Error building cognitive matrix:", error);
+    return res.status(500).json({ message: "Error building cognitive matrix" });
+  }
+};

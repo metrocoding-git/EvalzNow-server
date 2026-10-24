@@ -12,6 +12,18 @@ const CandidateMarks = db.CandidateMarks;
 const UnitImprovement = db.UnitImprovement;
 const Client = db.Client
 const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.controller');
+const { toIdArray } = require('../utils/jsonIds');
+const effectivityFx = require('../utils/effectivity');
+const { _internal: effectivityInternal } = require('./effectivity.controller');
+
+// Effectivity table of one candidate, built from competency data already computed
+// for the report (no second tabulation run).
+async function candidateEffectivity(unitId, candidateId, unitType, competencyData) {
+  const responses = await db.EffectivityResponse.findAll({ where: { unitId, candidateId }, raw: true });
+  return effectivityInternal.buildCandidateTable(candidateId, unitType, competencyData, responses);
+}
+
+const FRAMEWORK_AGES = ["< 1 year", "1-2 years", "3-5 years", "6-10 years", "> 10 years"];
 const { getNeuroScienceRmsValues } = require('./neuroScience.controller');
 const { getAssessmentChainData, getNeedAssessmentStatusSummary, getEffortBu } = require('./auxiliaryResultant.controller');
 const { getUnitSuccessRatesByThreshold, getGlobalAnalyticsDataByUnit } = require('./globalAnalytics.controller');
@@ -497,13 +509,14 @@ async function buildCandidateReport(unitId, candidateId) {
     needAssessments: needRows
       .map(na => ({
         ppId: na.ppId,
-        benchmarkIds: JSON.parse(na.benchmarkIds || "[]"),
-        bIds: JSON.parse(na.bIds || "[]"),
+        benchmarkIds: toIdArray(na.benchmarkIds),
+        bIds: toIdArray(na.bIds),
         observation: na.observation
       }))
       .sort(ppSort),
     assessmentChain: [],
-    neuroScienceRms: { count: 0, data: [], cognitiveLoad: {} }
+    neuroScienceRms: { count: 0, data: [], cognitiveLoad: {} },
+    effectivity: null
   };
 
   scores.forEach(row => {
@@ -527,6 +540,9 @@ async function buildCandidateReport(unitId, candidateId) {
     candidate.competencyAverages = competencyData?.averages || [];
     candidate.competencyCumalative = competencyData?.cumulativeSums || [];
     candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
+
+    const unitTypeRow = await Unit.findByPk(unitId, { attributes: ["unitType"], raw: true });
+    candidate.effectivity = await candidateEffectivity(unitId, candidateId, unitTypeRow?.unitType, competencyData);
 
     const neuroData = await runController(getNeuroScienceRmsValues, {
       params: { unitId, candidateId }, query: {}
@@ -857,6 +873,7 @@ async function buildUnitReport(unitId) {
     candidate.competencyAverages = competencyData?.averages || [];
     candidate.competencyCumalative = competencyData?.cumulativeSums || [];
     candidate.competencycumulativeAverages = competencyData?.cumulativeAverages || [];
+    candidate.effectivity = await candidateEffectivity(unitId, candidateId, unit.unitType, competencyData);
 
     // Effort BU (CSD / USD)
     let effortBU = null;
@@ -873,8 +890,8 @@ async function buildUnitReport(unitId) {
     });
     candidate.needAssessments = needAssessments.map(na => ({
       ppId: na.ppId,
-      benchmarkIds: JSON.parse(na.benchmarkIds || "[]"),
-      bIds: JSON.parse(na.bIds || "[]"),
+      benchmarkIds: toIdArray(na.benchmarkIds),
+      bIds: toIdArray(na.bIds),
       observation: na.observation
     }));
 
@@ -931,9 +948,22 @@ async function buildUnitReport(unitId) {
     avgRR, avgPR, avgAR, unit.unitType, unit.signatureProfile
   );
 
+  // Effectivity (unit level): pass % per parameter from each candidate's average
+  // parameters, and the Effectivity Type split of every saved effectivity object.
+  const effAverages = candidates.map((c) => c.effectivity?.average).filter(Boolean);
+  const effectivity = {
+    thresholds: effectivityFx.getThresholds(unit.unitType),
+    passFractions: Array.from({ length: effectivityFx.PARAMETER_COUNT }, (_, i) => {
+      const flags = effAverages.map((a) => a.pass?.[i]).filter((v) => v === true || v === false);
+      return flags.length ? Number((flags.filter(Boolean).length / flags.length).toFixed(3)) : null;
+    }),
+    typeBreakdown: effectivityFx.typeBreakdown(candidates.flatMap((c) => (c.effectivity?.rows || []).filter((r) => r.id))),
+  };
+
   return {
     ...unit.toJSON(),
     candidates,
+    effectivity,
     rosterCandidates,                                   // every roster candidate
     engageLevelStats: calculateEngageLevelPercentages(unitScoreBucket),
     rosterPercentages: calculateRosterPercentages(unitRosterAccumulator),
@@ -1011,7 +1041,7 @@ exports.getGlobalDataReportByClient = async (req, res) => {
     // 1️⃣ Fetch all units under this client
     const units = await Unit.findAll({
       where: { clientId },
-      attributes: ["id"]
+      attributes: ["id", "environment", "frameworkAge"]
     });
 
     if (!units.length) {
@@ -1073,12 +1103,31 @@ exports.getGlobalDataReportByClient = async (req, res) => {
       json(payload) { globalAnalyticsThreshold = payload; return this; }
     });
 
+    // Framework / curriculum age – classroom units only (null = no classroom units -> "-").
+    const classroomUnits = units.filter((u) => u.environment === "Classroom");
+    const frameworkAge = classroomUnits.length
+      ? Object.fromEntries(FRAMEWORK_AGES.map((age) => [
+        age,
+        Number((classroomUnits.filter((u) => u.frameworkAge === age).length / classroomUnits.length).toFixed(3)),
+      ]))
+      : null;
+
+    // Effectivity (all units): % of candidates whose average parameter passes, and type split.
+    let effectivity = null;
+    await require('./effectivity.controller').getClientEffectivity(
+      { params: { clientId: String(clientId) } },
+      { status() { return this; }, json(payload) { effectivity = payload; return this; } }
+    );
+
     return res.status(200).json({
       client: client.length ? client[0].toJSON() : null,
       totalUniqueCandidates,
       summary: [
         { globalAnalytics, globalAnalyticsThreshold }
-      ]
+      ],
+      frameworkAge,
+      classroomUnitCount: classroomUnits.length,
+      effectivity
     });
 
   } catch (error) {

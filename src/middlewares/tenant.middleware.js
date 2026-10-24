@@ -24,7 +24,7 @@ const VIA_CLIENT_ID = new Set(['Unit', 'Candidate', 'Staff', 'Ethinicity', 'Inco
 const VIA_UNIT_ID = new Set([
   'AssessmentBlockManager', 'InsertScore', 'ScoringCriteria', 'Benchmark', 'UnitRoster',
   'CandidateMarks', 'CandidateNeedAssessment', 'UnitImprovement', 'LeaderMarks',
-  'AssessmentChain', 'NeuroScienceSession', 'ProjectionSession', 'StaffLookup',
+  'AssessmentChain', 'NeuroScienceSession', 'ProjectionSession', 'StaffLookup', 'EffectivityResponse',
 ]);
 const VIA_CANDIDATE_ID = new Set(['Irregularity']);
 

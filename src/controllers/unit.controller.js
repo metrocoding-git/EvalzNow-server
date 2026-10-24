@@ -95,6 +95,18 @@ exports.getUnitById = async (req, res) => {
   }
 };
 
+const FRAMEWORK_AGES = ["< 1 year", "1-2 years", "3-5 years", "6-10 years", "> 10 years"];
+// Framework Age only applies to Classroom units; anything else is stored as null.
+function normaliseFrameworkAge(unitData, current = {}) {
+  const env = unitData.environment !== undefined ? unitData.environment : current.environment;
+  if (env !== "Classroom") {
+    unitData.frameworkAge = null;
+  } else if (unitData.frameworkAge !== undefined && !FRAMEWORK_AGES.includes(unitData.frameworkAge)) {
+    unitData.frameworkAge = null;
+  }
+  return unitData;
+}
+
 // CREATE a new unit with optional benchmarks and staff lookup
 exports.createUnit = async (req, res) => {
   const transaction = await db.sequelize.transaction();
@@ -106,6 +118,7 @@ exports.createUnit = async (req, res) => {
     if (!unitData.scoringSystem) {
       unitData.scoringSystem = null;
     }
+    normaliseFrameworkAge(unitData);
 
     // Step 1: Create the unit
     const newUnit = await Unit.create({ ...unitData, clientId }, { transaction });
@@ -199,6 +212,8 @@ exports.updateUnit = async (req, res) => {
       await transaction.rollback();
       return res.status(404).json({ message: "Unit not found" });
     }
+
+    normaliseFrameworkAge(unitData, unit);
 
     // ✅ Step 1: Update basic unit fields
     await unit.update(unitData, { transaction });

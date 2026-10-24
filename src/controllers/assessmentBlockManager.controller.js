@@ -141,6 +141,11 @@ exports.updateAssessmentBlock = async (req, res) => {
       // Update InsertScore.ppId for this block
       await InsertScore.update({ ppId: newPpId }, { where: { assessmentBlockId: id } });
 
+      // Needs assessment / effectivity / neuroscience records follow the block
+      await syncPpKeyedOnMove({
+        unitId, candidateId: updatedBlock.candidate_id, oldPpId: existingBlock.ppId, newPpId: Number(newPpId), blockId: Number(id),
+      });
+
       // Get the updated InsertScore record
       const currentScore = await InsertScore.findOne({
         where: { assessmentBlockId: id }
@@ -217,6 +222,68 @@ exports.updateAssessmentBlock = async (req, res) => {
   }
 };
 
+
+// ---------------------------------------------------------------------------
+// Records keyed by a candidate's PP ID (needs assessment, effectivity objects,
+// neuroscience sessions) must follow when assessment blocks are moved or deleted,
+// otherwise they end up attached to the wrong performance point.
+// ---------------------------------------------------------------------------
+const PP_KEYED_TABLES = [
+  { model: () => db.CandidateNeedAssessment, candidateCol: "candidateId" },
+  { model: () => db.EffectivityResponse, candidateCol: "candidateId" },
+  { model: () => db.NeuroScienceSession, candidateCol: "candidateId" },
+];
+
+const tableNameOf = (M) => {
+  const t = M.getTableName();
+  return typeof t === "string" ? t : t.tableName;
+};
+
+/** Deleted block: drop its PP's records, then shift the following PP IDs like the scores. */
+async function syncPpKeyedOnDelete({ unitId, candidateId, ppId, manageType, blockId }, transaction) {
+  // Neuroscience sessions belong to the block itself.
+  const sessions = await db.NeuroScienceSession.findAll({ where: { assessmentBlockId: blockId }, attributes: ["id"], raw: true, transaction });
+  if (sessions.length) {
+    const ids = sessions.map((x) => x.id);
+    await db.NeuroScienceResponse.destroy({ where: { sessionId: ids }, transaction });
+    await db.NeuroScienceSession.destroy({ where: { id: ids }, transaction });
+  }
+
+  for (const { model, candidateCol } of PP_KEYED_TABLES) {
+    const M = model();
+    if (!M) continue;
+    // Another block of the same candidate may still use this PP ID (e.g. duplicated PP).
+    const stillUsed = await AssessmentBlockManager.count({ where: { unitId, candidate_id: candidateId, ppId }, transaction });
+    if (!stillUsed) await M.destroy({ where: { unitId, [candidateCol]: candidateId, ppId }, transaction });
+
+    // Shift in an order that never collides with the unique (unit, candidate, PP ID) key.
+    const table = tableNameOf(M);
+    if (manageType === "Direct") {
+      await db.sequelize.query(
+        `UPDATE \`${table}\` SET ppId = ppId - 1 WHERE unitId = ? AND \`${candidateCol}\` = ? AND ppId > ? ORDER BY ppId ASC`,
+        { replacements: [unitId, candidateId, ppId], transaction }
+      );
+    } else if (manageType === "Indirect") {
+      await db.sequelize.query(
+        `UPDATE \`${table}\` SET ppId = ppId + 1 WHERE unitId = ? AND \`${candidateCol}\` = ? AND ppId < ? ORDER BY ppId DESC`,
+        { replacements: [unitId, candidateId, ppId], transaction }
+      );
+    }
+  }
+}
+
+/** Block moved to another PP ID: move its PP's records too (when the target is free). */
+async function syncPpKeyedOnMove({ unitId, candidateId, oldPpId, newPpId, blockId }) {
+  await db.NeuroScienceSession.update({ ppId: newPpId }, { where: { assessmentBlockId: blockId } });
+  const otherBlocksOnOld = await AssessmentBlockManager.count({ where: { unitId, candidate_id: candidateId, ppId: oldPpId } });
+  if (otherBlocksOnOld) return; // the old PP ID is still in use -> keep its records there
+  for (const M of [db.CandidateNeedAssessment, db.EffectivityResponse]) {
+    if (!M) continue;
+    const taken = await M.count({ where: { unitId, candidateId, ppId: newPpId } });
+    if (!taken) await M.update({ ppId: newPpId }, { where: { unitId, candidateId, ppId: oldPpId } });
+  }
+}
+
 // DELETE an Assessment Block
 exports.deleteAssessmentBlock = async (req, res) => {
   const transaction = await db.sequelize.transaction();
@@ -245,6 +312,10 @@ exports.deleteAssessmentBlock = async (req, res) => {
 
     // Delete the block
     await AssessmentBlockManager.destroy({ where: { id }, transaction });
+
+    // Needs assessment / effectivity / neuroscience records follow the PP IDs
+    // (runs before the blocks are shifted, so it sees the same PP IDs as the scores).
+    await syncPpKeyedOnDelete({ unitId, candidateId: candidate_id, ppId, manageType, blockId: Number(id) }, transaction);
 
     // Adjust ppIds (ONLY for this candidate)
     if (manageType === "Direct") {

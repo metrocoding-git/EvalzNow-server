@@ -6,6 +6,24 @@ const Unit = db.Unit;
 const Candidate = db.Candidate;
 const needAssessment = db.CandidateNeedAssessment;
 const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.controller');
+const { _internal: effectivityInternal } = require('./effectivity.controller');
+
+/**
+ * Adds candidate.effectivityByPp = { [ppId]: { effectivityType, …, parameters: [10] } }
+ * from the competency data already computed for the extraction.
+ */
+async function attachEffectivity(unitDbId, unitType, candidates, competencyData) {
+  if (!candidates.length) return;
+  const ids = candidates.map((c) => c.candidateId);
+  const responses = await db.EffectivityResponse.findAll({ where: { unitId: unitDbId, candidateId: ids }, raw: true });
+  candidates.forEach((candidate) => {
+    const table = effectivityInternal.buildCandidateTable(
+      candidate.candidateId, unitType, competencyData,
+      responses.filter((r) => String(r.candidateId) === String(candidate.candidateId))
+    );
+    candidate.effectivityByPp = Object.fromEntries(table.rows.map((r) => [r.ppId, r]));
+  });
+}
 const { getNeuroScienceRmsValues } = require('./neuroScience.controller');
 
 /// <param name="xArray">array data - covers the range of Performance Point IDs (+PP ID only)</param>
@@ -251,6 +269,7 @@ exports.getDataExtractionByUnitId = async (req, res) => {
       candidate.competencyResults = (competencyByCandidate[candidate.candidateId] || [])
         .map(c => formatCompetencyNumbers(c)); // ✅ Apply formatting here
     });
+    await attachEffectivity(grouped.unit.unitId, grouped.unit.unitType, grouped.candidates, competencyData);
 
 
     // Fetch need assessments for the unit
@@ -529,6 +548,7 @@ exports.getDataExtractionByClientId = async (req, res) => {
           formatCompetencyNumbers(result)
         );
       });
+      await attachEffectivity(unitId, unit.unitType, grouped.candidates, competencyData);
 
 
 
@@ -775,6 +795,7 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
         candidate.competencyResults = (competencyData?.results || [])
           .map(c => formatCompetencyNumbers(c));
       });
+      await attachEffectivity(unitId, unit.unitType, grouped.candidates, competencyData);
 
 
       // Need Assessments

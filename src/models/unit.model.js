@@ -45,6 +45,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true
       },
+      // Framework / curriculum age (Classroom units only):
+      // "< 1 year" | "1-2 years" | "3-5 years" | "6-10 years" | "> 10 years"
+      frameworkAge: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+      },
       XEP: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
       XRR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
       XLR: { type: DataTypes.DECIMAL(6, 3), allowNull: true },
