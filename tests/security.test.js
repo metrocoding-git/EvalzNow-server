@@ -68,6 +68,7 @@ function fill(p, ids, base) {
     '/unit_roster': ids.roster, '/assessment_block_manager': ids.block, '/insert-score': ids.score,
     '/irregulaties': ids.irregularity, '/benchmark': ids.benchmark, '/ethinicity': ids.ethinicity,
     '/income': ids.income, '/scoring-criteria': ids.criteria, '/projection': ids.projection,
+    '/effectivity': ids.effectivity,
   }[base];
   const auxId = { lesson: ids.lesson, marks: ids.marks, leader: ids.leader, assessment: ids.need, chain: ids.chain };
   return p
@@ -101,6 +102,7 @@ async function seedTenantRecords(key, ids) {
   ids.leader = (await makeRow('LeaderMarks', { unitId })).id;
   ids.need = (await makeRow('CandidateNeedAssessment', { unitId, candidateId })).id;
   ids.chain = (await makeRow('AssessmentChain', { unitId, candidateId })).id;
+  ids.effectivity = (await makeRow('EffectivityResponse', { unitId, candidateId, ppId: 1, effectivityType: 'Holistic' })).id;
 }
 
 before(async () => {

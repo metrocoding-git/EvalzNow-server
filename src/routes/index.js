@@ -55,6 +55,7 @@ mount('/unit-distribution', './unitDistribution.route');
 mount('/auxiliary', './auxiliary.routes', { idModel: auxIdModel });
 mount('/neuro-science', './neuroScience.routes', { sessionModel: 'NeuroScienceSession' });
 mount('/global-analytics', './globalAnalytic.routes');
+mount('/effectivity', './effectivity.routes', { idModel: 'EffectivityResponse' });
 mount('/data-extract', './dataExtraction.routes');
 mount('/data-report', './dataReport.routes');
 

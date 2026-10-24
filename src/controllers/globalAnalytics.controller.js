@@ -1,3 +1,4 @@
+const { toIdArray } = require('../utils/jsonIds');
 const { fn, col, literal, Op } = require("sequelize");
 const db = require("../models");
 const Unit = db.Unit;
@@ -846,12 +847,7 @@ exports.getGlobalAnalyticsDataByUnit = async (req, res) => {
     };
 
     for (const na of needAssessments) {
-      let bIds = [];
-      try {
-        bIds = JSON.parse(na.bIds || "[]");
-      } catch (err) {
-        bIds = [];
-      }
+      const bIds = toIdArray(na.bIds);
 
       const observation = (na.observation || "").trim();
 

@@ -34,6 +34,7 @@ db.NeuroScienceSession = require("./neuroScienceSession.model")(sequelize, Seque
 db.NeuroScienceResponse = require("./neuroScienceResponse.model")(sequelize, Sequelize);
 db.InsertScoreCriteria = require("./insertScoreCriteria.model")(sequelize, Sequelize);
 db.AuthRevocation = require("./authRevocation.model")(sequelize, Sequelize);
+db.EffectivityResponse = require("./effectivityResponse.model")(sequelize, Sequelize);
 
 
 

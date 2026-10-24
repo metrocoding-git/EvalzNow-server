@@ -1,7 +1,9 @@
 /**
  * Startup database housekeeping (safe + idempotent):
  *  1. Creates the small `auth_revocations` table if it does not exist.
- *  2. Adds composite indexes that match how the analytics/report queries filter
+ *  2. Adds new nullable columns that newer releases need (e.g. Unit.frameworkAge) and
+ *     creates new tables (e.g. effectivity_responses) when they are missing.
+ *  3. Adds composite indexes that match how the analytics/report queries filter
  *     (unitId + candidate + ppId ...). Existing tables/columns/data are never changed;
  *     an index is only created when no index with the same leading columns exists.
  *
@@ -34,6 +36,45 @@ const INDEXES = [
   ['Ethinicity', ['clientId']],
   ['Income', ['clientId']],
 ];
+
+// [Model, attribute] – nullable columns added in later releases. Added only when missing.
+const NEW_COLUMNS = [
+  ['Unit', 'frameworkAge'],
+];
+
+// Models whose tables are created (CREATE TABLE IF NOT EXISTS) when missing.
+const NEW_TABLES = ['EffectivityResponse'];
+
+async function ensureColumns() {
+  const qi = db.sequelize.getQueryInterface();
+  for (const [modelName, attr] of NEW_COLUMNS) {
+    const M = db[modelName];
+    if (!M || !M.rawAttributes[attr]) continue;
+    const tableName = M.getTableName();
+    try {
+      const desc = await qi.describeTable(tableName);
+      const field = M.rawAttributes[attr].field || attr;
+      if (desc[field]) continue;
+      const { type } = M.rawAttributes[attr];
+      await qi.addColumn(tableName, field, { type, allowNull: true });
+      console.log(`[db] added column ${field} to ${typeof tableName === 'string' ? tableName : tableName.tableName}`);
+    } catch (e) {
+      console.warn(`[db] column ${modelName}.${attr} skipped: ${e.message}`);
+    }
+  }
+}
+
+async function ensureTables() {
+  for (const modelName of NEW_TABLES) {
+    const M = db[modelName];
+    if (!M) continue;
+    try {
+      await M.sync(); // CREATE TABLE IF NOT EXISTS only – never alters/drops
+    } catch (e) {
+      console.warn(`[db] table for ${modelName} skipped: ${e.message}`);
+    }
+  }
+}
 
 async function existingIndexLeads(table) {
   const [rows] = await db.sequelize.query(`SHOW INDEX FROM \`${table}\``);
@@ -75,6 +116,8 @@ async function ensureDb() {
   } catch (e) {
     console.error('[db] could not create auth_revocations table:', e.message);
   }
+  await ensureColumns();
+  await ensureTables();
   if (env.AUTO_DB_INDEXES) await ensureIndexes();
 }
 

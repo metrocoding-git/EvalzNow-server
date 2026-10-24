@@ -1,3 +1,4 @@
+const { toIdArray } = require('../utils/jsonIds');
 const { getInsertScoresByUnitAndCandidate } = require('./insertScore.controller');
 const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.controller');
 const { getUnitRostersByUnitIdAndCandidateId } = require('./unitRoster.controller');
@@ -1596,9 +1597,7 @@ exports.getAssessmentChainData = async (req, res) => {
       });
     
       return {
-        benchmarkIds: assessment?.benchmarkIds
-          ? JSON.parse(assessment.benchmarkIds)
-          : [],
+        benchmarkIds: toIdArray(assessment?.benchmarkIds),
         observation: assessment?.observation?.trim() || ""
       };
     };
@@ -1725,9 +1724,7 @@ exports.getAssessmentChainById = async (req, res) => {
       });
 
       return {
-        benchmarkIds: assessment?.benchmarkIds
-          ? JSON.parse(assessment.benchmarkIds)
-          : [],
+        benchmarkIds: toIdArray(assessment?.benchmarkIds),
         observation: assessment?.observation?.trim() || ""
       };
     };
