@@ -56,6 +56,9 @@ mount('/auxiliary', './auxiliary.routes', { idModel: auxIdModel });
 mount('/neuro-science', './neuroScience.routes', { sessionModel: 'NeuroScienceSession' });
 mount('/global-analytics', './globalAnalytic.routes');
 mount('/effectivity', './effectivity.routes', { idModel: 'EffectivityResponse' });
+// Capsules: "unitId" in capsule bodies is a capsule id, so the unit body guard is not used here –
+// the capsule controller checks capsule / candidate ownership itself (param guards still apply).
+router.use('/capsules', guardRouter(require('./capsule.routes'), {}));
 mount('/data-extract', './dataExtraction.routes');
 mount('/data-report', './dataReport.routes');
 

@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "node init && nodemon src/server.js",
     "start": "node init && node src/server.js",
-    "test": "node --test --test-concurrency=1 --test-reporter=spec tests/security.test.js tests/effectivity.test.js",
+    "test": "node --test --test-concurrency=1 --test-reporter=spec tests/security.test.js tests/effectivity.test.js tests/capsule.test.js",
     "test:security": "node --test --test-concurrency=1 --test-reporter=spec tests/security.test.js",
     "test:outputs": "node tests/performance/compare-outputs.js",
     "test:load": "node tests/performance/load-test.js",
     "seed:test": "node tests/helpers/seed.js",
+    "test:capsule": "node --test --test-concurrency=1 --test-reporter=spec tests/capsule.test.js",
     "test:effectivity": "node --test --test-concurrency=1 --test-reporter=spec tests/effectivity.test.js"
   },
   "keywords": [],
