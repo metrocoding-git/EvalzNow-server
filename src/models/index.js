@@ -35,6 +35,8 @@ db.NeuroScienceResponse = require("./neuroScienceResponse.model")(sequelize, Seq
 db.InsertScoreCriteria = require("./insertScoreCriteria.model")(sequelize, Sequelize);
 db.AuthRevocation = require("./authRevocation.model")(sequelize, Sequelize);
 db.EffectivityResponse = require("./effectivityResponse.model")(sequelize, Sequelize);
+// Capsule (Capacity Accounting) tables
+Object.assign(db, require("./capsule.models")(sequelize, Sequelize));
 
 
 
@@ -626,6 +628,18 @@ if (
   });
 }
 
+
+// Capsule associations
+if (db.Capsule) {
+  db.Capsule.belongsTo(db.Client, { foreignKey: "clientId", as: "client" });
+  db.Capsule.hasMany(db.CapsuleStaff, { foreignKey: "capsuleId", as: "staffAssignments", onDelete: "CASCADE" });
+  db.CapsuleStaff.belongsTo(db.Staff, { foreignKey: "staffId", as: "staff", constraints: false });
+  db.Capsule.hasMany(db.CapsuleBenchmark, { foreignKey: "capsuleId", as: "benchmarks", onDelete: "CASCADE" });
+  db.Capsule.hasMany(db.CapsuleRoster, { foreignKey: "capsuleId", as: "rosters", onDelete: "CASCADE" });
+  db.CapsuleRoster.belongsTo(db.Capsule, { foreignKey: "capsuleId", as: "capsule" });
+  db.CapsuleRoster.belongsTo(db.Candidate, { foreignKey: "candidateId", as: "candidate" });
+  db.CapsuleScore.belongsTo(db.Candidate, { foreignKey: "candidate_id", as: "candidate" });
+}
 
 // Export the db object
 module.exports = db;
