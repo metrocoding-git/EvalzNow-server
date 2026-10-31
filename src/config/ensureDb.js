@@ -43,7 +43,8 @@ const NEW_COLUMNS = [
 ];
 
 // Models whose tables are created (CREATE TABLE IF NOT EXISTS) when missing.
-const NEW_TABLES = ['EffectivityResponse'];
+// Capsule tables: parents first (foreign keys).
+const NEW_TABLES = ['EffectivityResponse', ...require('../models/capsule.models').TABLE_ORDER];
 
 async function ensureColumns() {
   const qi = db.sequelize.getQueryInterface();
