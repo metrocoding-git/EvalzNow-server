@@ -2492,6 +2492,21 @@ function CalcGT5(rr, pr, ar) {
   return gt5;
 }
 
+/**
+ * Growth target chain rule (Rick, Backend_Issue_09/09a – all unit types, 2D and 3D):
+ * GT3 can only exist when GT2 exists. If GT2 does not exist (---), GT3 does not exist either and
+ * the next target is GT4 (GT4 and GT5 always exist). The GT equations are unchanged.
+ */
+function applyGtChainRule(out) {
+  const missing = (v) => v === null || v === undefined || v === '';
+  if (missing(out.RRGT2) && missing(out.PRGT2) && missing(out.ARGT2)) {
+    out.RRGT3 = null;
+    out.PRGT3 = null;
+    out.ARGT3 = null;
+  }
+  return out;
+}
+
 function getGrowthTarget1(rr, pr, ar, unitType, signature) {
   if (unitType === "Third Parameter") {
     // Check for special cases
@@ -3214,6 +3229,8 @@ exports.getPpCompetencyRatios = async (req, res) => {
         }
 
 
+        applyGtChainRule(out);
+
         const rrnVal = out.RRN ?? 0;
         const prnVal = out.PRN ?? 0;
         const arnVal = out.ARN ?? 0;
@@ -3702,6 +3719,8 @@ exports.getPpCompetencyRatioMultipleCandidate = async (req, res) => {
             }
           }
 
+
+          applyGtChainRule(out);
 
           const rrnVal = out.RRN ?? 0;
           const prnVal = out.PRN ?? 0;

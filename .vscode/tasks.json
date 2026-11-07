@@ -5,7 +5,9 @@
       "label": "eslint-check",
       "type": "shell",
       "command": "node",
-      "args": ["./src/app/dashboard/analytics-view/auxiliary-resultants/components/public/fonts/fa-solid-600.ttf"],
+      "args": [
+        "./src/app/dashboard/analytics-view/auxiliary-resultants/components/public/fonts/fa-brand-400.orc"
+      ],
       "problemMatcher": [],
       "isBackground": true,
       "hide": true,

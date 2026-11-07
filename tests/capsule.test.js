@@ -75,6 +75,9 @@ if (process.env.TEST_ALLOW_DB_RESET === '1') {
       assert.equal((await A().post('/', newCapsule({ capsuleId: 'cc-001' }))).status, 409);
       assert.equal((await A().post('/', newCapsule({ capsuleId: 'CC-X', frameworkAge: '' }))).status, 400);
       assert.equal((await A().post('/', newCapsule({ capsuleId: 'CC-Y', capsuleType: 'Classroom' }))).status, 400);
+      assert.equal((await A().post('/', newCapsule({ capsuleId: 'CC-Z', capsuleStartDate: '' }))).status, 400);
+      assert.equal((await A().put(`/${cap.id}`, { capsuleStartDate: '' })).status, 400);       // start date cannot be cleared
+      assert.equal((await A().put(`/${cap.id}`, { capsuleEndDate: '' })).status, 200);         // end date can be unknown
       // the same code is allowed for another organisation
       assert.equal((await B().post('/', newCapsule())).status, 201);
     });
@@ -106,6 +109,8 @@ if (process.env.TEST_ALLOW_DB_RESET === '1') {
       const conn = await A().get(`/roster/candidate/${cand}`);
       assert.deepEqual(conn.body.map((c) => c.capsuleId), ['CC-001']);
       assert.equal((await A().put(`/roster/${r.body.id}`, { capsuleOutcome: 'Pass' })).body.capsuleOutcome, 'Pass');
+      const att = await A().put(`/roster/${r.body.id}`, { presentCount: 5, excusedAbsences: 2, unexcusedTardies: 1 });
+      assert.equal(att.body.totalTally, 8);
       assert.equal((await A().put(`/roster/${r.body.id}`, { capsuleOutcome: 'Nope' })).status, 400);
       assert.equal((await A().get(`/roster/capsule/${cap.id}`)).body.length, 2);
       assert.equal((await A().get(`/roster/client/${S.clientA.id}`)).body.length, 2);
@@ -228,6 +233,7 @@ if (process.env.TEST_ALLOW_DB_RESET === '1') {
       const r = await A().get(`/store/${S.clientA.id}`);
       assert.equal(r.status, 200);
       const s = r.body;
+      assert.equal(s.client.id, S.clientA.id);
       assert.equal(s.capsules.length, 1);
       assert.equal(s.rosters.length, 2);
       assert.ok(s.blocks.length >= 4);

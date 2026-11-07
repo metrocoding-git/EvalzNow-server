@@ -176,9 +176,12 @@ const capsuleIncludes = () => [
 ];
 
 const CANDIDATE_ATTRS = { exclude: ['password'] };
+const ATTENDANCE_KEYS = ['presentCount', 'excusedAbsences', 'unexcusedAbsences', 'excusedTardies', 'unexcusedTardies'];
 const rosterOut = (r) => {
   const p = plain(r);
-  return { ...p, candidate: p.candidate || null };
+  // same as the unit roster virtual field: total of the attendance counts
+  const totalTally = ATTENDANCE_KEYS.reduce((t, k) => t + (Number(p[k]) || 0), 0);
+  return { ...p, totalTally, candidate: p.candidate || null };
 };
 const blockOut = (b) => {
   const p = plain(b);
@@ -233,6 +236,8 @@ function capsuleCore(body, existing = {}) {
   const merged = { ...existing, ...out };
   if (!merged.capsuleName || !String(merged.capsuleName).trim()) throw bad('Capsule Name is required');
   if (!merged.capsuleId || !String(merged.capsuleId).trim()) throw bad('Capsule ID is required');
+  if (!merged.capsuleStartDate) throw bad('Capsule Start Date is required');
+  if (merged.capsuleEndDate && merged.capsuleEndDate < merged.capsuleStartDate) throw bad('Capsule End Date cannot be before the Start Date');
   if (!CAPSULE_TYPES.includes(merged.capsuleType)) throw bad('Capsule Type must be "Capacity - Combined" or "Capacity - Isolated"');
   if (!merged.frameworkAge) throw bad('Framework Age is required');
   return out;
@@ -783,10 +788,16 @@ exports.getStore = handle(async (req) => {
     all(CapsuleRoster, { include: rosterInclude() }), all(CapsuleBlock), all(CapsuleScore, { include: scoreInclude() }), all(CapsuleMarkerName),
     all(CapsuleProjection), all(CapsuleEffectivity), all(CapsuleAuxRecord),
   ]);
+  // Client details for the Clinical Analytics report (same fields as the Global report)
+  const clientRow = await db.Client.findByPk(clientId, {
+    attributes: ['id', 'executiveId', 'companyName', 'institutionalType', 'companyContactNumber', 'country', 'companySizeId'],
+    include: db.CompanySize ? [{ model: db.CompanySize, as: 'companySize' }] : [],
+  });
   const markerNames = {};
   markers.forEach((m) => { (markerNames[m.capsuleId] = markerNames[m.capsuleId] || {})[m.markerIndex] = m.name; });
   const auxOf = (kind) => aux.filter((a) => a.kind === kind).map(auxOut);
   return {
+    client: clientRow ? clientRow.get({ plain: true }) : null,
     capsules: capsules.map(capsuleOut),
     rosters: rosters.map(rosterOut),
     blocks: blocks.map(blockOut),
