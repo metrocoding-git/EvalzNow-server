@@ -440,7 +440,7 @@ const unitReportInclude = () => [
     as: "staffAssignments",
     required: false,
     include: [
-      { model: db.Staff, as: "staff", required: false, attributes: ["id", "lastName", "firstName"] }
+      { model: db.Staff, as: "staff", required: false, attributes: ["id", "lastName", "firstName", "staffId"] }
     ]
   },
   { model: db.Benchmark, as: "benchmarks", required: false }
@@ -745,7 +745,7 @@ async function buildUnitReport(unitId) {
         as: "staffAssignments",
         required: false,
         include: [
-          { model: db.Staff, as: "staff", required: false, attributes: ["id", "firstName", "lastName"] }
+          { model: db.Staff, as: "staff", required: false, attributes: ["id", "firstName", "lastName", "staffId"] }
         ]
       },
       { model: db.Benchmark, as: "benchmarks", required: false }
