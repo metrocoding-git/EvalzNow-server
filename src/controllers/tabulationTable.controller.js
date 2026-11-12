@@ -2482,7 +2482,7 @@ function CalcGT5(rr, pr, ar) {
 
     prGt5 = 0.5 * (pr + 1);
 
-    arGt5 = 0.5 * (pr + 1);
+    arGt5 = 0.5 * (ar + 1);
 
     gt5.push(rrGt5, prGt5, arGt5);
 
@@ -2715,7 +2715,7 @@ function GetAllGrowthTargetThird(rr, pr, ar) {
       gt4 = CalcGT4(parseFloat(rr), parseFloat(pr), parseFloat(ar));
     } else {
       gt4 = CalcGT4(parseFloat(gt1[0]), parseFloat(gt1[1]), parseFloat(gt1[2]));
-    }
+    } 
     gt5 = CalcGT5(parseFloat(gt4[0]), parseFloat(gt4[1]), parseFloat(gt4[2]));
   } else {
     gt3 = CalcGT3(parseFloat(gt2[0]), parseFloat(gt2[1]), parseFloat(gt2[2]));
