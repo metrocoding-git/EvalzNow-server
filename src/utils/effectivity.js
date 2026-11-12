@@ -31,18 +31,22 @@ const EFFECTIVITY_OPTIONS = {
   effectivityGap: ["Capability", "Capacity", "Competency", "Domestic-Driven", "Foreign-Driven", "Not Applicable", "Willingness"],
   effectivitySegment: [
     "Administrative", "Civil Affairs", "Coalition Support", "Combat", "Command & Control", "Counterproliferation",
-    "Counterterrorism", "Defense Support", "Direct Action", "Foreign Internal", "Humanitarian", "Intelligence",
-    "Maintain Contact", "Movement and Maneuver", "Non-Military", "Not Applicable", "Other", "Peacekeeping",
-    "Protection", "Psych Operations", "Reconnaissance", "Rescue & Extraction", "Route Clearance",
-    "Search & Destroy", "Search & Rescue", "Security Assistance", "Special Operations", "Strike/Fires/Assault",
+    "Counterterrorism", "Defense Support", "Direct Action", "Education - General", "Foreign Internal", "Humanitarian",
+    "Industry - General", "Intelligence", "Maintain Contact", "Movement and Maneuver", "Non-Military", "Not Applicable",
+    "Other", "Peacekeeping", "Protection", "Psych Operations", "Reconnaissance", "Rescue & Extraction",
+    "Route Clearance", "Search & Destroy", "Search & Rescue", "Security Assistance", "Special Operations", "Strike/Fires/Assault",
     "Sustainment / Logistics", "TDY", "Training", "Unconventional Act", "Will Reduction",
   ],
-  effectivityContext: ["Adaptive", "Domestic", "Global", "Not Applicable", "Regional", "Transition"],
+  effectivityContext: [
+    "Adaptive", "City-Wide", "Defense Use", "Domestic", "Global", "Internal Use",
+    "Nation-Wide", "Network Use", "Not Applicable", "Public/Civil Use", "Regional", "State-Wide",
+    "Transition",
+  ],
   effectivityPurpose: [
-    "Area Defense", "Civil - Non Force", "Counterattack Forces", "Decentralized Defense", "Deception Force",
-    "Defense to Deny", "Defense to Destroy", "Defense to Preserve", "Disruption Force", "Execution",
-    "Integrated Defense", "Main Defense Force", "Maneuver Defense", "Not Applicable", "Offensive Force",
-    "Planning/Strategy", "Protected Force", "Psych Evaluation", "Security Force",
+    "Area Defense", "Civil - Non Force", "Clinical Use", "Compliance Check", "Counterattack Forces", "Decentralized Defense",
+    "Deception Force", "Defense to Deny", "Defense to Destroy", "Defense to Preserve", "Disruption Force", "Execution",
+    "Integrated Defense", "Interaction Check", "Main Defense Force", "Maneuver Defense", "Not Applicable", "Offensive Force",
+    "Planning Objective", "Planning/Strategy", "Protected Force", "Psych Evaluation", "Security Force", "Teaching/Learning",
   ],
 };
 const EFFECTIVITY_FIELDS = Object.keys(EFFECTIVITY_OPTIONS);
