@@ -53,10 +53,13 @@ const dateQuery = (q = {}) => ({
   ...(q.criticalRefDateTo ? { criticalRefDateTo: q.criticalRefDateTo } : {}),
 });
 
-function rangeFilter({ ppIdFrom, ppIdTo }) {
+function rangeFilter({ ppIdFrom, ppIdTo, criticalRefDateFrom, criticalRefDateTo } = {}) {
   const from = toNum(ppIdFrom);
   const to = toNum(ppIdTo);
-  return (pp) => (from === null || pp >= from) && (to === null || pp <= to);
+  const inRange = (pp) => (from === null || pp >= from) && (to === null || pp <= to);
+  // With a critical reference date range only the PP IDs the tabulation returns for that range are kept.
+  inRange.dateFiltered = Boolean(criticalRefDateFrom || criticalRefDateTo);
+  return inRange;
 }
 
 /**
@@ -80,8 +83,9 @@ function buildCandidateTable(candidateId, unitType, tab, responses, inRange = ()
       ARN: toNum(r.ARN),
     });
   });
-  // Effectivity objects saved for a PP ID that has no scores (yet) are still listed.
-  responses.forEach((r) => {
+  // Effectivity objects saved for a PP ID that has no scores (yet) are still listed – but not when a
+  // critical reference date range is set: such a PP ID has no date, so it is outside the range (Rick, Issue 06).
+  if (!inRange.dateFiltered) responses.forEach((r) => {
     if (!byPp.has(r.ppId)) {
       byPp.set(r.ppId, { ppId: r.ppId, totalDuration: null, criticalRefDate: null, RRN: null, PRN: null, ARN: null });
     }
