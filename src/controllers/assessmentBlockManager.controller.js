@@ -146,74 +146,11 @@ exports.updateAssessmentBlock = async (req, res) => {
         unitId, candidateId: updatedBlock.candidate_id, oldPpId: existingBlock.ppId, newPpId: Number(newPpId), blockId: Number(id),
       });
 
-      // Get the updated InsertScore record
-      const currentScore = await InsertScore.findOne({
-        where: { assessmentBlockId: id }
-      });
-
-      if (currentScore) {
-        const { criticalRefDate } = currentScore;
-
-        // ===== STEP 2: Set all InsertScores with same ppId to same criticalRefDate =====
-        const sameGroupScores = await InsertScore.findAll({
-          where: { unitId, ppId: newPpId }
-        });
-
-        if (sameGroupScores.length > 0) {
-          const sameDate = criticalRefDate;
-          for (const s of sameGroupScores) {
-            await s.update({ criticalRefDate: sameDate });
-          }
-          console.log(
-            `🟢 Updated ${sameGroupScores.length} InsertScores in ppId=${newPpId} to same criticalRefDate`
-          );
-        }
-
-        // ===== STEP 3: Find top and bottom distinct ppIds =====
-        const previousScore = await InsertScore.findOne({
-          where: { unitId, ppId: { [Op.lt]: newPpId } },
-          order: [['ppId', 'DESC']]
-        });
-
-        const nextScore = await InsertScore.findOne({
-          where: { unitId, ppId: { [Op.gt]: newPpId } },
-          order: [['ppId', 'ASC']]
-        });
-
-        // ===== STEP 4: Fix order if broken =====
-        if (previousScore) {
-          const prevDate = new Date(previousScore.criticalRefDate);
-          const currDate = new Date(criticalRefDate);
-          if (currDate < prevDate) {
-            // Set all same group to prevDate
-            await InsertScore.update(
-              { criticalRefDate: previousScore.criticalRefDate },
-              { where: { unitId, ppId: newPpId } }
-            );
-            console.log(
-              `🟡 Adjusted group ppId=${newPpId} to match prev ppId=${previousScore.ppId}`
-            );
-          }
-        }
-
-        if (nextScore) {
-          const nextDate = new Date(nextScore.criticalRefDate);
-          const currDate = new Date(criticalRefDate);
-          if (currDate > nextDate) {
-            // Set next group to current date
-            await InsertScore.update(
-              { criticalRefDate },
-              { where: { unitId, ppId: nextScore.ppId } }
-            );
-            console.log(
-              `🟢 Adjusted next group ppId=${nextScore.ppId} to match current ppId=${newPpId}`
-            );
-          }
-        }
-      }
+      // The scores keep their own Critical Reference Dates. (Before, every score of the unit with the
+      // new PP ID - also of the other candidates - was set to one date and the neighbouring PP IDs were
+      // overwritten as well, which changed Day Counts / Productivity of candidates that were not moved.
+      // Move Up / Move Down now uses POST /:id/swap.)
     }
-
-
 
     res.status(200).json(updatedBlock);
   } catch (error) {
@@ -283,6 +220,108 @@ async function syncPpKeyedOnMove({ unitId, candidateId, oldPpId, newPpId, blockI
     if (!taken) await M.update({ ppId: newPpId }, { where: { unitId, candidateId, ppId: oldPpId } });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Move Up / Move Down = swap the PP IDs of two neighbouring blocks of one candidate.
+// - The scores of each block follow the block (its ratios move to the new PP ID).
+// - The Critical Reference Dates stay with the PP ID (the timeline of the candidate does not change):
+//   a moved score takes the date the other block's score of the same sub PP ID had at that PP ID.
+// - Needs assessment, effectivity and neuroscience records follow their block.
+// - Nothing of the other candidates of the unit is touched. All in one transaction.
+// ---------------------------------------------------------------------------
+const dateKey = (s) => Number(s.subPpId ?? 0);
+
+/** Dates of a PP ID (from its scores): sub PP ID -> date, plus the dates in order. */
+function slotDates(scores) {
+  const sorted = [...scores].filter((s) => s.criticalRefDate).sort((a, b) => dateKey(a) - dateKey(b) || a.id - b.id);
+  return { bySub: new Map(sorted.map((s) => [dateKey(s), s.criticalRefDate])), list: sorted.map((s) => s.criticalRefDate) };
+}
+
+/** Date a moved score takes at its new PP ID (same sub PP ID, else same position, else its own date). */
+function dateAtSlot(slot, score, index) {
+  if (!slot.list.length) return score.criticalRefDate;
+  if (slot.bySub.has(dateKey(score))) return slot.bySub.get(dateKey(score));
+  return slot.list[Math.min(index, slot.list.length - 1)];
+}
+
+/** Exchange two PP IDs of one candidate in a table with a unique (unit, candidate, PP ID) key. */
+async function exchangePp(M, candidateCol, { unitId, candidateId, ppA, ppB }, transaction) {
+  if (!M) return;
+  const table = tableNameOf(M);
+  const temp = -900000000 - Number(candidateId); // never a real PP ID
+  const q = (from, to) => db.sequelize.query(
+    `UPDATE \`${table}\` SET ppId = ? WHERE unitId = ? AND \`${candidateCol}\` = ? AND ppId = ?`,
+    { replacements: [to, unitId, candidateId, from], transaction }
+  );
+  await q(ppA, temp);
+  await q(ppB, ppA);
+  await q(temp, ppB);
+}
+
+exports.swapAssessmentBlocks = async (req, res) => {
+  const transaction = await db.sequelize.transaction();
+  try {
+    const idA = Number(req.params.id);
+    const idB = Number(req.body?.withBlockId);
+    const lock = transaction.LOCK.UPDATE;
+    const a = await AssessmentBlockManager.findByPk(idA, { transaction, lock });
+    const b = idB ? await AssessmentBlockManager.findByPk(idB, { transaction, lock }) : null;
+    if (!a || !b || a.id === b.id) {
+      await transaction.rollback();
+      return res.status(404).json({ message: 'Assessment block not found' });
+    }
+    if (a.unitId !== b.unitId || a.candidate_id !== b.candidate_id || a.manageType !== b.manageType) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'Only blocks of the same candidate and the same tab can be swapped' });
+    }
+
+    const unitId = a.unitId;
+    const candidateId = a.candidate_id;
+    const ppA = a.ppId;
+    const ppB = b.ppId;
+    const scoresOf = (block) => InsertScore.findAll({
+      where: {
+        unitId, candidate_id: candidateId,
+        [Op.or]: [{ assessmentBlockId: block.id }, { assessmentBlockId: null, ppId: block.ppId }],
+      },
+      transaction, lock,
+    });
+    const scoresA = await scoresOf(a);
+    const scoresB = await scoresOf(b);
+    const slotA = slotDates(scoresA); // dates of PP ppA
+    const slotB = slotDates(scoresB); // dates of PP ppB
+
+    const move = async (scores, newPp, slot) => {
+      const ordered = [...scores].sort((x, y) => dateKey(x) - dateKey(y) || x.id - y.id);
+      for (let i = 0; i < ordered.length; i++) {
+        const s = ordered[i];
+        await s.update({ ppId: newPp, criticalRefDate: dateAtSlot(slot, s, i) }, { transaction });
+      }
+    };
+    await move(scoresA, ppB, slotB);
+    await move(scoresB, ppA, slotA);
+
+    await a.update({ ppId: ppB }, { transaction });
+    await b.update({ ppId: ppA }, { transaction });
+
+    // Records of the candidate's PP IDs follow their block
+    await db.NeuroScienceSession.update({ ppId: ppB }, { where: { assessmentBlockId: a.id }, transaction });
+    await db.NeuroScienceSession.update({ ppId: ppA }, { where: { assessmentBlockId: b.id }, transaction });
+    for (const { model, candidateCol } of PP_KEYED_TABLES) {
+      const M = model();
+      if (M === db.NeuroScienceSession) continue; // moved with the block above
+      await exchangePp(M, candidateCol, { unitId, candidateId, ppA, ppB }, transaction);
+    }
+
+    await transaction.commit();
+    const blocks = await AssessmentBlockManager.findAll({ where: { id: [a.id, b.id] } });
+    res.status(200).json(blocks);
+  } catch (error) {
+    await transaction.rollback().catch(() => {});
+    console.error(error);
+    res.status(500).json({ message: 'Error moving assessment block', error: error.message });
+  }
+};
 
 // DELETE an Assessment Block
 exports.deleteAssessmentBlock = async (req, res) => {
