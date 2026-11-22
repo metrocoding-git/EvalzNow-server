@@ -1597,7 +1597,8 @@ exports.getAssessmentChainData = async (req, res) => {
       });
     
       return {
-        benchmarkIds: toIdArray(assessment?.benchmarkIds),
+        // Linked BIDs = both stored lists (the app saves the same list in both), as in the Needs Assessment table
+        benchmarkIds: [...new Set([...toIdArray(assessment?.benchmarkIds), ...toIdArray(assessment?.bIds)].map(Number).filter(Number.isFinite))].sort((a, b) => a - b),
         observation: assessment?.observation?.trim() || ""
       };
     };
@@ -1724,7 +1725,8 @@ exports.getAssessmentChainById = async (req, res) => {
       });
 
       return {
-        benchmarkIds: toIdArray(assessment?.benchmarkIds),
+        // Linked BIDs = both stored lists (the app saves the same list in both), as in the Needs Assessment table
+        benchmarkIds: [...new Set([...toIdArray(assessment?.benchmarkIds), ...toIdArray(assessment?.bIds)].map(Number).filter(Number.isFinite))].sort((a, b) => a - b),
         observation: assessment?.observation?.trim() || ""
       };
     };
@@ -2047,17 +2049,8 @@ exports.getNeedAssessmentStatusSummary = async (req, res) => {
       // -----------------------------
       // Normalize benchmarks
       // -----------------------------
-      let benchmarks = [];
-    
-      if (Array.isArray(assessment.benchmarkIds)) {
-        benchmarks = assessment.benchmarkIds;
-      } else if (typeof assessment.benchmarkIds === "string") {
-        try {
-          benchmarks = JSON.parse(assessment.benchmarkIds);
-        } catch {
-          benchmarks = [];
-        }
-      }
+      // both stored lists, JSON text stored once or twice (same as the Needs Assessment table)
+      const benchmarks = [...new Set([...toIdArray(assessment.benchmarkIds), ...toIdArray(assessment.bIds)].map(Number).filter(Number.isFinite))];
     
       const hasBenchmarks = benchmarks.length > 0;
     

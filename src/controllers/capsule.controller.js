@@ -478,6 +478,61 @@ exports.updateBlock = handle(async (req) => {
   return blockOut(await CapsuleBlock.findByPk(row.id));
 });
 
+/**
+ * Records kept per PP ID of a candidate (effectivity objects, needs assessments) follow their block when PP IDs
+ * change. `map` = old PP ID -> new PP ID. Two steps through temporary PP IDs, so the unique
+ * (capsule, candidate, PP ID) key of the effectivity table never collides.
+ */
+async function remapCandidatePp(capsuleId, candidateId, map, t) {
+  if (!map.size) return;
+  const effs = await CapsuleEffectivity.findAll({ where: { capsuleId, candidateId, ppId: [...map.keys()] }, transaction: t });
+  const from = effs.map((e) => Number(e.ppId));
+  for (const e of effs) await e.update({ ppId: -900000000 - e.id }, { transaction: t });
+  for (let i = 0; i < effs.length; i++) await effs[i].update({ ppId: map.get(from[i]) }, { transaction: t });
+  const needs = await CapsuleAuxRecord.findAll({ where: { kind: 'needAssessments', capsuleId, candidateId }, transaction: t });
+  for (const r of needs) {
+    const d = r.data || {};
+    const pp = Number(d.ppId);
+    if (d.ppId !== undefined && d.ppId !== null && d.ppId !== '' && map.has(pp)) {
+      await r.update({ data: { ...d, ppId: typeof d.ppId === 'string' ? String(map.get(pp)) : map.get(pp) } }, { transaction: t });
+    }
+  }
+}
+
+/**
+ * Move Up / Move Down: swap the PP IDs of two blocks of one candidate (same tab) in one transaction.
+ * Scores follow their block; the Critical Reference Dates stay with the PP ID (a moved score takes the date the
+ * other block's score of the same capacity had at that PP ID), so the candidate's timeline stays in order.
+ * Effectivity objects and needs assessments follow their block. Other candidates are not touched.
+ */
+exports.swapBlocks = handle(async (req) => {
+  const { row: a } = await ownedRow(req, CapsuleBlock, req.params.rowId, 'Assessment block');
+  const { row: b } = await ownedRow(req, CapsuleBlock, (req.body || {}).withBlockId, 'Assessment block');
+  if (a.id === b.id || a.capsuleId !== b.capsuleId || a.candidate_id !== b.candidate_id || a.manageType !== b.manageType) {
+    throw bad('Only blocks of the same candidate and the same tab can be swapped');
+  }
+  await sequelize.transaction(async (t) => {
+    const ppA = a.ppId;
+    const ppB = b.ppId;
+    const scoresA = await CapsuleScore.findAll({ where: { blockId: a.id }, order: [['id', 'ASC']], transaction: t });
+    const scoresB = await CapsuleScore.findAll({ where: { blockId: b.id }, order: [['id', 'ASC']], transaction: t });
+    const slot = (scores) => ({
+      byCap: new Map(scores.filter((s) => s.criticalRefDate).map((s) => [s.capacity, s.criticalRefDate])),
+      list: scores.filter((s) => s.criticalRefDate).map((s) => s.criticalRefDate),
+    });
+    const slotA = slot(scoresA);
+    const slotB = slot(scoresB);
+    const dateAt = (sl, s, i) => (!sl.list.length ? s.criticalRefDate
+      : sl.byCap.has(s.capacity) ? sl.byCap.get(s.capacity) : sl.list[Math.min(i, sl.list.length - 1)]);
+    for (let i = 0; i < scoresA.length; i++) await scoresA[i].update({ ppId: ppB, criticalRefDate: dateAt(slotB, scoresA[i], i) }, { transaction: t });
+    for (let i = 0; i < scoresB.length; i++) await scoresB[i].update({ ppId: ppA, criticalRefDate: dateAt(slotA, scoresB[i], i) }, { transaction: t });
+    await a.update({ ppId: ppB }, { transaction: t });
+    await b.update({ ppId: ppA }, { transaction: t });
+    await remapCandidatePp(a.capsuleId, a.candidate_id, new Map([[ppA, ppB], [ppB, ppA]]), t);
+  });
+  return [blockOut(await CapsuleBlock.findByPk(a.id)), blockOut(await CapsuleBlock.findByPk(b.id))];
+});
+
 /** Delete + renumber the remaining PP IDs of that candidate / tab (no gaps), scores follow. */
 exports.deleteBlock = handle(async (req) => {
   const { row } = await ownedRow(req, CapsuleBlock, req.params.rowId, 'Assessment block');
@@ -488,14 +543,24 @@ exports.deleteBlock = handle(async (req) => {
     const rest = await CapsuleBlock.findAll({
       where: { capsuleId: row.capsuleId, candidate_id: row.candidate_id, manageType: row.manageType }, transaction: t,
     });
+    // The deleted PP ID's effectivity object / needs assessment go with it (unless another block still uses that PP ID)
+    if (!rest.some((b) => b.ppId === row.ppId)) {
+      await CapsuleEffectivity.destroy({ where: { capsuleId: row.capsuleId, candidateId: row.candidate_id, ppId: row.ppId }, transaction: t });
+      const needs = await CapsuleAuxRecord.findAll({ where: { kind: 'needAssessments', capsuleId: row.capsuleId, candidateId: row.candidate_id }, transaction: t });
+      for (const r of needs) if (Number((r.data || {}).ppId) === row.ppId) await r.destroy({ transaction: t });
+    }
     rest.sort((a, b) => Math.abs(a.ppId) - Math.abs(b.ppId));
+    const moved = new Map();
     for (let i = 0; i < rest.length; i++) {
       const pp = sign * (i + 1);
       if (rest[i].ppId !== pp) {
+        moved.set(rest[i].ppId, pp);
         await rest[i].update({ ppId: pp }, { transaction: t });
         await CapsuleScore.update({ ppId: pp }, { where: { blockId: rest[i].id }, transaction: t });
       }
     }
+    // Their effectivity objects / needs assessments follow the renumbered blocks
+    await remapCandidatePp(row.capsuleId, row.candidate_id, moved, t);
   });
   return { message: 'Assessment block deleted' };
 });

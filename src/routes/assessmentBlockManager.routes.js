@@ -7,6 +7,7 @@ router.get('/unit/:unitId', assessmentBlockController.getAssessmentBlocksByUnitI
 router.post('/', assessmentBlockController.createAssessmentBlock);
 router.post('/duplicate', assessmentBlockController.duplicateAssessmentBlocks);
 router.put('/:id', assessmentBlockController.updateAssessmentBlock);
+router.post('/:id/swap', assessmentBlockController.swapAssessmentBlocks); // Move Up / Move Down
 router.delete('/:id', assessmentBlockController.deleteAssessmentBlock);
 router.get('/unit/:unitId/candidate/:candidateId', assessmentBlockController.getAssessmentBlockByCandidateAndUnit);
 
