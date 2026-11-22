@@ -8,6 +8,29 @@ const needAssessment = db.CandidateNeedAssessment;
 const { getPpCompetencyRatioMultipleCandidate } = require('./tabulationTable.controller');
 const { _internal: effectivityInternal } = require('./effectivity.controller');
 
+/** BID list from a stored value (array, JSON text, or JSON text stored twice). */
+function idList(value) {
+  let v = value;
+  for (let i = 0; i < 3 && typeof v === 'string'; i++) {
+    try { v = JSON.parse(v); } catch { return []; }
+  }
+  return Array.isArray(v) ? v.map(Number).filter(Number.isFinite) : [];
+}
+
+/** Linked BIDs of a needs assessment: both stored lists (the app always saves the same list in both). */
+function linkedIds(benchmarkIds, bIds) {
+  return [...new Set([...idList(benchmarkIds), ...idList(bIds)])].sort((a, b) => a - b);
+}
+
+/** Action Status – same rule as the Needs Assessment table and the reports: none → Open, both → Closed, else Pending. */
+function needStatus(benchmarkIds, bIds, observation) {
+  const hasIds = linkedIds(benchmarkIds, bIds).length > 0;
+  const hasObs = Boolean(String(observation || '').trim());
+  if (hasIds && hasObs) return 'Closed';
+  if (hasIds || hasObs) return 'Pending';
+  return 'Open';
+}
+
 /**
  * Adds candidate.effectivityByPp = { [ppId]: { effectivityType, …, parameters: [10] } }
  * from the competency data already computed for the extraction.
@@ -308,22 +331,15 @@ exports.getDataExtractionByUnitId = async (req, res) => {
       const bIds = safeParse(na.bIds);
       const observation = na.observation?.trim() || "";
 
-      //  STATUS LOGIC
-      let status = "Open";
+      // STATUS LOGIC (same rule as the Needs Assessment table and the reports)
 
-      if (benchmarkIds.length > 0 && observation) {
-        status = "Closed";
-      } else if (
-        (benchmarkIds.length > 0 && !observation) ||
-        (benchmarkIds.length === 0 && observation)
-      ) {
-        status = "Pending";
-      }
+
+      const status = needStatus(benchmarkIds, bIds, observation);
 
       needAssessmentByCandidate[na.candidateId].push({
         ppId: na.ppId,
         benchmarkIds,
-        bIds,
+        bIds: linkedIds(benchmarkIds, bIds),
         observation,
         status
       });
@@ -584,22 +600,15 @@ exports.getDataExtractionByClientId = async (req, res) => {
         const bIds = safeParse(na.bIds);
         const observation = na.observation?.trim() || "";
 
-        //  STATUS LOGIC
-        let status = "Open";
+        // STATUS LOGIC (same rule as the Needs Assessment table and the reports)
 
-        if (benchmarkIds.length > 0 && observation) {
-          status = "Closed";
-        } else if (
-          (benchmarkIds.length > 0 && !observation) ||
-          (benchmarkIds.length === 0 && observation)
-        ) {
-          status = "Pending";
-        }
+
+        const status = needStatus(benchmarkIds, bIds, observation);
 
         needAssessmentByCandidate[na.candidateId].push({
           ppId: na.ppId,
           benchmarkIds,
-          bIds,
+          bIds: linkedIds(benchmarkIds, bIds),
           observation,
           status
         });
@@ -822,22 +831,15 @@ exports.getDataExtractionByCandidateId = async (req, res) => {
           const bIds = safeParse(na.bIds);
           const observation = na.observation?.trim() || "";
 
-          // 
-          let status = "Open";
+          // STATUS LOGIC (same rule as the Needs Assessment table and the reports)
 
-          if (benchmarkIds.length > 0 && observation) {
-            status = "Closed";
-          } else if (
-            (benchmarkIds.length > 0 && !observation) ||
-            (benchmarkIds.length === 0 && observation)
-          ) {
-            status = "Pending";
-          }
+
+          const status = needStatus(benchmarkIds, bIds, observation);
 
           return {
             ppId: na.ppId,
             benchmarkIds,
-            bIds,
+            bIds: linkedIds(benchmarkIds, bIds),
             observation,
             status
           };

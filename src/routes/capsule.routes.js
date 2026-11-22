@@ -25,6 +25,7 @@ router.delete('/roster/:rowId', c.deleteRoster);
 router.get('/blocks/:id/:candidateId', c.getBlocks);
 router.post('/blocks', c.createBlock);
 router.put('/blocks/:rowId', c.updateBlock);
+router.post('/blocks/:rowId/swap', c.swapBlocks); // Move Up / Move Down
 router.delete('/blocks/:rowId', c.deleteBlock);
 
 // Insert Scores for Capacity Accounting
